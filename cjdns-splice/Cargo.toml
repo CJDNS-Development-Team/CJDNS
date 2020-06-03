@@ -1,0 +1,10 @@
+[package]
+name = "cjdns-splice"
+version = "0.1.0"
+authors = ["Eenae <alexey@mixbytes.io>"]
+edition = "2018"
+license = "GPL-3.0"
+description = "Tools for manipulating cjdns switch labels"
+
+[dependencies]
+cjdns-entities = { path = "../cjdns-entities" }
