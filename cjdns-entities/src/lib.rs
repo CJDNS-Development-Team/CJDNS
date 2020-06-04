@@ -4,15 +4,35 @@ extern crate regex;
 
 use std::convert::TryFrom;
 use std::fmt;
-use std::ops::{BitXor, Shl, Shr};
+use std::mem::size_of;
+use std::ops::{BitAnd, BitOr, BitXor, Shl, Shr};
+use std::string::ToString;
 use std::u64;
 
 use regex::Regex;
 
 /// Describes types which can act as labels in generic label manipulation fns.
 pub trait LabelT:
-    Sized + Copy + Shl<u32, Output = Self> + Shr<u32, Output = Self> + BitXor<Output = Self>
+    Sized
+    + Copy
+    + Shl<u32, Output = Self>
+    + Shr<u32, Output = Self>
+    + BitXor<Output = Self>
+    + BitOr<Output = Self>
+    + BitAnd<Output = Self>
+    + ToString  // should output user-friendly hex label
 {
+    /// outputs user-friendly binary string representation
+    fn to_bit_string(&self) -> String;
+
+    // Mostly internal usage:
+
+    /// constructs a label from some predefined value
+    fn from_u32(v: u32) -> Self;
+
+    /// maximum number of bits a label payload can occupy
+    fn max_bit_size() -> u32;
+
     /// index of highest set bit in binary representation
     fn highest_set_bit(&self) -> Option<u32>;
 }
@@ -88,6 +108,20 @@ impl Shr<u32> for Label64 {
     }
 }
 
+impl BitAnd for Label64 {
+    type Output = Self;
+    fn bitand(self, rhs: Self) -> Self {
+        Self(self.0 & rhs.0)
+    }
+}
+
+impl BitOr for Label64 {
+    type Output = Self;
+    fn bitor(self, rhs: Self) -> Self {
+        Self(self.0 | rhs.0)
+    }
+}
+
 impl BitXor for Label64 {
     type Output = Self;
     fn bitxor(self, rhs: Self) -> Self {
@@ -96,11 +130,29 @@ impl BitXor for Label64 {
 }
 
 impl LabelT for Label64 {
+    fn to_bit_string(&self) -> String {
+        format!(
+            "{:016b}.{:016b}.{:016b}.{:016b}",
+            (self.0 >> 48) & 0xFFFFu64,
+            (self.0 >> 32) & 0xFFFFu64,
+            (self.0 >> 16) & 0xFFFFu64,
+            self.0 & 0xFFFFu64
+        )
+    }
+
+    fn from_u32(v: u32) -> Self {
+        Self(v as u64)
+    }
+
+    fn max_bit_size() -> u32 {
+        size_of::<u64>() as u32 * 8 - 4
+    }
+
     fn highest_set_bit(&self) -> Option<u32> {
         if 0 == self.0 {
             None
         } else {
-            Some(64 - 1 - self.0.leading_zeros() as u32)
+            Some(size_of::<u64>() as u32 * 8 - 1 - self.0.leading_zeros() as u32)
         }
     }
 }
