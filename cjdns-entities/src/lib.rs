@@ -13,14 +13,16 @@ use regex::Regex;
 pub trait LabelT:
     Sized + Copy + Shl<Output = Self> + Shr<Output = Self> + BitXor<Output = Self>
 {
+    /// index of highest set bit in binary representation
+    fn highest_set_bit(&self) -> Option<usize>;
 }
+
+/// 64 bit labels are used by default.
+pub type Label = Label64;
 
 /// 64 bit label.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Label64(u64);
-
-/// 64 bit labels are used by default.
-pub type Label = Label64;
 
 /// 128 bit label.
 //pub struct Label128(u128);
@@ -93,7 +95,15 @@ impl BitXor for Label64 {
     }
 }
 
-impl LabelT for Label64 {}
+impl LabelT for Label64 {
+    fn highest_set_bit(&self) -> Option<usize> {
+        if 0 == self.0 {
+            None
+        } else {
+            Some(64 - 1 - self.0.leading_zeros() as usize)
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -131,5 +141,15 @@ mod tests {
         assert!(Label64::try_from("0000000364b510e5").is_err());
         assert!(Label64::try_from("foo").is_err());
         assert!(Label64::try_from("").is_err());
+    }
+
+    #[test]
+    fn l64_highest_set_bit() {
+        assert!(l64(0).highest_set_bit().is_none());
+
+        assert_eq!(l64(1).highest_set_bit().unwrap(), 0usize);
+        assert_eq!(l64(2).highest_set_bit().unwrap(), 1usize);
+        assert_eq!(l64(14574489829).highest_set_bit().unwrap(), 33usize);
+        assert_eq!(l64(1u64 << 63).highest_set_bit().unwrap(), 63usize);
     }
 }

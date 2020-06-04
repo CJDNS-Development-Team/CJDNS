@@ -1,7 +1,9 @@
 use std::error;
 use std::fmt;
 
-use cjdns_entities::{Label, LabelT};
+#[cfg(test)]
+use cjdns_entities::Label;
+use cjdns_entities::LabelT;
 
 /// Result type alias.
 pub type Result<T> = std::result::Result<T, Error>;
