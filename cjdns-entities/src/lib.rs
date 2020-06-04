@@ -11,10 +11,10 @@ use regex::Regex;
 
 /// Describes types which can act as labels in generic label manipulation fns.
 pub trait LabelT:
-    Sized + Copy + Shl<Output = Self> + Shr<Output = Self> + BitXor<Output = Self>
+    Sized + Copy + Shl<u32, Output = Self> + Shr<u32, Output = Self> + BitXor<Output = Self>
 {
     /// index of highest set bit in binary representation
-    fn highest_set_bit(&self) -> Option<usize>;
+    fn highest_set_bit(&self) -> Option<u32>;
 }
 
 /// 64 bit labels are used by default.
@@ -74,17 +74,17 @@ impl TryFrom<&str> for Label64 {
     }
 }
 
-impl Shl for Label64 {
+impl Shl<u32> for Label64 {
     type Output = Self;
-    fn shl(self, rhs: Self) -> Self {
-        Self(self.0 << rhs.0)
+    fn shl(self, rhs: u32) -> Self {
+        Self(self.0 << rhs)
     }
 }
 
-impl Shr for Label64 {
+impl Shr<u32> for Label64 {
     type Output = Self;
-    fn shr(self, rhs: Self) -> Self {
-        Self(self.0 >> rhs.0)
+    fn shr(self, rhs: u32) -> Self {
+        Self(self.0 >> rhs)
     }
 }
 
@@ -96,11 +96,11 @@ impl BitXor for Label64 {
 }
 
 impl LabelT for Label64 {
-    fn highest_set_bit(&self) -> Option<usize> {
+    fn highest_set_bit(&self) -> Option<u32> {
         if 0 == self.0 {
             None
         } else {
-            Some(64 - 1 - self.0.leading_zeros() as usize)
+            Some(64 - 1 - self.0.leading_zeros() as u32)
         }
     }
 }
@@ -147,9 +147,9 @@ mod tests {
     fn l64_highest_set_bit() {
         assert!(l64(0).highest_set_bit().is_none());
 
-        assert_eq!(l64(1).highest_set_bit().unwrap(), 0usize);
-        assert_eq!(l64(2).highest_set_bit().unwrap(), 1usize);
-        assert_eq!(l64(14574489829).highest_set_bit().unwrap(), 33usize);
-        assert_eq!(l64(1u64 << 63).highest_set_bit().unwrap(), 63usize);
+        assert_eq!(l64(1).highest_set_bit().unwrap(), 0u32);
+        assert_eq!(l64(2).highest_set_bit().unwrap(), 1u32);
+        assert_eq!(l64(14574489829).highest_set_bit().unwrap(), 33u32);
+        assert_eq!(l64(1u64 << 63).highest_set_bit().unwrap(), 63u32);
     }
 }
