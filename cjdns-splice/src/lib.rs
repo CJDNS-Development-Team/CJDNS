@@ -1,7 +1,7 @@
 use std::error;
 use std::fmt;
 
-use cjdns_entities::LabelT;
+use cjdns_entities::{EncodingScheme, EncodingSchemeForm, LabelT};
 
 /// Result type alias.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -30,6 +30,7 @@ impl error::Error for Error {
     }
 }
 
+/// This function takes one or more `labels` and splices them to create a resulting label.
 pub fn splice<L: LabelT>(labels: &[L]) -> Result<L> {
     if labels.len() < 2 {
         return Err(Error::NotEnoughArguments);
@@ -57,12 +58,39 @@ pub fn splice<L: LabelT>(labels: &[L]) -> Result<L> {
     Ok(result)
 }
 
+/// Get the encoding form used for the first director of the `label`.
+pub fn get_encoding_form<L: LabelT>(
+    label: L,
+    scheme: &EncodingScheme,
+) -> Option<EncodingSchemeForm> {
+    for form in scheme.forms() {
+        if 0 == form.prefix_len {
+            return Some(*form);
+        }
+
+        if form.prefix_len > 32 {
+            continue;
+        }
+
+        let mask = if form.prefix_len == 32 {
+            0xFFFFFFFFu32
+        } else {
+            (1u32 << (form.prefix_len as u32)) - 1u32
+        };
+        if label & L::from_u32(mask) == L::from_u32(form.prefix) {
+            return Some(*form);
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use std::convert::TryFrom;
 
     use super::*;
-    use cjdns_entities::Label;
+    use cjdns_entities::{Label, SCHEMES};
 
     fn l(v: &str) -> Label {
         Label::try_from(v).unwrap()
@@ -111,6 +139,62 @@ mod tests {
         assert_eq!(
             splice(&[l("0400.0000.0000.1111"), l("0000.0000.0000.0005")]),
             Err(Error::LabelTooLong)
+        );
+    }
+
+    #[test]
+    fn test_get_encoding_form() {
+        assert_eq!(
+            get_encoding_form(l("0000.0000.0000.1111"), &SCHEMES["f8"]),
+            Some(EncodingSchemeForm {
+                bit_count: 8,
+                prefix_len: 0,
+                prefix: 0,
+            })
+        );
+
+        assert_eq!(
+            get_encoding_form(l("0000.0000.0000.1110"), &SCHEMES["v358"]),
+            Some(EncodingSchemeForm {
+                bit_count: 8,
+                prefix_len: 2,
+                prefix: 0,
+            })
+        );
+        assert_eq!(
+            get_encoding_form(l("0000.0000.0000.1111"), &SCHEMES["v358"]),
+            Some(EncodingSchemeForm {
+                bit_count: 3,
+                prefix_len: 1,
+                prefix: 1,
+            })
+        );
+        assert_eq!(
+            get_encoding_form(l("0000.0000.0000.1112"), &SCHEMES["v358"]),
+            Some(EncodingSchemeForm {
+                bit_count: 5,
+                prefix_len: 2,
+                prefix: 2,
+            })
+        );
+
+        assert_eq!(
+            get_encoding_form(
+                l("0000.0000.0000.1113"),
+                &EncodingScheme::new(&[
+                    EncodingSchemeForm {
+                        bit_count: 5,
+                        prefix_len: 2,
+                        prefix: 0b10,
+                    },
+                    EncodingSchemeForm {
+                        bit_count: 8,
+                        prefix_len: 2,
+                        prefix: 0b00,
+                    },
+                ])
+            ),
+            None
         );
     }
 }

@@ -23,6 +23,8 @@ pub trait LabelT:
     + BitXor<Output = Self>
     + BitOr<Output = Self>
     + BitAnd<Output = Self>
+    + Eq
+    + PartialEq
     + ToString // should output user-friendly hex label
 {
     /// outputs user-friendly binary string representation
@@ -55,7 +57,7 @@ pub struct Label64(u64);
 pub struct EncodingSchemeForm {
     pub bit_count: u8,
     pub prefix_len: u8,
-    pub prefix: u8,
+    pub prefix: u32,
 }
 
 /// Encoding scheme.
@@ -64,7 +66,7 @@ pub struct EncodingSchemeForm {
 pub struct EncodingScheme(Vec<EncodingSchemeForm>);
 
 lazy_static! {
-    static ref SCHEMES: HashMap<&'static str, EncodingScheme> = {
+    pub static ref SCHEMES: HashMap<&'static str, EncodingScheme> = {
         let mut m = HashMap::new();
 
         m.insert(
@@ -287,7 +289,7 @@ mod tests {
         Label64::new(v)
     }
 
-    fn eform(bit_count: u8, prefix_len: u8, prefix: u8) -> EncodingSchemeForm {
+    fn eform(bit_count: u8, prefix_len: u8, prefix: u32) -> EncodingSchemeForm {
         EncodingSchemeForm {
             bit_count,
             prefix_len,
