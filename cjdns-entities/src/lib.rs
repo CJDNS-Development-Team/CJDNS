@@ -20,7 +20,7 @@ pub trait LabelT:
     + BitXor<Output = Self>
     + BitOr<Output = Self>
     + BitAnd<Output = Self>
-    + ToString  // should output user-friendly hex label
+    + ToString // should output user-friendly hex label
 {
     /// outputs user-friendly binary string representation
     fn to_bit_string(&self) -> String;
@@ -159,7 +159,12 @@ impl LabelT for Label64 {
 
 #[cfg(test)]
 mod tests {
+    extern crate rand;
+
     use super::*;
+
+    use rand::rngs::SmallRng;
+    use rand::{RngCore, SeedableRng};
 
     fn l64(v: u64) -> Label64 {
         Label64::new(v)
@@ -193,6 +198,18 @@ mod tests {
         assert!(Label64::try_from("0000000364b510e5").is_err());
         assert!(Label64::try_from("foo").is_err());
         assert!(Label64::try_from("").is_err());
+    }
+
+    #[test]
+    fn l64_string_io() {
+        let mut rng = SmallRng::seed_from_u64(4914925427922294426u64);
+        for _ in 0..10000 {
+            let label = l64(rng.next_u64());
+            assert_eq!(
+                Label64::try_from(label.to_string().as_str()).unwrap(),
+                label
+            );
+        }
     }
 
     #[test]

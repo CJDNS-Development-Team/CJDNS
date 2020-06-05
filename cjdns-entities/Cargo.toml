@@ -9,3 +9,7 @@ description = "Inter-crate cjdns types, structs & traits"
 [dependencies]
 regex = "1"
 lazy_static = "1.4.0"
+
+[dev-dependencies.rand]
+version = "0.7.3"
+features = ["small_rng"]
