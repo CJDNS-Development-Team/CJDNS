@@ -2,6 +2,7 @@
 extern crate lazy_static;
 extern crate regex;
 
+use core::slice;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fmt;
@@ -267,12 +268,12 @@ impl EncodingScheme {
     }
 }
 
-impl IntoIterator for EncodingScheme {
-    type Item = EncodingSchemeForm;
-    type IntoIter = std::vec::IntoIter<Self::Item>;
+impl<'a> IntoIterator for &'a EncodingScheme {
+    type Item = &'a EncodingSchemeForm;
+    type IntoIter = slice::Iter<'a, EncodingSchemeForm>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.0.into_iter()
+        (&self.0).into_iter()
     }
 }
 
@@ -387,6 +388,7 @@ mod tests {
         assert_eq!(
             EncodingScheme::new(&[eform(4, 2, 0b00), eform(4, 2, 0b01)])
                 .into_iter()
+                .cloned()
                 .collect::<Vec<EncodingSchemeForm>>(),
             vec![eform(4, 2, 0b00), eform(4, 2, 0b01)]
         );

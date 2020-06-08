@@ -63,7 +63,7 @@ pub fn get_encoding_form<L: LabelT>(
     label: L,
     scheme: &EncodingScheme,
 ) -> Option<EncodingSchemeForm> {
-    for form in scheme.forms() {
+    for form in scheme {
         if 0 == form.prefix_len {
             return Some(*form);
         }
