@@ -98,6 +98,30 @@ fn get_director<L: LabelT>(label: L, form: EncodingSchemeForm) -> L {
     (label << padding) >> (padding + form.prefix_len as u32)
 }
 
+/// Detects canonical (shortest) form which has enough space to hold `dir`.
+fn find_shortest_form<L: LabelT>(dir: L, scheme: &EncodingScheme) -> Result<EncodingSchemeForm> {
+    let dir_bits = match dir.highest_set_bit() {
+        None => return Err(Error::ZeroLabel),
+        Some(idx) => idx + 1,
+    };
+    let mut best_form: Option<EncodingSchemeForm> = None;
+
+    for form in scheme {
+        if (form.bit_count as u32) < dir_bits {
+            continue;
+        }
+        if best_form.is_none() || best_form.unwrap().bit_count > form.bit_count {
+            best_form = Some(*form)
+        }
+    }
+
+    if best_form.is_none() {
+        Err(Error::CannotFindForm)
+    } else {
+        Ok(best_form.unwrap())
+    }
+}
+
 /// Re-encode a `label` to the encoding form specified by `desired_form_num`
 /// (or canonical if `None`).
 pub fn re_encode<L: LabelT>(
@@ -114,26 +138,7 @@ pub fn re_encode<L: LabelT>(
         }
         scheme.forms()[num]
     } else {
-        // need to detect canonical (shortest) form which has enough space to hold `dir`
-        let dir_bits = match dir.highest_set_bit() {
-            None => return Err(Error::ZeroLabel),
-            Some(idx) => idx + 1,
-        };
-        let mut best_form: Option<EncodingSchemeForm> = None;
-
-        for form in scheme {
-            if (form.bit_count as u32) < dir_bits {
-                continue;
-            }
-            if best_form.is_none() || best_form.unwrap().bit_count > form.bit_count {
-                best_form = Some(*form)
-            }
-        }
-
-        if best_form.is_none() {
-            return Err(Error::CannotFindForm);
-        }
-        best_form.unwrap()
+        find_shortest_form(dir, scheme)?
     };
 
     if scheme == &SCHEMES["v358"] {
@@ -289,6 +294,46 @@ mod tests {
     }
 
     #[test]
+    fn test_find_shortest_form() {
+        assert_eq!(
+            find_shortest_form(l("0000.0000.0000.0002"), &SCHEMES["f4"]).unwrap(),
+            EncodingSchemeForm {
+                bit_count: 4,
+                prefix_len: 0,
+                prefix: 0,
+            }
+        );
+        assert!(find_shortest_form(l("0000.0000.0000.0010"), &SCHEMES["f4"]).is_err());
+
+        assert_eq!(
+            find_shortest_form(l("0000.0000.0000.0002"), &SCHEMES["v48"]).unwrap(),
+            EncodingSchemeForm {
+                bit_count: 4,
+                prefix_len: 1,
+                prefix: 0b01,
+            }
+        );
+        assert_eq!(
+            find_shortest_form(l("0000.0000.0000.0010"), &SCHEMES["v48"]).unwrap(),
+            EncodingSchemeForm {
+                bit_count: 8,
+                prefix_len: 1,
+                prefix: 0b00,
+            }
+        );
+        assert!(find_shortest_form(l("0000.0000.0000.0100"), &SCHEMES["v48"]).is_err());
+
+        assert_eq!(
+            find_shortest_form(l("0000.0000.0000.0015"), &SCHEMES["v358"]).unwrap(),
+            EncodingSchemeForm {
+                bit_count: 5,
+                prefix_len: 2,
+                prefix: 0b10,
+            }
+        );
+    }
+
+    #[test]
     fn test_reencode_basic() {
         assert_eq!(
             re_encode(l("0000.0000.0000.0015"), &SCHEMES["v358"], Some(2)).unwrap(),
@@ -306,5 +351,33 @@ mod tests {
             re_encode(l("0000.0000.0000.0404"), &SCHEMES["v358"], None).unwrap(),
             l("0000.0000.0000.0015")
         );
+
+        assert!(re_encode(l("0000.0000.0000.0000"), &SCHEMES["v358"], None).is_err());
+        assert!(re_encode(l("0000.0000.0000.0015"), &SCHEMES["v358"], Some(3)).is_err());
+        assert!(re_encode(l("0000.0000.0000.0015"), &SCHEMES["v358"], Some(4)).is_err());
+
+        assert!(re_encode(
+            l("0000.0000.0000.1113"),
+            &EncodingScheme::new(&[
+                EncodingSchemeForm {
+                    bit_count: 5,
+                    prefix_len: 2,
+                    prefix: 0b10,
+                },
+                EncodingSchemeForm {
+                    bit_count: 8,
+                    prefix_len: 2,
+                    prefix: 0b00,
+                },
+            ]),
+            None
+        )
+        .is_err());
+
+        assert_eq!(
+            re_encode(l("0040.0000.0000.0067"), &SCHEMES["v48"], Some(1)).unwrap(),
+            l("0400.0000.0000.0606")
+        );
+        assert!(re_encode(l("0400.0000.0000.0067"), &SCHEMES["v48"], Some(1)).is_err());
     }
 }
