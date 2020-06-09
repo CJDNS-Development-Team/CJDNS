@@ -8,7 +8,7 @@ use std::convert::TryFrom;
 use std::fmt;
 use std::iter::IntoIterator;
 use std::mem::size_of;
-use std::ops::{BitAnd, BitOr, BitXor, Shl, Shr};
+use std::ops::{Add, BitAnd, BitOr, BitXor, Shl, Shr, Sub};
 use std::string::ToString;
 use std::u64;
 use std::vec::Vec;
@@ -24,6 +24,8 @@ pub trait LabelT:
     + BitXor<Output = Self>
     + BitOr<Output = Self>
     + BitAnd<Output = Self>
+    + Add<u32, Output = Self>
+    + Sub<u32, Output = Self>
     + Eq
     + PartialEq
     + ToString // should output user-friendly hex label
@@ -35,6 +37,9 @@ pub trait LabelT:
 
     /// constructs a label from some predefined value
     fn from_u32(v: u32) -> Self;
+
+    /// bit size of the underlying integer type
+    fn type_bit_size() -> u32;
 
     /// maximum number of bits a label payload can occupy
     fn max_bit_size() -> u32;
@@ -227,6 +232,20 @@ impl BitXor for Label64 {
     }
 }
 
+impl Add<u32> for Label64 {
+    type Output = Self;
+    fn add(self, rhs: u32) -> Self {
+        Self(self.0.checked_add(rhs as u64).unwrap())
+    }
+}
+
+impl Sub<u32> for Label64 {
+    type Output = Self;
+    fn sub(self, rhs: u32) -> Self {
+        Self(self.0.checked_sub(rhs as u64).unwrap())
+    }
+}
+
 impl LabelT for Label64 {
     fn to_bit_string(&self) -> String {
         format!(
@@ -240,6 +259,10 @@ impl LabelT for Label64 {
 
     fn from_u32(v: u32) -> Self {
         Self(v as u64)
+    }
+
+    fn type_bit_size() -> u32 {
+        size_of::<u64>() as u32 * 8
     }
 
     fn max_bit_size() -> u32 {
@@ -396,6 +419,10 @@ mod tests {
 
     #[test]
     fn schemes() {
-        assert_eq!(*SCHEMES.get("f8").unwrap().forms(), vec![eform(8, 0, 0)])
+        assert_eq!(SCHEMES["f8"].forms(), vec![eform(8, 0, 0)]);
+
+        // smallest to biggest
+        assert_eq!(SCHEMES["v358"].forms()[0].bit_count, 3);
+        assert_eq!(SCHEMES["v358"].forms()[2].bit_count, 8);
     }
 }
