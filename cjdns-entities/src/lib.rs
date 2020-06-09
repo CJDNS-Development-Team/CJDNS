@@ -36,7 +36,7 @@ pub trait LabelT:
     // Mostly internal usage:
 
     /// constructs a label from some predefined value
-    fn from_u32(v: u32) -> Self;
+    fn from_u64(v: u64) -> Self;
 
     /// bit size of the underlying integer type
     fn type_bit_size() -> u32;
@@ -257,8 +257,8 @@ impl LabelT for Label64 {
         )
     }
 
-    fn from_u32(v: u32) -> Self {
-        Self(v as u64)
+    fn from_u64(v: u64) -> Self {
+        Self(v)
     }
 
     fn type_bit_size() -> u32 {
