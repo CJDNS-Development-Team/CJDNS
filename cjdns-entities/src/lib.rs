@@ -28,6 +28,7 @@ pub trait LabelT:
     + Sub<u32, Output = Self>
     + Eq
     + PartialEq
+    + PartialOrd
     + ToString // should output user-friendly hex label
 {
     /// outputs user-friendly binary string representation
@@ -52,7 +53,7 @@ pub trait LabelT:
 pub type Label = Label64;
 
 /// 64 bit label.
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd)]
 pub struct Label64(u64);
 
 /// 128 bit label.
