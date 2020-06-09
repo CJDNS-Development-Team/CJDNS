@@ -419,7 +419,7 @@ mod tests {
 
     #[test]
     fn schemes() {
-        assert_eq!(SCHEMES["f8"].forms(), vec![eform(8, 0, 0)]);
+        assert_eq!(SCHEMES["f8"].forms(), &vec![eform(8, 0, 0)]);
 
         // smallest to biggest
         assert_eq!(SCHEMES["v358"].forms()[0].bit_count, 3);
