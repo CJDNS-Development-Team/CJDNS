@@ -50,3 +50,13 @@ re_encode("0000.0000.0000.0015", &SCHEMES["v358"], Some(1)); // returns Ok("0000
 re_encode("0000.0000.0000.0015", &SCHEMES["v358"], Some(2)); // returns Ok("0000.0000.0000.0404")
 re_encode("0000.0000.0000.0404", &SCHEMES["v358"], None); // returns Ok("0000.0000.0000.0015")
 ```
+
+### `routes_through<L: LabelT>(destination: L, mid_path: L) -> Result<bool>`
+This will return `Ok(true)` if the node at the end of the route given by `mid_path` is a hop along the path given by `destination`.
+
+See: [LabelSplicer_routesThrough()](https://github.com/cjdelisle/cjdns/blob/cjdns-v20.2/switch/LabelSplicer.h#L52)
+
+```rust
+routes_through("0000.001b.0535.10e5", "0000.0000.0000.0015"); // returns Ok(true)
+routes_through("0000.001b.0535.10e5", "0000.0000.0000.0013"); // returns Ok(false)
+```
