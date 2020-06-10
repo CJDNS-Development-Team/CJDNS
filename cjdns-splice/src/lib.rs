@@ -193,7 +193,7 @@ pub fn routes_through<L: LabelT>(destination: L, mid_path: L) -> Result<bool> {
         return Err(Error::ZeroLabel);
     }
 
-    if destination.highest_set_bit() < mid_path.highest_set_bit() {
+    if destination.highest_set_bit().unwrap() < mid_path.highest_set_bit().unwrap() {
         return Ok(false);
     }
 
