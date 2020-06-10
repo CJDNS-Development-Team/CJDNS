@@ -185,6 +185,16 @@ pub fn re_encode<L: LabelT>(
     Ok(result)
 }
 
+// dirty, not fully tested
+pub fn unsplice<L: LabelT>(destination: L, mid_path: L) -> Result<L> {
+    let mid_path_highest_bit_idx = mid_path.highest_set_bit();
+    if mid_path_highest_bit_idx.is_none() {
+        return Err(Error::ZeroLabel)
+    }
+
+    Ok(destination >> mid_path_highest_bit_idx.unwrap())
+}
+
 #[cfg(test)]
 mod tests {
     use std::convert::TryFrom;
@@ -492,5 +502,13 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_unsplice() {
+        assert_eq!(
+            unsplice(l("0000.0000.0000.0153"), l("0000.0000.0000.0013")),
+            Ok(l("0000.0000.0000.0015"))
+        )
     }
 }
