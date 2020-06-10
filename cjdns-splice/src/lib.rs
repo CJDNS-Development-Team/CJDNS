@@ -185,14 +185,19 @@ pub fn re_encode<L: LabelT>(
     Ok(result)
 }
 
-// dirty, not fully tested
+// TODO
+// 1) consider another Error variant for too long mid
+// 2) lines 192-198 copy-past with routes_through checkups
 pub fn unsplice<L: LabelT>(destination: L, mid_path: L) -> Result<L> {
-    let mid_path_highest_bit_idx = mid_path.highest_set_bit();
-    if mid_path_highest_bit_idx.is_none() {
-        return Err(Error::ZeroLabel)
+    if mid_path.highest_set_bit().is_none() {
+        return Err(Error::ZeroLabel);
     }
 
-    Ok(destination >> mid_path_highest_bit_idx.unwrap())
+    if destination.highest_set_bit().unwrap() < mid_path.highest_set_bit().unwrap() {
+        return Err(Error::LabelTooLong)
+    }
+
+    Ok(destination >> mid_path.highest_set_bit().unwrap())
 }
 
 #[cfg(test)]
@@ -509,6 +514,15 @@ mod tests {
         assert_eq!(
             unsplice(l("0000.0000.0000.0153"), l("0000.0000.0000.0013")),
             Ok(l("0000.0000.0000.0015"))
-        )
+        );
+        assert_eq!(
+            unsplice(l("0000.0000.0000.0153"), l("0000.0000.0000.0001")),
+            Ok(l("0000.0000.0000.0153"))
+        );
+        assert_eq!(
+            unsplice(l("0000.0000.0000.0013"), l("0000.0000.0000.0153")),
+            Err(Error::LabelTooLong)
+        );
+
     }
 }
