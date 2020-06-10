@@ -61,7 +61,7 @@ pub struct Label64(u64);
 /// Form used in an encoding scheme.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct EncodingSchemeForm {
-    pub bit_count: u8,
+    pub bit_count: u8, // bit_count going first is important for EncodingScheme ordering
     pub prefix_len: u8,
     pub prefix: u32,
 }
