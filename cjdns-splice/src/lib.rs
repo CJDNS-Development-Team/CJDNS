@@ -357,7 +357,6 @@ mod tests {
             l("0000.0000.0000.0015")
         );
 
-        assert!(re_encode(l("0000.0000.0000.0000"), &SCHEMES["v358"], None).is_err());
         assert!(re_encode(l("0000.0000.0000.0015"), &SCHEMES["v358"], Some(3)).is_err());
         assert!(re_encode(l("0000.0000.0000.0015"), &SCHEMES["v358"], Some(4)).is_err());
 
