@@ -18,9 +18,9 @@ cargo build --release
 
 ### Individual crates
 
-[**cjdns-entities**](cjdns-entities/readme.md) - entities operated by CJDNS.
+[**cjdns-entities**](cjdns-entities/) - entities operated by CJDNS.
 
-[**cjdns-splice**](cjdns-splice/readme.md) - tools for manipulating and splicing cjdns switch labels.
+[**cjdns-splice**](cjdns-splice/) - tools for manipulating and splicing cjdns switch labels.
 
 ## Development
 
