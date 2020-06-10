@@ -99,11 +99,9 @@ fn get_director<L: LabelT>(label: L, form: EncodingSchemeForm) -> L {
 }
 
 /// Bit length of a director (not a label, e.g. without self-route).
+#[inline]
 fn director_bit_length<L: LabelT>(dir: L) -> u32 {
-    match dir.highest_set_bit() {
-        None => 1u32,
-        Some(idx) => idx + 1u32,
-    }
+    dir.highest_set_bit().unwrap_or(0u32) + 1u32
 }
 
 /// Detects canonical (shortest) form which has enough space to hold `dir`.
@@ -294,6 +292,15 @@ mod tests {
             })
         );
 
+        assert_eq!(
+            get_encoding_form(l("0000.0000.0000.0013"), &SCHEMES["v358"]),
+            Ok(EncodingSchemeForm {
+                bit_count: 3,
+                prefix_len: 1,
+                prefix: 0b01,
+            })
+        );
+
         assert!(get_encoding_form(
             l("0000.0000.0000.1113"),
             &EncodingScheme::new(&[
@@ -371,7 +378,6 @@ mod tests {
             l("0000.0000.0000.0015")
         );
 
-        assert!(re_encode(l("0000.0000.0000.0000"), &SCHEMES["v358"], None).is_err());
         assert!(re_encode(l("0000.0000.0000.0015"), &SCHEMES["v358"], Some(3)).is_err());
         assert!(re_encode(l("0000.0000.0000.0015"), &SCHEMES["v358"], Some(4)).is_err());
 
