@@ -280,6 +280,15 @@ mod tests {
             })
         );
 
+        assert_eq!(
+            get_encoding_form(l("0000.0000.0000.0013"), &SCHEMES["v358"]),
+            Ok(EncodingSchemeForm {
+                bit_count: 3,
+                prefix_len: 1,
+                prefix: 0b01,
+            })
+        );
+
         assert!(get_encoding_form(
             l("0000.0000.0000.1113"),
             &EncodingScheme::new(&[
