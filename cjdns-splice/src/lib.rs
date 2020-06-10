@@ -98,12 +98,17 @@ fn get_director<L: LabelT>(label: L, form: EncodingSchemeForm) -> L {
     (label << padding) >> (padding + form.prefix_len as u32)
 }
 
+/// Bit length of a director (not a label, e.g. without self-route).
+fn director_bit_length<L: LabelT>(dir: L) -> u32 {
+    match dir.highest_set_bit() {
+        None => 1u32,
+        Some(idx) => idx + 1u32,
+    }
+}
+
 /// Detects canonical (shortest) form which has enough space to hold `dir`.
 fn find_shortest_form<L: LabelT>(dir: L, scheme: &EncodingScheme) -> Result<EncodingSchemeForm> {
-    let dir_bits = match dir.highest_set_bit() {
-        None => return Err(Error::ZeroLabel),
-        Some(idx) => idx + 1,
-    };
+    let dir_bits = director_bit_length(dir);
     let mut best_form: Option<EncodingSchemeForm> = None;
 
     for form in scheme {
@@ -393,6 +398,107 @@ mod tests {
     }
 
     #[test]
+    fn test_reencode_big() {
+        fn test_scheme(scheme: &EncodingScheme) {
+            let biggest_form = *(scheme.forms().last().unwrap());
+            let biggest_form_num = scheme.forms().len() - 1;
+            let max = ((1u64 << (biggest_form.bit_count as u64)) - 1) as u32;
+
+            for i in 0..max {
+                let full_label: Label = (Label::from_u32(1)
+                    << (biggest_form.bit_count as u32 + biggest_form.prefix_len as u32))
+                    | (Label::from_u32(i) << (biggest_form.prefix_len as u32))
+                    | Label::from_u32(biggest_form.prefix);
+
+                let dir_bits = director_bit_length(Label::from_u32(i));
+                for (form_num, form) in scheme.into_iter().enumerate() {
+                    if (form.bit_count as u32) < dir_bits {
+                        continue;
+                    }
+
+                    let med = re_encode(full_label, scheme, Some(form_num)).unwrap();
+                    assert_eq!(
+                        re_encode(med, scheme, Some(biggest_form_num)).unwrap(),
+                        full_label
+                    );
+
+                    for (smaller_form_num, smaller_form) in scheme.into_iter().enumerate() {
+                        if smaller_form_num >= form_num
+                            || (smaller_form.bit_count as u32) < dir_bits
+                        {
+                            continue;
+                        }
+
+                        let sml = re_encode(full_label, scheme, Some(smaller_form_num)).unwrap();
+                        assert_eq!(
+                            re_encode(sml, scheme, Some(biggest_form_num)).unwrap(),
+                            full_label
+                        );
+
+                        assert_eq!(re_encode(sml, scheme, Some(form_num)).unwrap(), med);
+                        assert_eq!(re_encode(med, scheme, Some(smaller_form_num)).unwrap(), sml);
+                    }
+                }
+            }
+        }
+
+        for (scheme_name, scheme) in SCHEMES.iter() {
+            if *scheme_name == "v358" {
+                continue;
+            }
+
+            test_scheme(scheme);
+        }
+    }
+
+    #[test]
+    fn test_reencode_358() {
+        for i in 1u32..256u32 {
+            let (form_num, label) = match director_bit_length(Label::from_u32(i)) {
+                1..=3 => (
+                    0usize,
+                    (Label::from_u32(1) << 4u32)
+                        | (Label::from_u32(i) << 1u32)
+                        | Label::from_u32(1),
+                ),
+                4 | 5 => (
+                    1usize,
+                    (Label::from_u32(1) << 7u32)
+                        | (Label::from_u32(i) << 2u32)
+                        | Label::from_u32(0b10),
+                ),
+                6..=8 => (
+                    2usize,
+                    (Label::from_u32(1) << 10u32) | (Label::from_u32(i) << 2u32),
+                ),
+                _ => panic!(),
+            };
+
+            if form_num < 2 {
+                let label2 = re_encode(label, &SCHEMES["v358"], Some(2)).unwrap();
+                assert_eq!(
+                    re_encode(label2, &SCHEMES["v358"], Some(form_num)).unwrap(),
+                    label
+                );
+                assert_eq!(re_encode(label2, &SCHEMES["v358"], None).unwrap(), label);
+
+                if form_num < 1 {
+                    let label1 = re_encode(label, &SCHEMES["v358"], Some(1)).unwrap();
+                    assert_eq!(
+                        re_encode(label2, &SCHEMES["v358"], Some(1)).unwrap(),
+                        label1
+                    );
+                    assert_eq!(
+                        re_encode(label1, &SCHEMES["v358"], Some(2)).unwrap(),
+                        label2
+                    );
+                    assert_eq!(re_encode(label1, &SCHEMES["v358"], Some(0)).unwrap(), label);
+                    assert_eq!(re_encode(label1, &SCHEMES["v358"], None).unwrap(), label);
+                }
+            }
+        }
+    }
+
     fn test_routes_through() {
         assert_eq!(
             routes_through(l("0000.001b.0535.10e5"), l("0000.0000.0000.0015")),
