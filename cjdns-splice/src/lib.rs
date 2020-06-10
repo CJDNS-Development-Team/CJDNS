@@ -56,7 +56,7 @@ pub fn splice<L: LabelT>(labels: &[L]) -> Result<L> {
                     return Err(Error::LabelTooLong);
                 }
 
-                result = ((result ^ L::from_u64(1u64)) << addon_bitlen) ^ *addon;
+                result = ((result ^ L::from_u32(1u32)) << addon_bitlen) ^ *addon;
             }
         }
     }
@@ -83,7 +83,7 @@ pub fn get_encoding_form<L: LabelT>(
         } else {
             (1u32 << (form.prefix_len as u32)) - 1u32
         };
-        if label & L::from_u64(mask as u64) == L::from_u64(form.prefix as u64) {
+        if label & L::from_u32(mask) == L::from_u32(form.prefix) {
             return Ok(*form);
         }
     }
@@ -147,12 +147,12 @@ pub fn re_encode<L: LabelT>(
             f == SCHEMES["v358"].forms()[0]
         }
 
-        if is_358_zero_form(desired_form) && dir == L::from_u64(0b111) {
+        if is_358_zero_form(desired_form) && dir == L::from_u32(0b111) {
             desired_form = SCHEMES["v358"].forms()[1];
         }
 
         if is_358_zero_form(form) {
-            if dir == L::from_u64(0) {
+            if dir == L::from_u32(0) {
                 return Err(Error::CannotReencode);
             }
             dir = dir - 1u32;
@@ -177,7 +177,7 @@ pub fn re_encode<L: LabelT>(
     }
 
     result = (result << (desired_form.bit_count as u32)) | dir;
-    result = (result << (desired_form.prefix_len as u32)) | L::from_u64(desired_form.prefix as u64);
+    result = (result << (desired_form.prefix_len as u32)) | L::from_u32(desired_form.prefix);
 
     Ok(result)
 }
