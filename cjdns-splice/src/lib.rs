@@ -193,6 +193,10 @@ pub fn routes_through<L: LabelT>(destination: L, mid_path: L) -> Result<bool> {
         return Err(Error::ZeroLabel);
     }
 
+    if destination.highest_set_bit() < mid_path.highest_set_bit() {
+        return Ok(false);
+    }
+
     let mut mask = L::from_u32(1);
     mask = (mask << mid_path.highest_set_bit().unwrap()) - 1;
     Ok(destination & mask == mid_path & mask)
@@ -499,6 +503,7 @@ mod tests {
         }
     }
 
+    #[test]
     fn test_routes_through() {
         assert_eq!(
             routes_through(l("0000.001b.0535.10e5"), l("0000.0000.0000.0015")),
@@ -523,7 +528,11 @@ mod tests {
             Ok(true)
         );
         assert_eq!(
-            routes_through(l("0000.0000.0000.0001"), l("0000.001b.0535.10e5")),
+            routes_through(l("0000.0000.0035.0e00"), l("0000.001b.0535.10e5")),
+            Ok(false)
+        );
+        assert_eq!(
+            routes_through(l("0000.000b.0535.10e5"), l("0000.001b.0535.10e5")),
             Ok(false)
         );
     }
