@@ -183,16 +183,14 @@ pub fn re_encode<L: LabelT>(
 }
 
 /// This will return `true` if the node at the end of the route given by `mid_path` is a hop along the path given by `destination`
-pub fn routes_through<L: LabelT>(destination: L, mid_path: L) -> bool {
-    if mid_path > destination {
-        return false;
-    } else if mid_path < LabelT::from_u32(2) {
-        return true;
+pub fn routes_through<L: LabelT>(destination: L, mid_path: L) -> Result<bool> {
+    if mid_path.highest_set_bit().is_none() {
+        return Err(Error::ZeroLabel);
     }
 
-    let mask = std::u64::MAX >> (64 - mid_path.highest_set_bit().unwrap());
-    return (destination.bitand(LabelT::from_u32(mask)))
-        == (mid_path.bitand(LabelT::from_u32(mask)));
+    let mut mask = L::from_u32(1);
+    mask = (mask << mid_path.highest_set_bit().unwrap()) - 1;
+    Ok(destination & mask == mid_path & mask)
 }
 
 #[cfg(test)]
@@ -398,19 +396,29 @@ mod tests {
     fn test_routes_through() {
         assert_eq!(
             routes_through(l("0000.001b.0535.10e5"), l("0000.0000.0000.0015")),
-            true
+            Ok(true)
         );
         assert_eq!(
             routes_through(l("0000.001b.0535.10e5"), l("0000.0000.0000.0013")),
-            false
+            Ok(false)
         );
+        // lt 2 checks
         assert_eq!(
             routes_through(l("0000.001b.0535.10e5"), l("0000.0000.0000.0001")),
-            true
+            Ok(true)
+        );
+        assert_eq!(
+            routes_through(l("0000.001b.0535.10e5"), l("0000.0000.0000.0000")),
+            Err(Error::ZeroLabel)
+        );
+        // checking other edge cases
+        assert_eq!(
+            routes_through(l("0000.001b.0535.10e5"), l("0000.001b.0535.10e5")),
+            Ok(true)
         );
         assert_eq!(
             routes_through(l("0000.0000.0000.0001"), l("0000.001b.0535.10e5")),
-            false
+            Ok(false)
         );
     }
 }
