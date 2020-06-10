@@ -99,11 +99,9 @@ fn get_director<L: LabelT>(label: L, form: EncodingSchemeForm) -> L {
 }
 
 /// Bit length of a director (not a label, e.g. without self-route).
+#[inline]
 fn director_bit_length<L: LabelT>(dir: L) -> u32 {
-    match dir.highest_set_bit() {
-        None => 1u32,
-        Some(idx) => idx + 1u32,
-    }
+    dir.highest_set_bit().unwrap_or(0u32) + 1u32
 }
 
 /// Detects canonical (shortest) form which has enough space to hold `dir`.
