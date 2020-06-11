@@ -187,7 +187,7 @@ pub fn re_encode<L: LabelT>(
 
 /// This will return `Ok(true)` if the node at the end of the route given by `mid_path` is a hop along the path given by `destination`
 pub fn routes_through<L: LabelT>(destination: L, mid_path: L) -> Result<bool> {
-    if mid_path.highest_set_bit().is_none() {
+    if destination.highest_set_bit().is_none() || mid_path.highest_set_bit().is_none() {
         return Err(Error::ZeroLabel);
     }
 
@@ -525,6 +525,10 @@ mod tests {
         );
         assert_eq!(
             routes_through(l("0000.001b.0535.10e5"), l("0000.0000.0000.0000")),
+            Err(Error::ZeroLabel)
+        );
+        assert_eq!(
+            routes_through(l("0000.0000.0000.0000"), l("0000.001b.0535.10e5")),
             Err(Error::ZeroLabel)
         );
         // checking other edge cases
