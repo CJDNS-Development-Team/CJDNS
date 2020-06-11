@@ -199,18 +199,17 @@ pub fn routes_through<L: LabelT>(destination: L, mid_path: L) -> Result<bool> {
     Ok(destination & mask == mid_path & mask)
 }
 
-// TODO
-// 1) consider another Error variant for too long mid
-// 2) lines 192-198 copy-past with routes_through checkups
+/// Convert a full path to a representation which a node along that path can use
 pub fn unsplice<L: LabelT>(destination: L, mid_path: L) -> Result<L> {
-    if mid_path.highest_set_bit().is_none() {
-        return Err(Error::ZeroLabel);
+    match routes_through(destination, mid_path) {
+        Err(e) => Err(e),
+        Ok(x) => {
+            if !x {
+                return Err(Error::BadArgument);
+            }
+            Ok(destination >> mid_path.highest_set_bit().unwrap())
+        }
     }
-
-    if destination.highest_set_bit().unwrap() < mid_path.highest_set_bit().unwrap() {
-        return Err(Error::LabelTooLong)
-    }
-    Ok(destination >> mid_path.highest_set_bit().unwrap())
 }
 
 #[cfg(test)]
@@ -587,8 +586,24 @@ mod tests {
             Ok(l("0000.0000.0000.0153"))
         );
         assert_eq!(
+            unsplice(l("0000.0000.0000.0153"), l("0000.0000.0000.0153")),
+            Ok(l("0000.0000.0000.0001"))
+        );
+        assert_eq!(
+            unsplice(l("0000.000b.0535.10e5"), l("0000.001b.0535.10e5")),
+            Err(Error::BadArgument)
+        );
+        assert_eq!(
             unsplice(l("0000.0000.0000.0013"), l("0000.0000.0000.0153")),
-            Err(Error::LabelTooLong)
+            Err(Error::BadArgument)
+        );
+        assert_eq!(
+            unsplice(l("0000.4500.00a0.0123"), l("0000.0000.0000.0000")),
+            Err(Error::ZeroLabel)
+        );
+        assert_eq!(
+            unsplice(l("0000.0000.0000.0000"), l("0000.4500.00a0.0123")),
+            Err(Error::ZeroLabel)
         );
     }
 }
