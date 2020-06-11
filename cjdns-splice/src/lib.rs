@@ -13,6 +13,7 @@ pub enum Error {
     ZeroLabel,
     NotEnoughArguments,
     BadArgument,
+    CannotUnsplice,
     CannotFindForm,
     CannotReencode,
 }
@@ -24,6 +25,7 @@ impl fmt::Display for Error {
             Error::ZeroLabel => write!(f, "Label is zero"),
             Error::NotEnoughArguments => write!(f, "Not enough arguments"),
             Error::BadArgument => write!(f, "Bad argument"),
+            Error::CannotUnsplice => write!(f, "Can't unsplice"),
             Error::CannotFindForm => write!(f, "Can't detect form"),
             Error::CannotReencode => write!(f, "Can't re-encode"),
         }
@@ -197,6 +199,15 @@ pub fn routes_through<L: LabelT>(destination: L, mid_path: L) -> Result<bool> {
 
     let mask = (L::from_u32(1) << mid_path.highest_set_bit().unwrap()) - 1;
     Ok(destination & mask == mid_path & mask)
+}
+
+/// Convert a full path to a representation which a node along that path can use
+pub fn unsplice<L: LabelT>(destination: L, mid_path: L) -> Result<L> {
+    if !(routes_through(destination, mid_path)?) {
+        return Err(Error::CannotUnsplice);
+    }
+
+    Ok(destination >> mid_path.highest_set_bit().unwrap())
 }
 
 #[cfg(test)]
@@ -559,6 +570,50 @@ mod tests {
         assert_eq!(
             routes_through(l("0000.000b.0535.10e5"), l("0000.001b.0535.10e5")),
             Ok(false)
+        );
+    }
+
+    #[test]
+    fn test_unsplice() {
+        assert_eq!(
+            unsplice(l("0000.0000.0000.0153"), l("0000.0000.0000.0013")),
+            Ok(l("0000.0000.0000.0015"))
+        );
+        assert_eq!(
+            unsplice(l("0000.0000.0000.0153"), l("0000.0000.0000.0001")),
+            Ok(l("0000.0000.0000.0153"))
+        );
+        assert_eq!(
+            unsplice(l("0000.0000.0000.0153"), l("0000.0000.0000.0153")),
+            Ok(l("0000.0000.0000.0001"))
+        );
+        assert_eq!(
+            unsplice(l("0000.0000.0000.0001"), l("0000.0000.0000.0001")),
+            Ok(l("0000.0000.0000.0001"))
+        );
+        assert_eq!(
+            unsplice(l("0000.000b.0535.10e5"), l("0000.001b.0535.10e5")),
+            Err(Error::CannotUnsplice)
+        );
+        assert_eq!(
+            unsplice(l("0000.0000.0000.0013"), l("0000.0000.0000.0153")),
+            Err(Error::CannotUnsplice)
+        );
+        assert_eq!(
+            unsplice(l("ffff.ffff.ffff.ffff"), l("0000.0000.0000.0002")),
+            Err(Error::CannotUnsplice)
+        );
+        assert_eq!(
+            unsplice(l("0000.0000.0000.0101"), l("0000.0000.0000.0110")),
+            Err(Error::CannotUnsplice)
+        );
+        assert_eq!(
+            unsplice(l("0000.4500.00a0.0123"), l("0000.0000.0000.0000")),
+            Err(Error::ZeroLabel)
+        );
+        assert_eq!(
+            unsplice(l("0000.0000.0000.0000"), l("0000.4500.00a0.0123")),
+            Err(Error::ZeroLabel)
         );
     }
 }

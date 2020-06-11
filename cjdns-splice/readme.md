@@ -60,3 +60,15 @@ See: [LabelSplicer_routesThrough()](https://github.com/cjdelisle/cjdns/blob/cjdn
 routes_through("0000.001b.0535.10e5", "0000.0000.0000.0015"); // returns Ok(true)
 routes_through("0000.001b.0535.10e5", "0000.0000.0000.0013"); // returns Ok(false)
 ```
+
+### `pub fn unsplice<L: LabelT>(destination: L, mid_path: L) -> Result<L>`
+This will output a value which if passed to `splice` with the input `mid_path`, would yield the input `destination`.
+If `routes_through(destination, mid_path)` would return `Ok(false)`, this returns an `Err(Error::CannotUnsplice)`.
+
+See: [LabelSplicer_unsplice()](https://github.com/cjdelisle/cjdns/blob/77259a49e5bc7ca7bc6dca5bd423e02be563bdc5/switch/LabelSplicer.h#L31)
+
+```rust
+splice("0000.0000.0000.0015", "0000.0000.0000.0013"); // returns Ok("0000.0000.0000.0153")
+unsplice("0000.0000.0000.0153", "0000.0000.0000.0013"); // returns Ok("0000.0000.0000.0015")
+```
+
