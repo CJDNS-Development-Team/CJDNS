@@ -203,15 +203,11 @@ pub fn routes_through<L: LabelT>(destination: L, mid_path: L) -> Result<bool> {
 
 /// Convert a full path to a representation which a node along that path can use
 pub fn unsplice<L: LabelT>(destination: L, mid_path: L) -> Result<L> {
-    match routes_through(destination, mid_path) {
-        Err(e) => Err(e),
-        Ok(x) => {
-            if !x {
-                return Err(Error::CannotUnsplice);
-            }
-            Ok(destination >> mid_path.highest_set_bit().unwrap())
-        }
+    if !(routes_through(destination, mid_path)?) {
+        return Err(Error::CannotUnsplice);
     }
+
+    Ok(destination >> mid_path.highest_set_bit().unwrap())
 }
 
 #[cfg(test)]
