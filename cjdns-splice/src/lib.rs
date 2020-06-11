@@ -185,6 +185,20 @@ pub fn re_encode<L: LabelT>(
     Ok(result)
 }
 
+/// This will return `Ok(true)` if the node at the end of the route given by `mid_path` is a hop along the path given by `destination`
+pub fn routes_through<L: LabelT>(destination: L, mid_path: L) -> Result<bool> {
+    if destination.highest_set_bit().is_none() || mid_path.highest_set_bit().is_none() {
+        return Err(Error::ZeroLabel);
+    }
+
+    if destination.highest_set_bit().unwrap() < mid_path.highest_set_bit().unwrap() {
+        return Ok(false);
+    }
+
+    let mask = (L::from_u32(1) << mid_path.highest_set_bit().unwrap()) - 1;
+    Ok(destination & mask == mid_path & mask)
+}
+
 #[cfg(test)]
 mod tests {
     use std::convert::TryFrom;
@@ -492,5 +506,59 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn test_routes_through() {
+        assert_eq!(
+            routes_through(l("0000.001b.0535.10e5"), l("0000.0000.0000.0015")),
+            Ok(true)
+        );
+        assert_eq!(
+            routes_through(l("0000.001b.0535.10e5"), l("0000.0000.0000.0013")),
+            Ok(false)
+        );
+        // lt 2 checks
+        assert_eq!(
+            routes_through(l("0000.001b.0535.10e5"), l("0000.0000.0000.0001")),
+            Ok(true)
+        );
+        assert_eq!(
+            routes_through(l("0000.001b.0535.10e5"), l("0000.0000.0000.0000")),
+            Err(Error::ZeroLabel)
+        );
+        assert_eq!(
+            routes_through(l("0000.0000.0000.0000"), l("0000.001b.0535.10e5")),
+            Err(Error::ZeroLabel)
+        );
+        // checking other edge cases
+        assert_eq!(
+            routes_through(l("0000.001b.0535.10e5"), l("0000.001b.0535.10e5")),
+            Ok(true)
+        );
+        assert_eq!(
+            routes_through(l("0000.0000.0000.0001"), l("0000.0000.0000.0001")),
+            Ok(true)
+        );
+        assert_eq!(
+            routes_through(l("ffff.ffff.ffff.ffff"), l("ffff.ffff.ffff.fffe")),
+            Ok(false)
+        );
+        assert_eq!(
+            routes_through(l("ffff.ffff.ffff.ffff"), l("0000.0000.0000.0001")),
+            Ok(true)
+        );
+        assert_eq!(
+            routes_through(l("ffff.ffff.ffff.ffff"), l("0000.0000.0000.0002")),
+            Ok(false)
+        );
+        assert_eq!(
+            routes_through(l("0000.0000.0035.0e00"), l("0000.001b.0535.10e5")),
+            Ok(false)
+        );
+        assert_eq!(
+            routes_through(l("0000.000b.0535.10e5"), l("0000.001b.0535.10e5")),
+            Ok(false)
+        );
     }
 }
