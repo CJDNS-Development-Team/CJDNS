@@ -13,6 +13,7 @@ pub enum Error {
     ZeroLabel,
     NotEnoughArguments,
     BadArgument,
+    CannotUnsplice,
     CannotFindForm,
     CannotReencode,
 }
@@ -24,6 +25,7 @@ impl fmt::Display for Error {
             Error::ZeroLabel => write!(f, "Label is zero"),
             Error::NotEnoughArguments => write!(f, "Not enough arguments"),
             Error::BadArgument => write!(f, "Bad argument"),
+            Error::CannotUnsplice => write!(f, "Can't unsplice"),
             Error::CannotFindForm => write!(f, "Can't detect form"),
             Error::CannotReencode => write!(f, "Can't re-encode"),
         }
@@ -205,7 +207,7 @@ pub fn unsplice<L: LabelT>(destination: L, mid_path: L) -> Result<L> {
         Err(e) => Err(e),
         Ok(x) => {
             if !x {
-                return Err(Error::BadArgument);
+                return Err(Error::CannotUnsplice);
             }
             Ok(destination >> mid_path.highest_set_bit().unwrap())
         }
@@ -590,12 +592,24 @@ mod tests {
             Ok(l("0000.0000.0000.0001"))
         );
         assert_eq!(
+            unsplice(l("0000.0000.0000.0001"), l("0000.0000.0000.0001")),
+            Ok(l("0000.0000.0000.0001"))
+        );
+        assert_eq!(
             unsplice(l("0000.000b.0535.10e5"), l("0000.001b.0535.10e5")),
-            Err(Error::BadArgument)
+            Err(Error::CannotUnsplice)
         );
         assert_eq!(
             unsplice(l("0000.0000.0000.0013"), l("0000.0000.0000.0153")),
-            Err(Error::BadArgument)
+            Err(Error::CannotUnsplice)
+        );
+        assert_eq!(
+            unsplice(l("ffff.ffff.ffff.ffff"), l("0000.0000.0000.0002")),
+            Err(Error::CannotUnsplice)
+        );
+        assert_eq!(
+            unsplice(l("0000.0000.0000.0101"), l("0000.0000.0000.0110")),
+            Err(Error::CannotUnsplice)
         );
         assert_eq!(
             unsplice(l("0000.4500.00a0.0123"), l("0000.0000.0000.0000")),
