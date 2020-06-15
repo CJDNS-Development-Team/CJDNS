@@ -71,6 +71,14 @@ pub struct EncodingSchemeForm {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncodingScheme(Vec<EncodingSchemeForm>);
 
+// todo #1
+#[derive(Debug, PartialEq, Eq)]
+pub struct Hop<'a, L: LabelT> {
+    pub label_p: Option<L>,
+    pub label_n: Option<L>,
+    pub encoding_scheme: &'a EncodingScheme,
+}
+
 lazy_static! {
     pub static ref SCHEMES: HashMap<&'static str, EncodingScheme> = {
         let mut m = HashMap::new();
@@ -148,13 +156,6 @@ lazy_static! {
 
         m
     };
-}
-
-// todo could be more graceful?
-pub struct PathHop<'a, L: LabelT> {
-    pub label_p: L,
-    pub label_n: L,
-    pub encoding_scheme: &'a EncodingScheme
 }
 
 impl Label64 {
@@ -307,9 +308,15 @@ impl<'a> IntoIterator for &'a EncodingScheme {
     }
 }
 
-impl<'a, L: LabelT> PathHop<'a, L> {
+impl<'a, L: LabelT> Hop<'a, L> {
     pub fn new(label_p: L, label_n: L, encoding_scheme: &'a EncodingScheme) -> Self {
-        PathHop{ label_p, label_n, encoding_scheme }
+        let label_p = label_p.highest_set_bit().and_then(|_| { Some(label_p) });
+        let label_n = label_n.highest_set_bit().and_then(|_| { Some(label_n) });
+        Hop {
+            label_p,
+            label_n,
+            encoding_scheme
+        }
     }
 }
 

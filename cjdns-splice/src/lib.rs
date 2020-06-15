@@ -1,7 +1,7 @@
 use std::error;
 use std::fmt;
 
-use cjdns_entities::{EncodingScheme, EncodingSchemeForm, LabelT, SCHEMES, PathHop};
+use cjdns_entities::{EncodingScheme, EncodingSchemeForm, Hop, LabelT, SCHEMES};
 
 /// Result type alias.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -187,9 +187,39 @@ pub fn re_encode<L: LabelT>(
     Ok(result)
 }
 
-// todo how it works?
-pub fn build_label<L: LabelT>(path_vec: Vec<PathHop<L>>) -> Result<(L, Vec<L>)> {
-    Ok((L::from_u32(1), vec![L::from_u32(1)]))
+// todo #2
+pub fn build_label<L: LabelT>(path_hop: &[Hop<L>]) -> Result<(L, Vec<L>)> {
+    if path_hop.len() < 2 {
+        return Err(Error::NotEnoughArguments);
+    }
+
+    // todo `path_hop.last().unwrap().label_n.is_some()` is a necessary check?
+    if path_hop.first().unwrap().label_n.is_none() || path_hop.first().unwrap().label_p.is_some() {
+        return Err(Error::BadArgument);
+    }
+
+    let mut res_path = Vec::new();
+    for hop in path_hop.iter() {
+        if hop == path_hop.last().unwrap() {
+            continue;
+        }
+
+        if hop != path_hop.first().unwrap() && (hop.label_n.is_none() || hop.label_p.is_none()) {
+            return Err(Error::BadArgument);
+        }
+
+        let mut res_label_n = hop.label_n.unwrap();
+        if hop.label_p.is_some() {
+            /*
+                1\ Get forms
+                2\ Get bits
+                3\ Compare bits
+                    3-1\ re_encode hop.label_n
+            */
+        }
+        res_path.push(res_label_n);
+    }
+    Ok((L::from_u32(1), res_path))
 }
 
 /// This will return `Ok(true)` if the node at the end of the route given by `mid_path` is a hop along the path given by `destination`
@@ -225,8 +255,8 @@ mod tests {
     fn l(v: &str) -> Label {
         Label::try_from(v).unwrap()
     }
-    fn ph(p: Label, n: Label, e: &EncodingScheme) -> PathHop<Label> {
-        PathHop::new(p, n, e)
+    fn ph(p: Label, n: Label, e: &EncodingScheme) -> Hop<Label> {
+        Hop::new(p, n, e)
     }
 
     #[test]
@@ -627,12 +657,13 @@ mod tests {
 
     #[test]
     fn test_build_label() {
+        //assert_eq!(build_label(Vec::new()), Err(Error::NotEnoughArguments));
         assert_eq!(
-            build_label(
-                vec![
-                    ph(l("0000.0000.0000.008e"), l("0000.0000.0000.009e"), &SCHEMES["v358"])
-                ]
-            ),
+            build_label(&[ph(
+                l("0000.0000.0000.008e"),
+                l("0000.0000.0000.009e"),
+                &SCHEMES["v358"]
+            )]),
             Ok((
                 l("0000.0003.64b5.10e5"),
                 vec![
