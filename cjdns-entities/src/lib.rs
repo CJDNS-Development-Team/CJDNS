@@ -150,6 +150,13 @@ lazy_static! {
     };
 }
 
+// todo could be more graceful?
+pub struct PathHop<'a, L: LabelT> {
+    pub label_p: L,
+    pub label_n: L,
+    pub encoding_scheme: &'a EncodingScheme
+}
+
 impl Label64 {
     pub fn new(v: u64) -> Self {
         Self(v)
@@ -297,6 +304,12 @@ impl<'a> IntoIterator for &'a EncodingScheme {
 
     fn into_iter(self) -> Self::IntoIter {
         (&self.0).into_iter()
+    }
+}
+
+impl<'a, L: LabelT> PathHop<'a, L> {
+    pub fn new(label_p: L, label_n: L, encoding_scheme: &'a EncodingScheme) -> Self {
+        PathHop{ label_p, label_n, encoding_scheme }
     }
 }
 

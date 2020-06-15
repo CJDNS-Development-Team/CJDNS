@@ -1,7 +1,7 @@
 use std::error;
 use std::fmt;
 
-use cjdns_entities::{EncodingScheme, EncodingSchemeForm, LabelT, SCHEMES};
+use cjdns_entities::{EncodingScheme, EncodingSchemeForm, LabelT, SCHEMES, PathHop};
 
 /// Result type alias.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -187,6 +187,11 @@ pub fn re_encode<L: LabelT>(
     Ok(result)
 }
 
+// todo how it works?
+pub fn build_label<L: LabelT>(path_vec: Vec<PathHop<L>>) -> Result<(L, Vec<L>)> {
+    Ok((L::from_u32(1), vec![L::from_u32(1)]))
+}
+
 /// This will return `Ok(true)` if the node at the end of the route given by `mid_path` is a hop along the path given by `destination`
 pub fn routes_through<L: LabelT>(destination: L, mid_path: L) -> Result<bool> {
     if destination.highest_set_bit().is_none() || mid_path.highest_set_bit().is_none() {
@@ -219,6 +224,9 @@ mod tests {
 
     fn l(v: &str) -> Label {
         Label::try_from(v).unwrap()
+    }
+    fn ph(p: Label, n: Label, e: &EncodingScheme) -> PathHop<Label> {
+        PathHop::new(p, n, e)
     }
 
     #[test]
@@ -615,5 +623,27 @@ mod tests {
             unsplice(l("0000.0000.0000.0000"), l("0000.4500.00a0.0123")),
             Err(Error::ZeroLabel)
         );
+    }
+
+    #[test]
+    fn test_build_label() {
+        assert_eq!(
+            build_label(
+                vec![
+                    ph(l("0000.0000.0000.008e"), l("0000.0000.0000.009e"), &SCHEMES["v358"])
+                ]
+            ),
+            Ok((
+                l("0000.0003.64b5.10e5"),
+                vec![
+                    l("0000.0000.0000.0015"),
+                    l("0000.0000.0000.008e"),
+                    l("0000.0000.0000.00a2"),
+                    l("0000.0000.0000.001d"),
+                    l("0000.0000.0000.0092"),
+                    l("0000.0000.0000.001b")
+                ]
+            ))
+        )
     }
 }
