@@ -1,7 +1,7 @@
 use std::error;
 use std::fmt;
 
-use cjdns_entities::{EncodingScheme, EncodingSchemeForm, Hop, LabelT, SCHEMES};
+use cjdns_entities::{EncodingScheme, EncodingSchemeForm, LabelT, PathHop, SCHEMES};
 
 /// Result type alias.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -187,49 +187,53 @@ pub fn re_encode<L: LabelT>(
     Ok(result)
 }
 
-// todo #2
-pub fn build_label<L: LabelT>(path_hop: &[Hop<L>]) -> Result<(L, Vec<L>)> {
-    if path_hop.len() < 2 {
+/// This will construct a label using an array representation of a path (`path_hops`), if any label along the `path_hops` needs to be re-encoded, it will be.
+pub fn build_label<L: LabelT>(path_hops: &[PathHop<L>]) -> Result<(L, Vec<L>)> {
+    if path_hops.len() < 2 {
         return Err(Error::NotEnoughArguments);
     }
 
-    // todo `path_hop.last().unwrap().label_n.is_some()` is a necessary check?
-    if path_hop.first().unwrap().label_n.is_none() || path_hop.first().unwrap().label_p.is_some() {
+    if (path_hops.first().unwrap().label_n.is_none()
+        || path_hops.first().unwrap().label_p.is_some())
+        || (path_hops.last().unwrap().label_n.is_some()
+            || path_hops.last().unwrap().label_p.is_none())
+    {
         return Err(Error::BadArgument);
     }
 
-    let mut ret_path = Vec::new();
-    for hop in path_hop.iter() {
-        if hop == path_hop.last().unwrap() {
-            continue;
-        }
+    let mut ret_path = vec![path_hops.first().unwrap().label_n.unwrap()];
+    let mut ret_label = *ret_path.first().unwrap();
 
-        if hop != path_hop.first().unwrap() && (hop.label_n.is_none() || hop.label_p.is_none()) {
+    let hops_to_iter = {
+        let (_, hops_except_last) = path_hops.split_last().unwrap();
+        hops_except_last[1..].iter()
+    };
+
+    // Iterate over hops except first and last
+    for hop in hops_to_iter {
+        if hop.label_n.is_none() || hop.label_p.is_none() {
             return Err(Error::BadArgument);
         }
 
-        let res_label_p = hop.label_p.unwrap();
-        let mut res_label_n = hop.label_n.unwrap();
-        if hop.label_p.is_some() {
-            let form_label_p = get_encoding_form(res_label_p, hop.encoding_scheme)?;
-            let form_label_n = get_encoding_form(res_label_n, hop.encoding_scheme)?;
-            if form_label_p.bit_count + form_label_p.prefix_len > form_label_n.bit_count + form_label_n.prefix_len {
-                fn get_form_index(scheme: &EncodingScheme, form: EncodingSchemeForm) -> Option<usize> {
-                    scheme.forms().iter().position(|&x| x == form)
-                }
-                
-                res_label_n = re_encode(
-                    res_label_n,
-                    hop.encoding_scheme,
-                    get_form_index(hop.encoding_scheme, form_label_p)
-                )?;
-            }
+        // alias
+        let label_p = hop.label_p.unwrap();
+        let mut label_n = hop.label_n.unwrap();
+
+        let form_label_p = get_encoding_form(label_p, hop.encoding_scheme)?;
+        let form_label_n = get_encoding_form(label_n, hop.encoding_scheme)?;
+        if form_label_p.bit_count + form_label_p.prefix_len
+            > form_label_n.bit_count + form_label_n.prefix_len
+        {
+            label_n = re_encode(
+                label_n,
+                hop.encoding_scheme,
+                hop.encoding_scheme.get_form_idx(form_label_p),
+            )?;
         }
-        ret_path.push(res_label_n);
+
+        ret_path.push(label_n);
     }
 
-    // todo very dirty
-    let mut ret_label = *ret_path.get(0).unwrap();
     if ret_path.len() > 1 {
         let mut y = ret_path.clone();
         y.reverse();
@@ -270,9 +274,6 @@ mod tests {
 
     fn l(v: &str) -> Label {
         Label::try_from(v).unwrap()
-    }
-    fn ph(p: Label, n: Label, e: &EncodingScheme) -> Hop<Label> {
-        Hop::new(p, n, e)
     }
 
     #[test]
@@ -673,13 +674,44 @@ mod tests {
 
     #[test]
     fn test_build_label() {
-        //assert_eq!(build_label(Vec::new()), Err(Error::NotEnoughArguments));
         assert_eq!(
-            build_label(&[ph(
-                l("0000.0000.0000.008e"),
-                l("0000.0000.0000.009e"),
-                &SCHEMES["v358"]
-            )]),
+            build_label(&[
+                PathHop::new(
+                    l("0000.0000.0000.0000"),
+                    l("0000.0000.0000.0015"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.009e"),
+                    l("0000.0000.0000.008e"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.0013"),
+                    l("0000.0000.0000.00a2"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.001b"),
+                    l("0000.0000.0000.001d"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.00ee"),
+                    l("0000.0000.0000.001b"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.0019"),
+                    l("0000.0000.0000.001b"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.0013"),
+                    l("0000.0000.0000.0000"),
+                    &SCHEMES["v358"]
+                ),
+            ]),
             Ok((
                 l("0000.0003.64b5.10e5"),
                 vec![

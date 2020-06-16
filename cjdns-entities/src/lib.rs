@@ -73,7 +73,7 @@ pub struct EncodingScheme(Vec<EncodingSchemeForm>);
 
 // todo #1
 #[derive(Debug, PartialEq, Eq)]
-pub struct Hop<'a, L: LabelT> {
+pub struct PathHop<'a, L: LabelT> {
     pub label_p: Option<L>,
     pub label_n: Option<L>,
     pub encoding_scheme: &'a EncodingScheme,
@@ -294,6 +294,10 @@ impl EncodingScheme {
         Self(v)
     }
 
+    pub fn get_form_idx(&self, form: EncodingSchemeForm) -> Option<usize> {
+        self.forms().iter().position(|&x| x == form)
+    }
+
     pub fn forms(&self) -> &Vec<EncodingSchemeForm> {
         &self.0
     }
@@ -308,14 +312,14 @@ impl<'a> IntoIterator for &'a EncodingScheme {
     }
 }
 
-impl<'a, L: LabelT> Hop<'a, L> {
+impl<'a, L: LabelT> PathHop<'a, L> {
     pub fn new(label_p: L, label_n: L, encoding_scheme: &'a EncodingScheme) -> Self {
-        let label_p = label_p.highest_set_bit().and_then(|_| { Some(label_p) });
-        let label_n = label_n.highest_set_bit().and_then(|_| { Some(label_n) });
-        Hop {
+        let label_p = label_p.highest_set_bit().and_then(|_| Some(label_p));
+        let label_n = label_n.highest_set_bit().and_then(|_| Some(label_n));
+        PathHop {
             label_p,
             label_n,
-            encoding_scheme
+            encoding_scheme,
         }
     }
 }
