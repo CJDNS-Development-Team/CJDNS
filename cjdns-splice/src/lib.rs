@@ -193,10 +193,10 @@ pub fn build_label<L: LabelT>(path_hops: &[PathHop<L>]) -> Result<(L, Vec<L>)> {
         return Err(Error::NotEnoughArguments);
     }
 
-    if (path_hops.first().unwrap().label_n.is_none()
-        || path_hops.first().unwrap().label_p.is_some())
-        || (path_hops.last().unwrap().label_n.is_some()
-            || path_hops.last().unwrap().label_p.is_none())
+    if path_hops.first().unwrap().label_n.is_none()
+        || path_hops.first().unwrap().label_p.is_some()
+        || path_hops.last().unwrap().label_n.is_some()
+        || path_hops.last().unwrap().label_p.is_none()
     {
         return Err(Error::BadArgument);
     }
@@ -204,13 +204,13 @@ pub fn build_label<L: LabelT>(path_hops: &[PathHop<L>]) -> Result<(L, Vec<L>)> {
     let mut ret_path = vec![path_hops.first().unwrap().label_n.unwrap()];
     let mut ret_label = *ret_path.first().unwrap();
 
-    let hops_to_iter = {
+    let hops_to_iter_over = {
         let (_, hops_except_last) = path_hops.split_last().unwrap();
         hops_except_last[1..].iter()
     };
 
     // Iterate over hops except first and last
-    for hop in hops_to_iter {
+    for hop in hops_to_iter_over {
         if hop.label_n.is_none() || hop.label_p.is_none() {
             return Err(Error::BadArgument);
         }
@@ -239,6 +239,7 @@ pub fn build_label<L: LabelT>(path_hops: &[PathHop<L>]) -> Result<(L, Vec<L>)> {
         y.reverse();
         ret_label = splice(&y)?;
     }
+
     Ok((ret_label, ret_path))
 }
 
@@ -723,6 +724,89 @@ mod tests {
                     l("0000.0000.0000.001b")
                 ]
             ))
-        )
+        );
+        assert_eq!(
+            build_label(&[PathHop::new(
+                l("0000.0000.0000.0013"),
+                l("0000.0000.0000.0000"),
+                &SCHEMES["v358"]
+            )]),
+            Err(Error::NotEnoughArguments)
+        );
+        assert_eq!(
+            build_label(&[
+                PathHop::new(
+                    l("0000.0000.0000.0000"),
+                    l("0000.0000.0000.0015"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.0013"),
+                    l("0000.0000.0000.0000"),
+                    &SCHEMES["v358"]
+                ),
+            ]),
+            Ok((l("0000.0000.0000.0015"), vec![l("0000.0000.0000.0015")]))
+        );
+        assert_eq!(
+            build_label(&[
+                PathHop::new(
+                    l("0000.0000.0000.0000"),
+                    l("0000.0000.0000.0015"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.0000"),
+                    l("0000.0000.0000.0000"),
+                    &SCHEMES["v358"]
+                ),
+            ]),
+            Err(Error::BadArgument)
+        );
+        assert_eq!(
+            build_label(&[
+                PathHop::new(
+                    l("0000.0000.0000.0000"),
+                    l("0000.0000.0000.0000"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.0013"),
+                    l("0000.0000.0000.0000"),
+                    &SCHEMES["v358"]
+                ),
+            ]),
+            Err(Error::BadArgument)
+        );
+        assert_eq!(
+            build_label(&[
+                PathHop::new(
+                    l("0000.0000.0000.0001"),
+                    l("0000.0000.0000.0015"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.0013"),
+                    l("0000.0000.0000.0000"),
+                    &SCHEMES["v358"]
+                ),
+            ]),
+            Err(Error::BadArgument)
+        );
+        assert_eq!(
+            build_label(&[
+                PathHop::new(
+                    l("0000.0000.0000.0000"),
+                    l("0000.0000.0000.0015"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.0013"),
+                    l("0000.0000.0000.0001"),
+                    &SCHEMES["v358"]
+                ),
+            ]),
+            Err(Error::BadArgument)
+        );
     }
 }

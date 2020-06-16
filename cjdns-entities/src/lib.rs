@@ -72,7 +72,7 @@ pub struct EncodingSchemeForm {
 pub struct EncodingScheme(Vec<EncodingSchemeForm>);
 
 // todo #1
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug)]
 pub struct PathHop<'a, L: LabelT> {
     pub label_p: Option<L>,
     pub label_n: Option<L>,
