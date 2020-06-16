@@ -187,6 +187,7 @@ pub fn re_encode<L: LabelT>(
     Ok(result)
 }
 
+// todo #3
 /// This will construct a label using an array representation of a path (`path_hops`), if any label along the `path_hops` needs to be re-encoded, it will be.
 pub fn build_label<L: LabelT>(path_hops: &[PathHop<L>]) -> Result<(L, Vec<L>)> {
     if path_hops.len() < 2 {
@@ -807,6 +808,69 @@ mod tests {
                 ),
             ]),
             Err(Error::BadArgument)
+        );
+        assert_eq!(
+            build_label(&[
+                PathHop::new(
+                    l("0000.0000.0000.0000"),
+                    l("0000.0000.0000.0015"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.0000"),
+                    l("0000.0000.0000.008e"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.0013"),
+                    l("0000.0000.0000.0000"),
+                    &SCHEMES["v358"]
+                ),
+            ]),
+            Err(Error::BadArgument)
+        );
+        assert_eq!(
+            build_label(&[
+                PathHop::new(
+                    l("0000.0000.0000.0000"),
+                    l("0000.0000.0000.0015"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.009e"),
+                    l("0000.0000.0000.0000"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.0013"),
+                    l("0000.0000.0000.0000"),
+                    &SCHEMES["v358"]
+                ),
+            ]),
+            Err(Error::BadArgument)
+        );
+        assert_eq!(
+            build_label(&[
+                PathHop::new(
+                    l("0000.0000.0000.0000"),
+                    l("0000.0000.0000.0015"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.009e"),
+                    l("0000.0000.0000.008e"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.0013"),
+                    l("0000.0000.0000.0000"),
+                    &SCHEMES["v358"]
+                ),
+            ]),
+            Ok((
+                splice(&[l("0000.0000.0000.008e"), l("0000.0000.0000.0015")]).unwrap(),
+                vec![l("0000.0000.0000.0015"), l("0000.0000.0000.008e")]
+            ))
         );
     }
 }
