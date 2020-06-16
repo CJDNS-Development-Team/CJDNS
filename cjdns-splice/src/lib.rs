@@ -198,7 +198,7 @@ pub fn build_label<L: LabelT>(path_hop: &[Hop<L>]) -> Result<(L, Vec<L>)> {
         return Err(Error::BadArgument);
     }
 
-    let mut res_path = Vec::new();
+    let mut ret_path = Vec::new();
     for hop in path_hop.iter() {
         if hop == path_hop.last().unwrap() {
             continue;
@@ -208,18 +208,34 @@ pub fn build_label<L: LabelT>(path_hop: &[Hop<L>]) -> Result<(L, Vec<L>)> {
             return Err(Error::BadArgument);
         }
 
+        let res_label_p = hop.label_p.unwrap();
         let mut res_label_n = hop.label_n.unwrap();
         if hop.label_p.is_some() {
-            /*
-                1\ Get forms
-                2\ Get bits
-                3\ Compare bits
-                    3-1\ re_encode hop.label_n
-            */
+            let form_label_p = get_encoding_form(res_label_p, hop.encoding_scheme)?;
+            let form_label_n = get_encoding_form(res_label_n, hop.encoding_scheme)?;
+            if form_label_p.bit_count + form_label_p.prefix_len > form_label_n.bit_count + form_label_n.prefix_len {
+                fn get_form_index(scheme: &EncodingScheme, form: EncodingSchemeForm) -> Option<usize> {
+                    scheme.forms().iter().position(|&x| x == form)
+                }
+                
+                res_label_n = re_encode(
+                    res_label_n,
+                    hop.encoding_scheme,
+                    get_form_index(hop.encoding_scheme, form_label_p)
+                )?;
+            }
         }
-        res_path.push(res_label_n);
+        ret_path.push(res_label_n);
     }
-    Ok((L::from_u32(1), res_path))
+
+    // todo very dirty
+    let mut ret_label = *ret_path.get(0).unwrap();
+    if ret_path.len() > 1 {
+        let mut y = ret_path.clone();
+        y.reverse();
+        ret_label = splice(&y)?;
+    }
+    Ok((ret_label, ret_path))
 }
 
 /// This will return `Ok(true)` if the node at the end of the route given by `mid_path` is a hop along the path given by `destination`
