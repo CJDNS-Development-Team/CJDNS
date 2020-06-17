@@ -187,6 +187,7 @@ pub fn re_encode<L: LabelT>(
     Ok(result)
 }
 
+/// Tests if a `label` contains only one hop.
 pub fn is_one_hop<L: LabelT>(label: L, encoding_scheme: &EncodingScheme) -> Result<bool> {
     if label.highest_set_bit().is_none() {
         return Err(Error::ZeroLabel)
@@ -195,7 +196,7 @@ pub fn is_one_hop<L: LabelT>(label: L, encoding_scheme: &EncodingScheme) -> Resu
     let label_form = get_encoding_form(label, encoding_scheme)?;
     let form_bits = label_form.bit_count + label_form.prefix_len;
 
-    Ok(label.highest_set_bit().unwrap() <= form_bits as u32) // todo maybe ==?
+    Ok(label.highest_set_bit().unwrap() == form_bits as u32)
 }
 
 /// This will return `Ok(true)` if the node at the end of the route given by `mid_path` is a hop along the path given by `destination`
@@ -643,6 +644,62 @@ mod tests {
         );
         assert_eq!(
             is_one_hop(l("0000.0000.0000.0153"), &SCHEMES["v358"]),
+            Ok(false)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0001"), &SCHEMES["v358"]),
+            Ok(false)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0002"), &SCHEMES["v358"]),
+            Ok(false)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0096"), &SCHEMES["v358"]),
+            Ok(true)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0400"), &SCHEMES["v358"]),
+            Ok(true)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0115"), &SCHEMES["v358"]),
+            Ok(false)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0166"), &SCHEMES["v358"]),
+            Ok(false)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.1400"), &SCHEMES["v358"]),
+            Ok(false)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0001"), &SCHEMES["v48"]),
+            Ok(false)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0021"), &SCHEMES["v48"]),
+            Ok(true)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0023"), &SCHEMES["v48"]),
+            Ok(true)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0012"), &SCHEMES["v48"]),
+            Ok(false)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0220"), &SCHEMES["v48"]),
+            Ok(true)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0210"), &SCHEMES["v48"]),
+            Ok(true)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0110"), &SCHEMES["v48"]),
             Ok(false)
         );
     }

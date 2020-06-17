@@ -22,6 +22,16 @@ Splice only works to splice a route if the return route is the same size or smal
 route is larger then the smaller director in the path must be re-encoded to be the same size as
 the return path director. `build_label()` will take care of this automatically.
 
+### `is_one_hop<L: LabelT>(label: L, encoding_scheme: &EncodingScheme) -> Result<bool>`
+Tests if a `label` contains only one hop. The second argument is the `encoding_scheme` used by the node which is at the beginning of the path given by the `label`.
+
+See: [EncodingScheme_isOneHop()](https://github.com/cjdelisle/cjdns/blob/77259a49e5bc7ca7bc6dca5bd423e02be563bdc5/switch/EncodingScheme.c#L451)
+
+```rust
+is_one_hop("0000.0000.0000.0013", &SCHEMES["v358"]); // returns true
+is_one_hop("0000.0000.0000.0015", &SCHEMES["v358"]); // returns true
+is_one_hop("0000.0000.0000.0153", &SCHEMES["v358"]); // returns false
+```
 ### `get_encoding_form<L: LabelT>(label: L, scheme: &EncodingScheme) -> Result<EncodingSchemeForm>`
 Get the encoding **form** used for the first *director* of the label. Recall an
 encoding *scheme* is one or more encoding *forms*.
