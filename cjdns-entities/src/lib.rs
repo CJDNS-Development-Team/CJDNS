@@ -451,6 +451,26 @@ mod tests {
     }
 
     #[test]
+    fn form_indexes() {
+        assert_eq!(
+            SCHEMES["v48"].get_form_idx(SCHEMES["v48"].forms()[0]),
+            Some(0)
+        );
+        assert_eq!(
+            SCHEMES["v48"].get_form_idx(SCHEMES["v48"].forms()[1]),
+            Some(1)
+        );
+        assert_eq!(
+            SCHEMES["v48"].get_form_idx(EncodingSchemeForm {
+                bit_count: 7,
+                prefix_len: 2,
+                prefix: 0b01,
+            }),
+            None
+        );
+    }
+
+    #[test]
     fn path_hop_creation() {
         assert_eq!(
             PathHop::new(Label::from_u32(2), Label::from_u32(2), &SCHEMES["v358"]),
