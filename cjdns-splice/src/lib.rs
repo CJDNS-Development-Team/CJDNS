@@ -194,11 +194,11 @@ pub fn build_label<L: LabelT>(path_hops: &[PathHop<L>]) -> Result<(L, Vec<L>)> {
         return Err(Error::NotEnoughArguments);
     }
 
-    if path_hops.first().unwrap().label_n.is_none()
-        || path_hops.first().unwrap().label_p.is_some()
-        || path_hops.last().unwrap().label_n.is_some()
-        || path_hops.last().unwrap().label_p.is_none()
-    {
+    if path_hops.first().unwrap().label_n.is_none() || path_hops.last().unwrap().label_p.is_none() {
+        return Err(Error::ZeroLabel);
+    }
+
+    if path_hops.first().unwrap().label_p.is_some() || path_hops.last().unwrap().label_n.is_some() {
         return Err(Error::BadArgument);
     }
 
@@ -207,13 +207,13 @@ pub fn build_label<L: LabelT>(path_hops: &[PathHop<L>]) -> Result<(L, Vec<L>)> {
 
     let hops_to_iter_over = {
         let (_, hops_except_last) = path_hops.split_last().unwrap();
-        hops_except_last[1..].iter()
+        &hops_except_last[1..]
     };
 
-    // Iterate over hops except first and last
+    // Iterate over hops except for first and last
     for hop in hops_to_iter_over {
         if hop.label_n.is_none() || hop.label_p.is_none() {
-            return Err(Error::BadArgument);
+            return Err(Error::ZeroLabel);
         }
 
         // alias
@@ -762,7 +762,7 @@ mod tests {
                     &SCHEMES["v358"]
                 ),
             ]),
-            Err(Error::BadArgument)
+            Err(Error::ZeroLabel)
         );
         assert_eq!(
             build_label(&[
@@ -777,7 +777,7 @@ mod tests {
                     &SCHEMES["v358"]
                 ),
             ]),
-            Err(Error::BadArgument)
+            Err(Error::ZeroLabel)
         );
         assert_eq!(
             build_label(&[
@@ -827,7 +827,7 @@ mod tests {
                     &SCHEMES["v358"]
                 ),
             ]),
-            Err(Error::BadArgument)
+            Err(Error::ZeroLabel)
         );
         assert_eq!(
             build_label(&[
@@ -847,7 +847,7 @@ mod tests {
                     &SCHEMES["v358"]
                 ),
             ]),
-            Err(Error::BadArgument)
+            Err(Error::ZeroLabel)
         );
         assert_eq!(
             build_label(&[
