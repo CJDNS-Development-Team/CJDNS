@@ -187,6 +187,17 @@ pub fn re_encode<L: LabelT>(
     Ok(result)
 }
 
+pub fn is_one_hop<L: LabelT>(label: L, encoding_scheme: &EncodingScheme) -> Result<bool> {
+    if label.highest_set_bit().is_none() {
+        return Err(Error::ZeroLabel)
+    }
+
+    let label_form = get_encoding_form(label, encoding_scheme)?;
+    let form_bits = label_form.bit_count + label_form.prefix_len;
+
+    Ok(label.highest_set_bit().unwrap() <= form_bits as u32) // todo maybe ==?
+}
+
 /// This will return `Ok(true)` if the node at the end of the route given by `mid_path` is a hop along the path given by `destination`
 pub fn routes_through<L: LabelT>(destination: L, mid_path: L) -> Result<bool> {
     if destination.highest_set_bit().is_none() || mid_path.highest_set_bit().is_none() {
@@ -614,6 +625,25 @@ mod tests {
         assert_eq!(
             unsplice(l("0000.0000.0000.0000"), l("0000.4500.00a0.0123")),
             Err(Error::ZeroLabel)
+        );
+    }
+
+    #[test]
+    fn test_is_one_hop() {
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0013"), &SCHEMES["v358"]),
+            Ok(true)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0015"), &SCHEMES["v358"]),
+            Ok(true)
+        );
+        assert!(
+            is_one_hop(l("0000.0000.0000.0000"), &SCHEMES["v358"]).is_err()
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0153"), &SCHEMES["v358"]),
+            Ok(false)
         );
     }
 }
