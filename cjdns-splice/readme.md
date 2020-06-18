@@ -32,16 +32,16 @@ is_one_hop("0000.0000.0000.0013", &SCHEMES["v358"]); // returns Ok(true)
 is_one_hop("0000.0000.0000.0015", &SCHEMES["v358"]); // returns Ok(true)
 is_one_hop("0000.0000.0000.0153", &SCHEMES["v358"]); // returns Ok(false)
 ```
-### `get_encoding_form<L: LabelT>(label: L, scheme: &EncodingScheme) -> Result<EncodingSchemeForm>`
-Get the encoding **form** used for the first *director* of the label. Recall an
-encoding *scheme* is one or more encoding *forms*.
+### `get_encoding_form<L: LabelT>(label: L, scheme: &EncodingScheme) -> Result<(EncodingSchemeForm, usize)>`
+Get the encoding **form** used for the first *director* of the label. It also returns index of found *form* in *scheme*.
+Recall an encoding *scheme* is one or more encoding *forms*.
 If the label is not recognized as using the given scheme then it'll return `Err(Error::CannotFindForm)`.
 
 See: [EncodingScheme_getFormNum()](https://github.com/cjdelisle/cjdns/blob/cjdns-v20.2/switch/EncodingScheme.c#L23)
 
 ```rust
-get_encoding_form("0000.0000.0000.0013", &SCHEMES["v358"]); // returns Ok(EncodingSchemeForm {bit_count: 3, prefix_len: 1, prefix: 0b01})
-get_encoding_form("0000.0000.0000.1110", &SCHEMES["v358"]); // returns Ok(EncodingSchemeForm {bit_count: 8, prefix_len: 2, prefix: 0})
+get_encoding_form("0000.0000.0000.0013", &SCHEMES["v358"]); // returns Ok((EncodingSchemeForm {bit_count: 3, prefix_len: 1, prefix: 0b01}, 0))
+get_encoding_form("0000.0000.0000.1110", &SCHEMES["v358"]); // returns Ok((EncodingSchemeForm {bit_count: 8, prefix_len: 2, prefix: 0}, 2))
 ```
 
 ### `re_encode<L: LabelT>(label: L, scheme: &EncodingScheme, desired_form_num: Option<usize>) -> Result<L>`
@@ -61,6 +61,39 @@ re_encode("0000.0000.0000.0015", &SCHEMES["v358"], Some(2)); // returns Ok("0000
 re_encode("0000.0000.0000.0404", &SCHEMES["v358"], None); // returns Ok("0000.0000.0000.0015")
 ```
 
+### `build_label<L: LabelT>(path_hops: &[PathHop<L>]) -> Result<(L, Vec<L>)>`
+This will construct a label using an array representation of a path.
+If any label along the path needs to be re-encoded, it will be.
+Each element in the array represents a hop (node) in the path and they each of them has `PathHop.label_p` and/or `PathHop.label_n` depending on whether there is a previous and/or next hop.
+`PathHop.label_p` is necessary to know the width of the inverse path hop so that the label can be re-encoded if necessary.
+
+```rust
+build_label(&[
+    PathHop::new("0000.0000.0000.0000", "0000.0000.0000.0015", &SCHEMES["v358"]),
+    PathHop::new("0000.0000.0000.009e", "0000.0000.0000.008e", &SCHEMES["v358"]),
+    PathHop::new("0000.0000.0000.0013", "0000.0000.0000.00a2", &SCHEMES["v358"]),
+    PathHop::new("0000.0000.0000.001b", "0000.0000.0000.001d", &SCHEMES["v358"]),
+    PathHop::new("0000.0000.0000.00ee", "0000.0000.0000.001b", &SCHEMES["v358"]),
+    PathHop::new("0000.0000.0000.0019", "0000.0000.0000.001b", &SCHEMES["v358"]),
+    PathHop::new("0000.0000.0000.0013", "0000.0000.0000.0000", &SCHEMES["v358"]),
+]);
+/*
+results in (
+    "0000.0003.64b5.10e5",
+    vec![
+        "0000.0000.0000.0015",
+        "0000.0000.0000.008e",
+        "0000.0000.0000.00a2",
+        "0000.0000.0000.001d",
+        "0000.0000.0000.0092",
+        "0000.0000.0000.001b"
+    ]
+)
+*/
+```
+This function results in a tuple containing 2 elements, `label` and `path`. `label` is the final label for this `path`. And `path` is the hops to get there.
+Notice the second to last hop in the `path` has been changed from 001b to 0092. This is a re-encoding to ensure that the `label` remains the right length as the reverse path for this hop is 00ee which is longer than 001b.
+
 ### `routes_through<L: LabelT>(destination: L, mid_path: L) -> Result<bool>`
 This will return `Ok(true)` if the node at the end of the route given by `mid_path` is a hop along the path given by `destination`.
 
@@ -71,7 +104,7 @@ routes_through("0000.001b.0535.10e5", "0000.0000.0000.0015"); // returns Ok(true
 routes_through("0000.001b.0535.10e5", "0000.0000.0000.0013"); // returns Ok(false)
 ```
 
-### `pub fn unsplice<L: LabelT>(destination: L, mid_path: L) -> Result<L>`
+### `unsplice<L: LabelT>(destination: L, mid_path: L) -> Result<L>`
 This will output a value which if passed to `splice` with the input `mid_path`, would yield the input `destination`.
 If `routes_through(destination, mid_path)` would return `Ok(false)`, this returns an `Err(Error::CannotUnsplice)`.
 
