@@ -32,16 +32,16 @@ is_one_hop("0000.0000.0000.0013", &SCHEMES["v358"]); // returns Ok(true)
 is_one_hop("0000.0000.0000.0015", &SCHEMES["v358"]); // returns Ok(true)
 is_one_hop("0000.0000.0000.0153", &SCHEMES["v358"]); // returns Ok(false)
 ```
-### `get_encoding_form<L: LabelT>(label: L, scheme: &EncodingScheme) -> Result<EncodingSchemeForm>`
-Get the encoding **form** used for the first *director* of the label. Recall an
-encoding *scheme* is one or more encoding *forms*.
+### `get_encoding_form<L: LabelT>(label: L, scheme: &EncodingScheme) -> Result<(EncodingSchemeForm, usize)>`
+Get the encoding **form** used for the first *director* of the label. It also returns index of found *form* in *scheme*.
+Recall an encoding *scheme* is one or more encoding *forms*.
 If the label is not recognized as using the given scheme then it'll return `Err(Error::CannotFindForm)`.
 
 See: [EncodingScheme_getFormNum()](https://github.com/cjdelisle/cjdns/blob/cjdns-v20.2/switch/EncodingScheme.c#L23)
 
 ```rust
-get_encoding_form("0000.0000.0000.0013", &SCHEMES["v358"]); // returns Ok(EncodingSchemeForm {bit_count: 3, prefix_len: 1, prefix: 0b01})
-get_encoding_form("0000.0000.0000.1110", &SCHEMES["v358"]); // returns Ok(EncodingSchemeForm {bit_count: 8, prefix_len: 2, prefix: 0})
+get_encoding_form("0000.0000.0000.0013", &SCHEMES["v358"]); // returns Ok((EncodingSchemeForm {bit_count: 3, prefix_len: 1, prefix: 0b01}, 0))
+get_encoding_form("0000.0000.0000.1110", &SCHEMES["v358"]); // returns Ok((EncodingSchemeForm {bit_count: 8, prefix_len: 2, prefix: 0}, 2))
 ```
 
 ### `re_encode<L: LabelT>(label: L, scheme: &EncodingScheme, desired_form_num: Option<usize>) -> Result<L>`
