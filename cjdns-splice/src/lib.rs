@@ -70,10 +70,10 @@ pub fn splice<L: LabelT>(labels: &[L]) -> Result<L> {
 pub fn get_encoding_form<L: LabelT>(
     label: L,
     scheme: &EncodingScheme,
-) -> Result<EncodingSchemeForm> {
-    for form in scheme {
+) -> Result<(EncodingSchemeForm, usize)> {
+    for (i, form) in scheme.forms().iter().enumerate() {
         if 0 == form.prefix_len {
-            return Ok(*form);
+            return Ok((*form, i));
         }
 
         if form.prefix_len > 32 {
@@ -86,7 +86,7 @@ pub fn get_encoding_form<L: LabelT>(
             (1u32 << (form.prefix_len as u32)) - 1u32
         };
         if label & L::from_u32(mask) == L::from_u32(form.prefix) {
-            return Ok(*form);
+            return Ok((*form, i));
         }
     }
 
@@ -134,7 +134,7 @@ pub fn re_encode<L: LabelT>(
     scheme: &EncodingScheme,
     desired_form_num: Option<usize>,
 ) -> Result<L> {
-    let form = get_encoding_form(label, scheme)?;
+    let (form, _) = get_encoding_form(label, scheme)?;
     let mut dir = get_director(label, form);
 
     let mut desired_form = if let Some(num) = desired_form_num {
@@ -219,16 +219,12 @@ pub fn build_label<L: LabelT>(path_hops: &[PathHop<L>]) -> Result<(L, Vec<L>)> {
         let label_p = hop.label_p.unwrap();
         let mut label_n = hop.label_n.unwrap();
 
-        let form_label_p = get_encoding_form(label_p, hop.encoding_scheme)?;
-        let form_label_n = get_encoding_form(label_n, hop.encoding_scheme)?;
+        let (form_label_p, form_idx) = get_encoding_form(label_p, hop.encoding_scheme)?;
+        let (form_label_n, _) = get_encoding_form(label_n, hop.encoding_scheme)?;
         if form_label_p.bit_count + form_label_p.prefix_len
             > form_label_n.bit_count + form_label_n.prefix_len
         {
-            label_n = re_encode(
-                label_n,
-                hop.encoding_scheme,
-                hop.encoding_scheme.get_form_idx(form_label_p),
-            )?;
+            label_n = re_encode(label_n, hop.encoding_scheme, Some(form_idx))?;
         }
 
         ret_path.push(label_n);
@@ -329,45 +325,60 @@ mod tests {
     fn test_get_encoding_form() {
         assert_eq!(
             get_encoding_form(l("0000.0000.0000.1111"), &SCHEMES["f8"]),
-            Ok(EncodingSchemeForm {
-                bit_count: 8,
-                prefix_len: 0,
-                prefix: 0,
-            })
+            Ok((
+                EncodingSchemeForm {
+                    bit_count: 8,
+                    prefix_len: 0,
+                    prefix: 0,
+                },
+                0
+            ))
         );
 
         assert_eq!(
             get_encoding_form(l("0000.0000.0000.1110"), &SCHEMES["v358"]),
-            Ok(EncodingSchemeForm {
-                bit_count: 8,
-                prefix_len: 2,
-                prefix: 0,
-            })
+            Ok((
+                EncodingSchemeForm {
+                    bit_count: 8,
+                    prefix_len: 2,
+                    prefix: 0,
+                },
+                2
+            ))
         );
         assert_eq!(
             get_encoding_form(l("0000.0000.0000.1111"), &SCHEMES["v358"]),
-            Ok(EncodingSchemeForm {
-                bit_count: 3,
-                prefix_len: 1,
-                prefix: 1,
-            })
+            Ok((
+                EncodingSchemeForm {
+                    bit_count: 3,
+                    prefix_len: 1,
+                    prefix: 1,
+                },
+                0
+            ))
         );
         assert_eq!(
             get_encoding_form(l("0000.0000.0000.1112"), &SCHEMES["v358"]),
-            Ok(EncodingSchemeForm {
-                bit_count: 5,
-                prefix_len: 2,
-                prefix: 2,
-            })
+            Ok((
+                EncodingSchemeForm {
+                    bit_count: 5,
+                    prefix_len: 2,
+                    prefix: 2,
+                },
+                1
+            ))
         );
 
         assert_eq!(
             get_encoding_form(l("0000.0000.0000.0013"), &SCHEMES["v358"]),
-            Ok(EncodingSchemeForm {
-                bit_count: 3,
-                prefix_len: 1,
-                prefix: 0b01,
-            })
+            Ok((
+                EncodingSchemeForm {
+                    bit_count: 3,
+                    prefix_len: 1,
+                    prefix: 0b01,
+                },
+                0
+            ))
         );
 
         assert!(get_encoding_form(

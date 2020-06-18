@@ -294,10 +294,6 @@ impl EncodingScheme {
         Self(v)
     }
 
-    pub fn get_form_idx(&self, form: EncodingSchemeForm) -> Option<usize> {
-        self.forms().iter().position(|&x| x == form)
-    }
-
     pub fn forms(&self) -> &Vec<EncodingSchemeForm> {
         &self.0
     }
@@ -448,26 +444,6 @@ mod tests {
         // smallest to biggest
         assert_eq!(SCHEMES["v358"].forms()[0].bit_count, 3);
         assert_eq!(SCHEMES["v358"].forms()[2].bit_count, 8);
-    }
-
-    #[test]
-    fn form_indexes() {
-        assert_eq!(
-            SCHEMES["v48"].get_form_idx(SCHEMES["v48"].forms()[0]),
-            Some(0)
-        );
-        assert_eq!(
-            SCHEMES["v48"].get_form_idx(SCHEMES["v48"].forms()[1]),
-            Some(1)
-        );
-        assert_eq!(
-            SCHEMES["v48"].get_form_idx(EncodingSchemeForm {
-                bit_count: 7,
-                prefix_len: 2,
-                prefix: 0b01,
-            }),
-            None
-        );
     }
 
     #[test]
