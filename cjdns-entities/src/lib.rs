@@ -56,7 +56,8 @@ pub type Label = Label64;
 pub struct Label64(u64);
 
 /// 128 bit label.
-//pub struct Label128(u128);
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct Label128(u128);
 
 /// Form used in an encoding scheme.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -156,6 +157,12 @@ impl Label64 {
     }
 }
 
+impl Label128 {
+    pub fn new(v: u128) -> Self {
+        Self(v)
+    }
+}
+
 impl fmt::Display for Label64 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -169,8 +176,29 @@ impl fmt::Display for Label64 {
     }
 }
 
+impl fmt::Display for Label128 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:04x}.{:04x}.{:04x}.{:04x}.{:04x}.{:04x}.{:04x}.{:04x}",
+            (self.0 >> 112) & 0xFFFFu128,
+            (self.0 >> 96) & 0xFFFFu128,
+            (self.0 >> 80) & 0xFFFFu128,
+            (self.0 >> 64) & 0xFFFFu128,
+            (self.0 >> 48) & 0xFFFFu128,
+            (self.0 >> 32) & 0xFFFFu128,
+            (self.0 >> 16) & 0xFFFFu128,
+            self.0 & 0xFFFFu128
+        )
+    }
+}
+
 fn capture2u64(c: &regex::Captures, group_num: usize) -> u64 {
     u64::from_str_radix(c.get(group_num).unwrap().as_str(), 16).unwrap()
+}
+
+fn capture2u128(c: &regex::Captures, group_num: usize) -> u128 {
+    u128::from_str_radix(c.get(group_num).unwrap().as_str(), 16).unwrap()
 }
 
 impl TryFrom<&str> for Label64 {
@@ -178,8 +206,12 @@ impl TryFrom<&str> for Label64 {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         lazy_static! {
-            static ref RE: Regex = Regex::new(
-                "^([[:xdigit:]]{4})\\.([[:xdigit:]]{4})\\.([[:xdigit:]]{4})\\.([[:xdigit:]]{4})$"
+            static ref RE: Regex = Regex::new("\
+                (?x)\
+                ^([[:xdigit:]]{4})\\.\
+                ([[:xdigit:]]{4})\\.\
+                ([[:xdigit:]]{4})\\.\
+                ([[:xdigit:]]{4})$"
             )
             .unwrap();
         }
@@ -193,6 +225,42 @@ impl TryFrom<&str> for Label64 {
             ))
         } else {
             Err("Malformed 64-bit label string")
+        }
+    }
+}
+
+impl TryFrom<&str> for Label128 {
+    type Error = &'static str;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        lazy_static! {
+            static ref RE: Regex = Regex::new("\
+                (?x)\
+                ^([[:xdigit:]]{4})\\.\
+                ([[:xdigit:]]{4})\\.\
+                ([[:xdigit:]]{4})\\.\
+                ([[:xdigit:]]{4})\\.\
+                ([[:xdigit:]]{4})\\.\
+                ([[:xdigit:]]{4})\\.\
+                ([[:xdigit:]]{4})\\.\
+                ([[:xdigit:]]{4})$"
+            )
+            .unwrap();
+        }
+
+        if let Some(c) = RE.captures(value) {
+            Ok(Self(
+                (capture2u128(&c, 1) << 112)
+                    | (capture2u128(&c, 2) << 96)
+                    | (capture2u128(&c, 3) << 80)
+                    | (capture2u128(&c, 4) << 64)
+                    | (capture2u128(&c, 5) << 48)
+                    | (capture2u128(&c, 6) << 32)
+                    | (capture2u128(&c, 7) << 16)
+                    | capture2u128(&c, 8),
+            ))
+        } else {
+            Err("Malformed 128-bit label string")
         }
     }
 }
@@ -277,6 +345,47 @@ impl LabelT for Label64 {
         }
     }
 }
+/*
+impl LabelT for Label128 {
+    fn to_bit_string(&self) -> String {
+        format!(
+            "{:016b}.{:016b}.{:016b}.{:016b}.{:016b}.{:016b}.{:016b}.{:016b}",
+            (self.0 >> 112) & 0xFFFFu128,
+            (self.0 >> 96) & 0xFFFFu128,
+            (self.0 >> 80) & 0xFFFFu128,
+            (self.0 >> 64) & 0xFFFFu128,
+            (self.0 >> 48) & 0xFFFFu128,
+            (self.0 >> 32) & 0xFFFFu128,
+            (self.0 >> 16) & 0xFFFFu128,
+            self.0 & 0xFFFFu128
+        )
+    }
+
+    fn from_u32(v: u32) -> Self {
+        Self(v as u128)
+    }
+
+    fn type_bit_size() -> u32 {
+        size_of::<u128>() as u32 * 8
+    }
+
+    // todo
+    fn max_bit_size() -> u32 {
+        size_of::<u128>() as u32 * 8 - 4
+    }
+
+    fn highest_set_bit(&self) -> Option<u32> {
+        if 0 == self.0 {
+            None
+        } else {
+            //Some(size_of::<u64>() as u32 * 8 - 1 - self.0.leading_zeros() as u32)
+            let mock = Some(1);
+            mock
+        }
+    }
+}
+
+ */
 
 impl EncodingScheme {
     pub fn new(forms: &[EncodingSchemeForm]) -> Self {
@@ -424,5 +533,13 @@ mod tests {
         // smallest to biggest
         assert_eq!(SCHEMES["v358"].forms()[0].bit_count, 3);
         assert_eq!(SCHEMES["v358"].forms()[2].bit_count, 8);
+    }
+
+    #[test]
+    fn lol() {
+        println!("{}", Label64::try_from("0000.0000.0000.0012").unwrap());
+        println!("{}", Label128::try_from("0000.0002.1200.0000.005f.0000.11b0.0001").unwrap());
+        println!("{:064b}", std::u64::MAX);
+        println!("{:064}", std::u64::MAX);
     }
 }
