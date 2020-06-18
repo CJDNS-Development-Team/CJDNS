@@ -702,5 +702,36 @@ mod tests {
             is_one_hop(l("0000.0000.0000.0110"), &SCHEMES["v48"]),
             Ok(false)
         );
+        assert_eq!(
+            is_one_hop(
+                l("0000.0000.0000.1113"),
+                &EncodingScheme::new(&[
+                    EncodingSchemeForm {
+                        bit_count: 5,
+                        prefix_len: 2,
+                        prefix: 0b10,
+                    },
+                    EncodingSchemeForm {
+                        bit_count: 8,
+                        prefix_len: 2,
+                        prefix: 0b00,
+                    },
+                ])
+            ),
+            Err(Error::CannotFindForm)
+        );
+        assert_eq!(
+            is_one_hop(
+                l("0000.0000.0000.0200"),
+                &EncodingScheme::new(&[
+                    EncodingSchemeForm {
+                        bit_count: 4,
+                        prefix_len: 1,
+                        prefix: 0b01,
+                    },
+                ])
+            ),
+            Err(Error::CannotFindForm)
+        );
     }
 }

@@ -28,9 +28,9 @@ Tests if a `label` contains only one hop. The second argument is the `encoding_s
 See: [EncodingScheme_isOneHop()](https://github.com/cjdelisle/cjdns/blob/77259a49e5bc7ca7bc6dca5bd423e02be563bdc5/switch/EncodingScheme.c#L451)
 
 ```rust
-is_one_hop("0000.0000.0000.0013", &SCHEMES["v358"]); // returns true
-is_one_hop("0000.0000.0000.0015", &SCHEMES["v358"]); // returns true
-is_one_hop("0000.0000.0000.0153", &SCHEMES["v358"]); // returns false
+is_one_hop("0000.0000.0000.0013", &SCHEMES["v358"]); // returns Ok(true)
+is_one_hop("0000.0000.0000.0015", &SCHEMES["v358"]); // returns Ok(true)
+is_one_hop("0000.0000.0000.0153", &SCHEMES["v358"]); // returns Ok(false)
 ```
 ### `get_encoding_form<L: LabelT>(label: L, scheme: &EncodingScheme) -> Result<EncodingSchemeForm>`
 Get the encoding **form** used for the first *director* of the label. Recall an
