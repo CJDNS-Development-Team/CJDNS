@@ -345,7 +345,56 @@ impl LabelT for Label64 {
         }
     }
 }
-/*
+
+impl Shl<u32> for Label128 {
+    type Output = Self;
+    fn shl(self, rhs: u32) -> Self {
+        Self(self.0 << rhs)
+    }
+}
+
+impl Shr<u32> for Label128 {
+    type Output = Self;
+    fn shr(self, rhs: u32) -> Self {
+        Self(self.0 >> rhs)
+    }
+}
+
+impl BitAnd for Label128 {
+    type Output = Self;
+    fn bitand(self, rhs: Self) -> Self {
+        Self(self.0 & rhs.0)
+    }
+}
+
+impl BitOr for Label128 {
+    type Output = Self;
+    fn bitor(self, rhs: Self) -> Self {
+        Self(self.0 | rhs.0)
+    }
+}
+
+impl BitXor for Label128 {
+    type Output = Self;
+    fn bitxor(self, rhs: Self) -> Self {
+        Self(self.0 ^ rhs.0)
+    }
+}
+
+impl Add<u32> for Label128 {
+    type Output = Self;
+    fn add(self, rhs: u32) -> Self {
+        Self(self.0.checked_add(rhs as u128).unwrap())
+    }
+}
+
+impl Sub<u32> for Label128 {
+    type Output = Self;
+    fn sub(self, rhs: u32) -> Self {
+        Self(self.0.checked_sub(rhs as u128).unwrap())
+    }
+}
+
 impl LabelT for Label128 {
     fn to_bit_string(&self) -> String {
         format!(
@@ -369,7 +418,6 @@ impl LabelT for Label128 {
         size_of::<u128>() as u32 * 8
     }
 
-    // todo
     fn max_bit_size() -> u32 {
         size_of::<u128>() as u32 * 8 - 4
     }
@@ -378,14 +426,10 @@ impl LabelT for Label128 {
         if 0 == self.0 {
             None
         } else {
-            //Some(size_of::<u64>() as u32 * 8 - 1 - self.0.leading_zeros() as u32)
-            let mock = Some(1);
-            mock
+            Some(size_of::<u128>() as u32 * 8 - 1 - self.0.leading_zeros() as u32)
         }
     }
 }
-
- */
 
 impl EncodingScheme {
     pub fn new(forms: &[EncodingSchemeForm]) -> Self {
@@ -537,9 +581,6 @@ mod tests {
 
     #[test]
     fn lol() {
-        println!("{}", Label64::try_from("0000.0000.0000.0012").unwrap());
-        println!("{}", Label128::try_from("0000.0002.1200.0000.005f.0000.11b0.0001").unwrap());
-        println!("{:064b}", std::u64::MAX);
-        println!("{:064}", std::u64::MAX);
+        println!("{}", Label128::max_bit_size());
     }
 }
