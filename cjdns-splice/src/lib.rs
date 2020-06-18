@@ -216,10 +216,7 @@ pub fn build_label<L: LabelT>(path_hops: &[PathHop<L>]) -> Result<(L, Vec<L>)> {
     let mut ret_path = Vec::with_capacity(path_hops.len() - 1);
     ret_path.push(path_hops.first().unwrap().label_n.unwrap());
 
-    let hops_to_iter_over = {
-        let (_, hops_except_last) = path_hops.split_last().unwrap();
-        &hops_except_last[1..]
-    };
+    let hops_to_iter_over =  &path_hops[1..path_hops.len() - 1];
 
     // Iterate over hops except for first and last
     for hop in hops_to_iter_over {
