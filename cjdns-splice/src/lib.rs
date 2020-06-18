@@ -187,23 +187,22 @@ pub fn re_encode<L: LabelT>(
     Ok(result)
 }
 
-// todo #3
 /// This will construct a label using an array representation of a path (`path_hops`), if any label along the `path_hops` needs to be re-encoded, it will be.
 pub fn build_label<L: LabelT>(path_hops: &[PathHop<L>]) -> Result<(L, Vec<L>)> {
     if path_hops.len() < 2 {
         return Err(Error::NotEnoughArguments);
     }
 
-    if path_hops.first().unwrap().label_n.is_none() || path_hops.last().unwrap().label_p.is_none() {
-        return Err(Error::ZeroLabel);
-    }
-
-    if path_hops.first().unwrap().label_p.is_some() || path_hops.last().unwrap().label_n.is_some() {
+    if path_hops.first().unwrap().label_n.is_none()
+        || path_hops.last().unwrap().label_p.is_none()
+        || path_hops.first().unwrap().label_p.is_some()
+        || path_hops.last().unwrap().label_n.is_some()
+    {
         return Err(Error::BadArgument);
     }
 
-    let mut ret_path = vec![path_hops.first().unwrap().label_n.unwrap()];
-    let mut ret_label = *ret_path.first().unwrap();
+    let mut ret_path = Vec::with_capacity(path_hops.len() - 1);
+    ret_path.push(path_hops.first().unwrap().label_n.unwrap());
 
     let hops_to_iter_over = {
         let (_, hops_except_last) = path_hops.split_last().unwrap();
@@ -213,7 +212,7 @@ pub fn build_label<L: LabelT>(path_hops: &[PathHop<L>]) -> Result<(L, Vec<L>)> {
     // Iterate over hops except for first and last
     for hop in hops_to_iter_over {
         if hop.label_n.is_none() || hop.label_p.is_none() {
-            return Err(Error::ZeroLabel);
+            return Err(Error::BadArgument);
         }
 
         // alias
@@ -235,11 +234,13 @@ pub fn build_label<L: LabelT>(path_hops: &[PathHop<L>]) -> Result<(L, Vec<L>)> {
         ret_path.push(label_n);
     }
 
-    if ret_path.len() > 1 {
+    let ret_label = if ret_path.len() > 1 {
         let mut y = ret_path.clone();
         y.reverse();
-        ret_label = splice(&y)?;
-    }
+        splice(&y)?
+    } else {
+        *ret_path.first().unwrap()
+    };
 
     Ok((ret_label, ret_path))
 }
@@ -762,7 +763,7 @@ mod tests {
                     &SCHEMES["v358"]
                 ),
             ]),
-            Err(Error::ZeroLabel)
+            Err(Error::BadArgument)
         );
         assert_eq!(
             build_label(&[
@@ -777,7 +778,7 @@ mod tests {
                     &SCHEMES["v358"]
                 ),
             ]),
-            Err(Error::ZeroLabel)
+            Err(Error::BadArgument)
         );
         assert_eq!(
             build_label(&[
@@ -827,7 +828,7 @@ mod tests {
                     &SCHEMES["v358"]
                 ),
             ]),
-            Err(Error::ZeroLabel)
+            Err(Error::BadArgument)
         );
         assert_eq!(
             build_label(&[
@@ -847,7 +848,7 @@ mod tests {
                     &SCHEMES["v358"]
                 ),
             ]),
-            Err(Error::ZeroLabel)
+            Err(Error::BadArgument)
         );
         assert_eq!(
             build_label(&[

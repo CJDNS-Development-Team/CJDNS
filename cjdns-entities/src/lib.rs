@@ -314,8 +314,8 @@ impl<'a> IntoIterator for &'a EncodingScheme {
 
 impl<'a, L: LabelT> PathHop<'a, L> {
     pub fn new(label_p: L, label_n: L, encoding_scheme: &'a EncodingScheme) -> Self {
-        let label_p = label_p.highest_set_bit().and_then(|_| Some(label_p));
-        let label_n = label_n.highest_set_bit().and_then(|_| Some(label_n));
+        let label_p = label_p.highest_set_bit().and(Some(label_p));
+        let label_n = label_n.highest_set_bit().and(Some(label_n));
         PathHop {
             label_p,
             label_n,
