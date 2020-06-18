@@ -1,7 +1,7 @@
 use std::error;
 use std::fmt;
 
-use cjdns_entities::{EncodingScheme, EncodingSchemeForm, LabelT, SCHEMES};
+use cjdns_entities::{EncodingScheme, EncodingSchemeForm, LabelT, PathHop, SCHEMES};
 
 /// Result type alias.
 pub type Result<T> = std::result::Result<T, Error>;
@@ -70,10 +70,10 @@ pub fn splice<L: LabelT>(labels: &[L]) -> Result<L> {
 pub fn get_encoding_form<L: LabelT>(
     label: L,
     scheme: &EncodingScheme,
-) -> Result<EncodingSchemeForm> {
-    for form in scheme {
+) -> Result<(EncodingSchemeForm, usize)> {
+    for (i, form) in scheme.forms().iter().enumerate() {
         if 0 == form.prefix_len {
-            return Ok(*form);
+            return Ok((*form, i));
         }
 
         if form.prefix_len > 32 {
@@ -86,7 +86,7 @@ pub fn get_encoding_form<L: LabelT>(
             (1u32 << (form.prefix_len as u32)) - 1u32
         };
         if label & L::from_u32(mask) == L::from_u32(form.prefix) {
-            return Ok(*form);
+            return Ok((*form, i));
         }
     }
 
@@ -134,7 +134,7 @@ pub fn re_encode<L: LabelT>(
     scheme: &EncodingScheme,
     desired_form_num: Option<usize>,
 ) -> Result<L> {
-    let form = get_encoding_form(label, scheme)?;
+    let (form, _) = get_encoding_form(label, scheme)?;
     let mut dir = get_director(label, form);
 
     let mut desired_form = if let Some(num) = desired_form_num {
@@ -185,6 +185,69 @@ pub fn re_encode<L: LabelT>(
     result = (result << (desired_form.prefix_len as u32)) | L::from_u32(desired_form.prefix);
 
     Ok(result)
+}
+
+/// Tests if a `label` contains only one hop.
+pub fn is_one_hop<L: LabelT>(label: L, encoding_scheme: &EncodingScheme) -> Result<bool> {
+    if label.highest_set_bit().is_none() {
+        return Err(Error::ZeroLabel)
+    }
+
+    let (label_form, _) = get_encoding_form(label, encoding_scheme)?;
+    let form_bits = label_form.bit_count + label_form.prefix_len;
+
+    Ok(label.highest_set_bit().unwrap() == form_bits as u32)
+}
+
+/// This will construct a label using an array representation of a path (`path_hops`), if any label along the `path_hops` needs to be re-encoded, it will be.
+pub fn build_label<L: LabelT>(path_hops: &[PathHop<L>]) -> Result<(L, Vec<L>)> {
+    if path_hops.len() < 2 {
+        return Err(Error::NotEnoughArguments);
+    }
+
+    if path_hops.first().unwrap().label_n.is_none()
+        || path_hops.last().unwrap().label_p.is_none()
+        || path_hops.first().unwrap().label_p.is_some()
+        || path_hops.last().unwrap().label_n.is_some()
+    {
+        return Err(Error::BadArgument);
+    }
+
+    let mut ret_path = Vec::with_capacity(path_hops.len() - 1);
+    ret_path.push(path_hops.first().unwrap().label_n.unwrap());
+
+    let hops_to_iter_over =  &path_hops[1..path_hops.len() - 1];
+
+    // Iterate over hops except for first and last
+    for hop in hops_to_iter_over {
+        if hop.label_n.is_none() || hop.label_p.is_none() {
+            return Err(Error::BadArgument);
+        }
+
+        // alias
+        let label_p = hop.label_p.unwrap();
+        let mut label_n = hop.label_n.unwrap();
+
+        let (form_label_p, form_idx) = get_encoding_form(label_p, hop.encoding_scheme)?;
+        let (form_label_n, _) = get_encoding_form(label_n, hop.encoding_scheme)?;
+        if form_label_p.bit_count + form_label_p.prefix_len
+            > form_label_n.bit_count + form_label_n.prefix_len
+        {
+            label_n = re_encode(label_n, hop.encoding_scheme, Some(form_idx))?;
+        }
+
+        ret_path.push(label_n);
+    }
+
+    let ret_label = if ret_path.len() > 1 {
+        let mut y = ret_path.clone();
+        y.reverse();
+        splice(&y)?
+    } else {
+        *ret_path.first().unwrap()
+    };
+
+    Ok((ret_label, ret_path))
 }
 
 /// This will return `Ok(true)` if the node at the end of the route given by `mid_path` is a hop along the path given by `destination`
@@ -271,45 +334,60 @@ mod tests {
     fn test_get_encoding_form() {
         assert_eq!(
             get_encoding_form(l("0000.0000.0000.1111"), &SCHEMES["f8"]),
-            Ok(EncodingSchemeForm {
-                bit_count: 8,
-                prefix_len: 0,
-                prefix: 0,
-            })
+            Ok((
+                EncodingSchemeForm {
+                    bit_count: 8,
+                    prefix_len: 0,
+                    prefix: 0,
+                },
+                0
+            ))
         );
 
         assert_eq!(
             get_encoding_form(l("0000.0000.0000.1110"), &SCHEMES["v358"]),
-            Ok(EncodingSchemeForm {
-                bit_count: 8,
-                prefix_len: 2,
-                prefix: 0,
-            })
+            Ok((
+                EncodingSchemeForm {
+                    bit_count: 8,
+                    prefix_len: 2,
+                    prefix: 0,
+                },
+                2
+            ))
         );
         assert_eq!(
             get_encoding_form(l("0000.0000.0000.1111"), &SCHEMES["v358"]),
-            Ok(EncodingSchemeForm {
-                bit_count: 3,
-                prefix_len: 1,
-                prefix: 1,
-            })
+            Ok((
+                EncodingSchemeForm {
+                    bit_count: 3,
+                    prefix_len: 1,
+                    prefix: 1,
+                },
+                0
+            ))
         );
         assert_eq!(
             get_encoding_form(l("0000.0000.0000.1112"), &SCHEMES["v358"]),
-            Ok(EncodingSchemeForm {
-                bit_count: 5,
-                prefix_len: 2,
-                prefix: 2,
-            })
+            Ok((
+                EncodingSchemeForm {
+                    bit_count: 5,
+                    prefix_len: 2,
+                    prefix: 2,
+                },
+                1
+            ))
         );
 
         assert_eq!(
             get_encoding_form(l("0000.0000.0000.0013"), &SCHEMES["v358"]),
-            Ok(EncodingSchemeForm {
-                bit_count: 3,
-                prefix_len: 1,
-                prefix: 0b01,
-            })
+            Ok((
+                EncodingSchemeForm {
+                    bit_count: 3,
+                    prefix_len: 1,
+                    prefix: 0b01,
+                },
+                0
+            ))
         );
 
         assert!(get_encoding_form(
@@ -614,6 +692,312 @@ mod tests {
         assert_eq!(
             unsplice(l("0000.0000.0000.0000"), l("0000.4500.00a0.0123")),
             Err(Error::ZeroLabel)
+        );
+    }
+
+    #[test]
+    fn test_build_label() {
+        assert_eq!(
+            build_label(&[
+                PathHop::new(
+                    l("0000.0000.0000.0000"),
+                    l("0000.0000.0000.0015"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.009e"),
+                    l("0000.0000.0000.008e"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.0013"),
+                    l("0000.0000.0000.00a2"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.001b"),
+                    l("0000.0000.0000.001d"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.00ee"),
+                    l("0000.0000.0000.001b"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.0019"),
+                    l("0000.0000.0000.001b"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.0013"),
+                    l("0000.0000.0000.0000"),
+                    &SCHEMES["v358"]
+                ),
+            ]),
+            Ok((
+                l("0000.0003.64b5.10e5"),
+                vec![
+                    l("0000.0000.0000.0015"),
+                    l("0000.0000.0000.008e"),
+                    l("0000.0000.0000.00a2"),
+                    l("0000.0000.0000.001d"),
+                    l("0000.0000.0000.0092"),
+                    l("0000.0000.0000.001b")
+                ]
+            ))
+        );
+        assert_eq!(
+            build_label(&[PathHop::new(
+                l("0000.0000.0000.0013"),
+                l("0000.0000.0000.0000"),
+                &SCHEMES["v358"]
+            )]),
+            Err(Error::NotEnoughArguments)
+        );
+        assert_eq!(
+            build_label(&[
+                PathHop::new(
+                    l("0000.0000.0000.0000"),
+                    l("0000.0000.0000.0015"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.0013"),
+                    l("0000.0000.0000.0000"),
+                    &SCHEMES["v358"]
+                ),
+            ]),
+            Ok((l("0000.0000.0000.0015"), vec![l("0000.0000.0000.0015")]))
+        );
+        assert_eq!(
+            build_label(&[
+                PathHop::new(
+                    l("0000.0000.0000.0000"),
+                    l("0000.0000.0000.0015"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.0000"),
+                    l("0000.0000.0000.0000"),
+                    &SCHEMES["v358"]
+                ),
+            ]),
+            Err(Error::BadArgument)
+        );
+        assert_eq!(
+            build_label(&[
+                PathHop::new(
+                    l("0000.0000.0000.0000"),
+                    l("0000.0000.0000.0000"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.0013"),
+                    l("0000.0000.0000.0000"),
+                    &SCHEMES["v358"]
+                ),
+            ]),
+            Err(Error::BadArgument)
+        );
+        assert_eq!(
+            build_label(&[
+                PathHop::new(
+                    l("0000.0000.0000.0001"),
+                    l("0000.0000.0000.0015"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.0013"),
+                    l("0000.0000.0000.0000"),
+                    &SCHEMES["v358"]
+                ),
+            ]),
+            Err(Error::BadArgument)
+        );
+        assert_eq!(
+            build_label(&[
+                PathHop::new(
+                    l("0000.0000.0000.0000"),
+                    l("0000.0000.0000.0015"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.0013"),
+                    l("0000.0000.0000.0001"),
+                    &SCHEMES["v358"]
+                ),
+            ]),
+            Err(Error::BadArgument)
+        );
+        assert_eq!(
+            build_label(&[
+                PathHop::new(
+                    l("0000.0000.0000.0000"),
+                    l("0000.0000.0000.0015"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.0000"),
+                    l("0000.0000.0000.008e"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.0013"),
+                    l("0000.0000.0000.0000"),
+                    &SCHEMES["v358"]
+                ),
+            ]),
+            Err(Error::BadArgument)
+        );
+        assert_eq!(
+            build_label(&[
+                PathHop::new(
+                    l("0000.0000.0000.0000"),
+                    l("0000.0000.0000.0015"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.009e"),
+                    l("0000.0000.0000.0000"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.0013"),
+                    l("0000.0000.0000.0000"),
+                    &SCHEMES["v358"]
+                ),
+            ]),
+            Err(Error::BadArgument)
+        );
+        assert_eq!(
+            build_label(&[
+                PathHop::new(
+                    l("0000.0000.0000.0000"),
+                    l("0000.0000.0000.0015"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.009e"),
+                    l("0000.0000.0000.008e"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    l("0000.0000.0000.0013"),
+                    l("0000.0000.0000.0000"),
+                    &SCHEMES["v358"]
+                ),
+            ]),
+            Ok((
+                splice(&[l("0000.0000.0000.008e"), l("0000.0000.0000.0015")]).unwrap(),
+                vec![l("0000.0000.0000.0015"), l("0000.0000.0000.008e")]
+            ))
+        );
+    }
+
+    #[test]
+    fn test_is_one_hop() {
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0013"), &SCHEMES["v358"]),
+            Ok(true)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0015"), &SCHEMES["v358"]),
+            Ok(true)
+        );
+        assert!(
+            is_one_hop(l("0000.0000.0000.0000"), &SCHEMES["v358"]).is_err()
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0153"), &SCHEMES["v358"]),
+            Ok(false)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0001"), &SCHEMES["v358"]),
+            Ok(false)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0002"), &SCHEMES["v358"]),
+            Ok(false)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0096"), &SCHEMES["v358"]),
+            Ok(true)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0400"), &SCHEMES["v358"]),
+            Ok(true)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0115"), &SCHEMES["v358"]),
+            Ok(false)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0166"), &SCHEMES["v358"]),
+            Ok(false)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.1400"), &SCHEMES["v358"]),
+            Ok(false)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0001"), &SCHEMES["v48"]),
+            Ok(false)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0021"), &SCHEMES["v48"]),
+            Ok(true)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0023"), &SCHEMES["v48"]),
+            Ok(true)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0012"), &SCHEMES["v48"]),
+            Ok(false)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0220"), &SCHEMES["v48"]),
+            Ok(true)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0210"), &SCHEMES["v48"]),
+            Ok(true)
+        );
+        assert_eq!(
+            is_one_hop(l("0000.0000.0000.0110"), &SCHEMES["v48"]),
+            Ok(false)
+        );
+        assert_eq!(
+            is_one_hop(
+                l("0000.0000.0000.1113"),
+                &EncodingScheme::new(&[
+                    EncodingSchemeForm {
+                        bit_count: 5,
+                        prefix_len: 2,
+                        prefix: 0b10,
+                    },
+                    EncodingSchemeForm {
+                        bit_count: 8,
+                        prefix_len: 2,
+                        prefix: 0b00,
+                    },
+                ])
+            ),
+            Err(Error::CannotFindForm)
+        );
+        assert_eq!(
+            is_one_hop(
+                l("0000.0000.0000.0200"),
+                &EncodingScheme::new(&[
+                    EncodingSchemeForm {
+                        bit_count: 4,
+                        prefix_len: 1,
+                        prefix: 0b01,
+                    },
+                ])
+            ),
+            Err(Error::CannotFindForm)
         );
     }
 }

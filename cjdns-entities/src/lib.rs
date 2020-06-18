@@ -72,6 +72,13 @@ pub struct EncodingSchemeForm {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncodingScheme(Vec<EncodingSchemeForm>);
 
+#[derive(Debug, PartialEq, Eq)]
+pub struct PathHop<'a, L: LabelT> {
+    pub label_p: Option<L>,
+    pub label_n: Option<L>,
+    pub encoding_scheme: &'a EncodingScheme,
+}
+
 lazy_static! {
     pub static ref SCHEMES: HashMap<&'static str, EncodingScheme> = {
         let mut m = HashMap::new();
@@ -453,6 +460,18 @@ impl<'a> IntoIterator for &'a EncodingScheme {
     }
 }
 
+impl<'a, L: LabelT> PathHop<'a, L> {
+    pub fn new(label_p: L, label_n: L, encoding_scheme: &'a EncodingScheme) -> Self {
+        let label_p = label_p.highest_set_bit().and(Some(label_p));
+        let label_n = label_n.highest_set_bit().and(Some(label_n));
+        PathHop {
+            label_p,
+            label_n,
+            encoding_scheme,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     extern crate rand;
@@ -580,7 +599,30 @@ mod tests {
     }
 
     #[test]
-    fn lol() {
-        println!("{}", Label128::max_bit_size());
+    fn path_hop_creation() {
+        assert_eq!(
+            PathHop::new(Label::from_u32(2), Label::from_u32(2), &SCHEMES["v358"]),
+            PathHop {
+                label_p: Some(Label::from_u32(2)),
+                label_n: Some(Label::from_u32(2)),
+                encoding_scheme: &SCHEMES["v358"]
+            }
+        );
+        assert_eq!(
+            PathHop::new(Label::from_u32(0), Label::from_u32(2), &SCHEMES["v358"]),
+            PathHop {
+                label_p: None,
+                label_n: Some(Label::from_u32(2)),
+                encoding_scheme: &SCHEMES["v358"]
+            }
+        );
+        assert_eq!(
+            PathHop::new(Label::from_u32(3), Label::from_u32(0), &SCHEMES["v358"]),
+            PathHop {
+                label_p: Some(Label::from_u32(3)),
+                label_n: None,
+                encoding_scheme: &SCHEMES["v358"]
+            }
+        );
     }
 }
