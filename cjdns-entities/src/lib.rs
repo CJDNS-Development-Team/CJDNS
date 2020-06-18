@@ -487,6 +487,10 @@ mod tests {
         Label64::new(v)
     }
 
+    fn l128(v: u128) -> Label128 {
+        Label128::new(v)
+    }
+
     fn eform(bit_count: u8, prefix_len: u8, prefix: u32) -> EncodingSchemeForm {
         EncodingSchemeForm {
             bit_count,
@@ -496,16 +500,37 @@ mod tests {
     }
 
     #[test]
-    fn l64_to_string() {
+    fn label_to_string() {
         assert_eq!(l64(0).to_string(), "0000.0000.0000.0000");
         assert_eq!(l64(1).to_string(), "0000.0000.0000.0001");
         assert_eq!(l64(14574489829).to_string(), "0000.0003.64b5.10e5");
+
+        assert_eq!(
+            l128(0).to_string(),
+            "0000.0000.0000.0000.0000.0000.0000.0000"
+        );
+        assert_eq!(
+            l128(1).to_string(),
+            "0000.0000.0000.0000.0000.0000.0000.0001"
+        );
+        assert_eq!(
+            l128(14574489829).to_string(),
+            "0000.0000.0000.0000.0000.0003.64b5.10e5"
+        );
     }
 
     #[test]
-    fn l64_from_string() {
+    fn label_from_string() {
         assert_eq!(Label64::try_from("0000.0000.0000.0000").unwrap(), l64(0));
         assert_eq!(Label64::try_from("0000.0000.0000.0001").unwrap(), l64(1));
+        assert_eq!(
+            Label128::try_from("0000.0000.0000.0000.0000.0000.0000.0000").unwrap(),
+            l128(0)
+        );
+        assert_eq!(
+            Label128::try_from("0000.0000.0000.0000.0000.0000.0000.0001").unwrap(),
+            l128(1)
+        );
         assert_eq!(
             Label64::try_from("0000.0003.64b5.10e5").unwrap(),
             l64(14574489829)
@@ -514,9 +539,14 @@ mod tests {
             Label64::try_from("0002.0003.64b5.10e5").unwrap(),
             l64(562964527911141u64)
         );
+        assert_eq!(
+            Label128::try_from("0000.0000.0000.0000.0002.0003.64b5.10e5").unwrap(),
+            l128(562964527911141u128)
+        );
 
         assert!(Label64::try_from("0000.0000.0000.001").is_err());
         assert!(Label64::try_from("0000.0003.64b5.k0e5").is_err());
+        assert!(Label128::try_from("0000.0000.0000.0000.0000.0003.64b5.k0e5").is_err());
         assert!(Label64::try_from("0000.0003.64b510e5").is_err());
         assert!(Label64::try_from("0000.0003.64b5.10e5555").is_err());
         assert!(Label64::try_from("0000.0003.64b5.10e5.10e5").is_err());
@@ -538,13 +568,15 @@ mod tests {
     }
 
     #[test]
-    fn l64_highest_set_bit() {
+    fn label_highest_set_bit() {
         assert!(l64(0).highest_set_bit().is_none());
 
         assert_eq!(l64(1).highest_set_bit().unwrap(), 0u32);
         assert_eq!(l64(2).highest_set_bit().unwrap(), 1u32);
         assert_eq!(l64(14574489829).highest_set_bit().unwrap(), 33u32);
+        assert_eq!(l128(14574489829).highest_set_bit().unwrap(), 33u32);
         assert_eq!(l64(1u64 << 63).highest_set_bit().unwrap(), 63u32);
+        assert_eq!(l128(1u128 << 100).highest_set_bit().unwrap(), 100u32);
     }
 
     #[test]
