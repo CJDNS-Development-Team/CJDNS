@@ -190,7 +190,7 @@ pub fn re_encode<L: LabelT>(
 /// Tests if a `label` contains only one hop.
 pub fn is_one_hop<L: LabelT>(label: L, encoding_scheme: &EncodingScheme) -> Result<bool> {
     if label.highest_set_bit().is_none() {
-        return Err(Error::ZeroLabel)
+        return Err(Error::ZeroLabel);
     }
 
     let (label_form, _) = get_encoding_form(label, encoding_scheme)?;
@@ -216,7 +216,7 @@ pub fn build_label<L: LabelT>(path_hops: &[PathHop<L>]) -> Result<(L, Vec<L>)> {
     let mut ret_path = Vec::with_capacity(path_hops.len() - 1);
     ret_path.push(path_hops.first().unwrap().label_n.unwrap());
 
-    let hops_to_iter_over =  &path_hops[1..path_hops.len() - 1];
+    let hops_to_iter_over = &path_hops[1..path_hops.len() - 1];
 
     // Iterate over hops except for first and last
     for hop in hops_to_iter_over {
@@ -278,10 +278,14 @@ mod tests {
     use std::convert::TryFrom;
 
     use super::*;
-    use cjdns_entities::{Label, SCHEMES};
+    use cjdns_entities::{Label, Label128, SCHEMES};
 
     fn l(v: &str) -> Label {
         Label::try_from(v).unwrap()
+    }
+
+    fn l128(v: &str) -> Label128 {
+        Label128::try_from(v).unwrap()
     }
 
     #[test]
@@ -305,6 +309,14 @@ mod tests {
             Ok(l("0000.0000.0000.0153"))
         );
 
+        assert_eq!(
+            splice(&[
+                l128("0000.0000.0000.0000.0000.0000.0000.0015"),
+                l128("0000.0000.0000.0000.0000.0000.0000.0013")
+            ]),
+            Ok(l128("0000.0000.0000.0000.0000.0000.0000.0153"))
+        );
+
         let mut labels = [
             l("0000.0000.0000.0015"),
             l("0000.0000.0000.008e"),
@@ -315,6 +327,20 @@ mod tests {
         ];
         labels.reverse();
         assert_eq!(splice(&labels), Ok(l("0000.001b.0535.10e5")));
+
+        let mut labels128 = [
+            l128("0000.0000.0000.0000.0000.0000.0000.0015"),
+            l128("0000.0000.0000.0000.0000.0000.0000.008e"),
+            l128("0000.0000.0000.0000.0000.0000.0000.00a2"),
+            l128("0000.0000.0000.0000.0000.0000.0000.001d"),
+            l128("0000.0000.0000.0000.0000.0000.0000.0414"),
+            l128("0000.0000.0000.0000.0000.0000.0000.001b"),
+        ];
+        labels128.reverse();
+        assert_eq!(
+            splice(&labels128),
+            Ok(l128("0000.0000.0000.0000.0000.001b.0535.10e5"))
+        );
     }
 
     #[test]
@@ -323,9 +349,23 @@ mod tests {
             splice(&[l("0200.0000.0000.1111"), l("0000.0000.0000.0005")]),
             Ok(l("0800.0000.0000.4445"))
         );
+        assert_eq!(
+            splice(&[
+                l128("0200.0000.0000.0000.0000.0000.0000.1111"),
+                l128("0000.0000.0000.0000.0000.0000.0000.0005")
+            ]),
+            Ok(l128("0800.0000.0000.0000.0000.0000.0000.4445"))
+        );
 
         assert_eq!(
             splice(&[l("0400.0000.0000.1111"), l("0000.0000.0000.0005")]),
+            Err(Error::LabelTooLong)
+        );
+        assert_eq!(
+            splice(&[
+                l128("0400.0000.0000.0000.0000.0000.0000.1111"),
+                l128("0000.0000.0000.0000.0000.0000.0000.0005")
+            ]),
             Err(Error::LabelTooLong)
         );
     }
@@ -905,9 +945,7 @@ mod tests {
             is_one_hop(l("0000.0000.0000.0015"), &SCHEMES["v358"]),
             Ok(true)
         );
-        assert!(
-            is_one_hop(l("0000.0000.0000.0000"), &SCHEMES["v358"]).is_err()
-        );
+        assert!(is_one_hop(l("0000.0000.0000.0000"), &SCHEMES["v358"]).is_err());
         assert_eq!(
             is_one_hop(l("0000.0000.0000.0153"), &SCHEMES["v358"]),
             Ok(false)
@@ -989,13 +1027,11 @@ mod tests {
         assert_eq!(
             is_one_hop(
                 l("0000.0000.0000.0200"),
-                &EncodingScheme::new(&[
-                    EncodingSchemeForm {
-                        bit_count: 4,
-                        prefix_len: 1,
-                        prefix: 0b01,
-                    },
-                ])
+                &EncodingScheme::new(&[EncodingSchemeForm {
+                    bit_count: 4,
+                    prefix_len: 1,
+                    prefix: 0b01,
+                },])
             ),
             Err(Error::CannotFindForm)
         );

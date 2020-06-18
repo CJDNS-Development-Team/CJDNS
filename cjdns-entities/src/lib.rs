@@ -213,7 +213,8 @@ impl TryFrom<&str> for Label64 {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         lazy_static! {
-            static ref RE: Regex = Regex::new("\
+            static ref RE: Regex = Regex::new(
+                "\
                 (?x)\
                 ^([[:xdigit:]]{4})\\.\
                 ([[:xdigit:]]{4})\\.\
@@ -241,7 +242,8 @@ impl TryFrom<&str> for Label128 {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         lazy_static! {
-            static ref RE: Regex = Regex::new("\
+            static ref RE: Regex = Regex::new(
+                "\
                 (?x)\
                 ^([[:xdigit:]]{4})\\.\
                 ([[:xdigit:]]{4})\\.\
