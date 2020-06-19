@@ -204,10 +204,6 @@ fn capture2u64(c: &regex::Captures, group_num: usize) -> u64 {
     u64::from_str_radix(c.get(group_num).unwrap().as_str(), 16).unwrap()
 }
 
-fn capture2u128(c: &regex::Captures, group_num: usize) -> u128 {
-    u128::from_str_radix(c.get(group_num).unwrap().as_str(), 16).unwrap()
-}
-
 impl TryFrom<&str> for Label64 {
     type Error = &'static str;
 
@@ -259,14 +255,14 @@ impl TryFrom<&str> for Label128 {
 
         if let Some(c) = RE.captures(value) {
             Ok(Self(
-                (capture2u128(&c, 1) << 112)
-                    | (capture2u128(&c, 2) << 96)
-                    | (capture2u128(&c, 3) << 80)
-                    | (capture2u128(&c, 4) << 64)
-                    | (capture2u128(&c, 5) << 48)
-                    | (capture2u128(&c, 6) << 32)
-                    | (capture2u128(&c, 7) << 16)
-                    | capture2u128(&c, 8),
+                (capture2u64(&c, 1) as u128) << 112
+                    | (capture2u64(&c, 2) as u128) << 96
+                    | (capture2u64(&c, 3) as u128) << 80
+                    | (capture2u64(&c, 4) as u128) << 64
+                    | (capture2u64(&c, 5) as u128) << 48
+                    | (capture2u64(&c, 6) as u128) << 32
+                    | (capture2u64(&c, 7) as u128) << 16
+                    | capture2u64(&c, 8) as u128,
             ))
         } else {
             Err("Malformed 128-bit label string")

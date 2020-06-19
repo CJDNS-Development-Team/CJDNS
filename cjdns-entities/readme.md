@@ -28,7 +28,7 @@ A 64 bit label. Can be constructed from `u64` and `&str`.
 
 ### `Label128`
 
-A 128 bit label. Can be constructed the same ways as `Label64` - from `u64` and `&str`.
+A 128 bit label. Can be constructed the same ways as `Label64` - from `u128` and `&str`.
 
 ### `EncodingSchemeForm`
 
