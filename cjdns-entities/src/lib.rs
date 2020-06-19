@@ -56,7 +56,8 @@ pub type Label = Label64;
 pub struct Label64(u64);
 
 /// 128 bit label.
-//pub struct Label128(u128);
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub struct Label128(u128);
 
 /// Form used in an encoding scheme.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -71,7 +72,6 @@ pub struct EncodingSchemeForm {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncodingScheme(Vec<EncodingSchemeForm>);
 
-// todo #1
 #[derive(Debug, PartialEq, Eq)]
 pub struct PathHop<'a, L: LabelT> {
     pub label_p: Option<L>,
@@ -164,6 +164,12 @@ impl Label64 {
     }
 }
 
+impl Label128 {
+    pub fn new(v: u128) -> Self {
+        Self(v)
+    }
+}
+
 impl fmt::Display for Label64 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -173,6 +179,23 @@ impl fmt::Display for Label64 {
             (self.0 >> 32) & 0xFFFFu64,
             (self.0 >> 16) & 0xFFFFu64,
             self.0 & 0xFFFFu64
+        )
+    }
+}
+
+impl fmt::Display for Label128 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "{:04x}.{:04x}.{:04x}.{:04x}.{:04x}.{:04x}.{:04x}.{:04x}",
+            (self.0 >> 112) & 0xFFFFu128,
+            (self.0 >> 96) & 0xFFFFu128,
+            (self.0 >> 80) & 0xFFFFu128,
+            (self.0 >> 64) & 0xFFFFu128,
+            (self.0 >> 48) & 0xFFFFu128,
+            (self.0 >> 32) & 0xFFFFu128,
+            (self.0 >> 16) & 0xFFFFu128,
+            self.0 & 0xFFFFu128
         )
     }
 }
@@ -187,7 +210,12 @@ impl TryFrom<&str> for Label64 {
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         lazy_static! {
             static ref RE: Regex = Regex::new(
-                "^([[:xdigit:]]{4})\\.([[:xdigit:]]{4})\\.([[:xdigit:]]{4})\\.([[:xdigit:]]{4})$"
+                "\
+                (?x)\
+                ^([[:xdigit:]]{4})\\.\
+                ([[:xdigit:]]{4})\\.\
+                ([[:xdigit:]]{4})\\.\
+                ([[:xdigit:]]{4})$"
             )
             .unwrap();
         }
@@ -201,6 +229,43 @@ impl TryFrom<&str> for Label64 {
             ))
         } else {
             Err("Malformed 64-bit label string")
+        }
+    }
+}
+
+impl TryFrom<&str> for Label128 {
+    type Error = &'static str;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        lazy_static! {
+            static ref RE: Regex = Regex::new(
+                "\
+                (?x)\
+                ^([[:xdigit:]]{4})\\.\
+                ([[:xdigit:]]{4})\\.\
+                ([[:xdigit:]]{4})\\.\
+                ([[:xdigit:]]{4})\\.\
+                ([[:xdigit:]]{4})\\.\
+                ([[:xdigit:]]{4})\\.\
+                ([[:xdigit:]]{4})\\.\
+                ([[:xdigit:]]{4})$"
+            )
+            .unwrap();
+        }
+
+        if let Some(c) = RE.captures(value) {
+            Ok(Self(
+                (capture2u64(&c, 1) as u128) << 112
+                    | (capture2u64(&c, 2) as u128) << 96
+                    | (capture2u64(&c, 3) as u128) << 80
+                    | (capture2u64(&c, 4) as u128) << 64
+                    | (capture2u64(&c, 5) as u128) << 48
+                    | (capture2u64(&c, 6) as u128) << 32
+                    | (capture2u64(&c, 7) as u128) << 16
+                    | capture2u64(&c, 8) as u128,
+            ))
+        } else {
+            Err("Malformed 128-bit label string")
         }
     }
 }
@@ -286,6 +351,91 @@ impl LabelT for Label64 {
     }
 }
 
+impl Shl<u32> for Label128 {
+    type Output = Self;
+    fn shl(self, rhs: u32) -> Self {
+        Self(self.0 << rhs)
+    }
+}
+
+impl Shr<u32> for Label128 {
+    type Output = Self;
+    fn shr(self, rhs: u32) -> Self {
+        Self(self.0 >> rhs)
+    }
+}
+
+impl BitAnd for Label128 {
+    type Output = Self;
+    fn bitand(self, rhs: Self) -> Self {
+        Self(self.0 & rhs.0)
+    }
+}
+
+impl BitOr for Label128 {
+    type Output = Self;
+    fn bitor(self, rhs: Self) -> Self {
+        Self(self.0 | rhs.0)
+    }
+}
+
+impl BitXor for Label128 {
+    type Output = Self;
+    fn bitxor(self, rhs: Self) -> Self {
+        Self(self.0 ^ rhs.0)
+    }
+}
+
+impl Add<u32> for Label128 {
+    type Output = Self;
+    fn add(self, rhs: u32) -> Self {
+        Self(self.0.checked_add(rhs as u128).unwrap())
+    }
+}
+
+impl Sub<u32> for Label128 {
+    type Output = Self;
+    fn sub(self, rhs: u32) -> Self {
+        Self(self.0.checked_sub(rhs as u128).unwrap())
+    }
+}
+
+impl LabelT for Label128 {
+    fn to_bit_string(&self) -> String {
+        format!(
+            "{:016b}.{:016b}.{:016b}.{:016b}.{:016b}.{:016b}.{:016b}.{:016b}",
+            (self.0 >> 112) & 0xFFFFu128,
+            (self.0 >> 96) & 0xFFFFu128,
+            (self.0 >> 80) & 0xFFFFu128,
+            (self.0 >> 64) & 0xFFFFu128,
+            (self.0 >> 48) & 0xFFFFu128,
+            (self.0 >> 32) & 0xFFFFu128,
+            (self.0 >> 16) & 0xFFFFu128,
+            self.0 & 0xFFFFu128
+        )
+    }
+
+    fn from_u32(v: u32) -> Self {
+        Self(v as u128)
+    }
+
+    fn type_bit_size() -> u32 {
+        size_of::<u128>() as u32 * 8
+    }
+
+    fn max_bit_size() -> u32 {
+        size_of::<u128>() as u32 * 8 - 4
+    }
+
+    fn highest_set_bit(&self) -> Option<u32> {
+        if 0 == self.0 {
+            None
+        } else {
+            Some(size_of::<u128>() as u32 * 8 - 1 - self.0.leading_zeros() as u32)
+        }
+    }
+}
+
 impl EncodingScheme {
     pub fn new(forms: &[EncodingSchemeForm]) -> Self {
         let mut v = forms.to_vec();
@@ -333,6 +483,10 @@ mod tests {
         Label64::new(v)
     }
 
+    fn l128(v: u128) -> Label128 {
+        Label128::new(v)
+    }
+
     fn eform(bit_count: u8, prefix_len: u8, prefix: u32) -> EncodingSchemeForm {
         EncodingSchemeForm {
             bit_count,
@@ -342,16 +496,37 @@ mod tests {
     }
 
     #[test]
-    fn l64_to_string() {
+    fn label_to_string() {
         assert_eq!(l64(0).to_string(), "0000.0000.0000.0000");
         assert_eq!(l64(1).to_string(), "0000.0000.0000.0001");
         assert_eq!(l64(14574489829).to_string(), "0000.0003.64b5.10e5");
+
+        assert_eq!(
+            l128(0).to_string(),
+            "0000.0000.0000.0000.0000.0000.0000.0000"
+        );
+        assert_eq!(
+            l128(1).to_string(),
+            "0000.0000.0000.0000.0000.0000.0000.0001"
+        );
+        assert_eq!(
+            l128(14574489829).to_string(),
+            "0000.0000.0000.0000.0000.0003.64b5.10e5"
+        );
     }
 
     #[test]
-    fn l64_from_string() {
+    fn label_from_string() {
         assert_eq!(Label64::try_from("0000.0000.0000.0000").unwrap(), l64(0));
         assert_eq!(Label64::try_from("0000.0000.0000.0001").unwrap(), l64(1));
+        assert_eq!(
+            Label128::try_from("0000.0000.0000.0000.0000.0000.0000.0000").unwrap(),
+            l128(0)
+        );
+        assert_eq!(
+            Label128::try_from("0000.0000.0000.0000.0000.0000.0000.0001").unwrap(),
+            l128(1)
+        );
         assert_eq!(
             Label64::try_from("0000.0003.64b5.10e5").unwrap(),
             l64(14574489829)
@@ -360,9 +535,14 @@ mod tests {
             Label64::try_from("0002.0003.64b5.10e5").unwrap(),
             l64(562964527911141u64)
         );
+        assert_eq!(
+            Label128::try_from("0000.0000.0000.0000.0002.0003.64b5.10e5").unwrap(),
+            l128(562964527911141u128)
+        );
 
         assert!(Label64::try_from("0000.0000.0000.001").is_err());
         assert!(Label64::try_from("0000.0003.64b5.k0e5").is_err());
+        assert!(Label128::try_from("0000.0000.0000.0000.0000.0003.64b5.k0e5").is_err());
         assert!(Label64::try_from("0000.0003.64b510e5").is_err());
         assert!(Label64::try_from("0000.0003.64b5.10e5555").is_err());
         assert!(Label64::try_from("0000.0003.64b5.10e5.10e5").is_err());
@@ -384,13 +564,15 @@ mod tests {
     }
 
     #[test]
-    fn l64_highest_set_bit() {
+    fn label_highest_set_bit() {
         assert!(l64(0).highest_set_bit().is_none());
 
         assert_eq!(l64(1).highest_set_bit().unwrap(), 0u32);
         assert_eq!(l64(2).highest_set_bit().unwrap(), 1u32);
         assert_eq!(l64(14574489829).highest_set_bit().unwrap(), 33u32);
+        assert_eq!(l128(14574489829).highest_set_bit().unwrap(), 33u32);
         assert_eq!(l64(1u64 << 63).highest_set_bit().unwrap(), 63u32);
+        assert_eq!(l128(1u128 << 100).highest_set_bit().unwrap(), 100u32);
     }
 
     #[test]

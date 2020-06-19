@@ -26,6 +26,10 @@ Default type for labels, a synonym for `Label64`.
 
 A 64 bit label. Can be constructed from `u64` and `&str`.
 
+### `Label128`
+
+A 128 bit label. Can be constructed the same ways as `Label64` - from `u128` and `&str`.
+
 ### `EncodingSchemeForm`
 
 A form of an encoding scheme. Form is used as follows to encode a director:
