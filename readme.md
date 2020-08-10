@@ -20,7 +20,11 @@ cargo build --release
 
 [**cjdns-entities**](cjdns-entities/) - entities operated by CJDNS.
 
-[**cjdns-splice**](cjdns-splice/) - tools for manipulating and splicing cjdns switch labels.
+[**cjdns-splice**](cjdns-splice/) - tools for manipulating and splicing cjdns routing labels.
+
+[**cjdns-encode**](cjdns-encode/) - serializing/deserializing of encoding schemes.
+
+[**cjdns-keys**](cjdns-keys/) - public & private keys.
 
 ## Development
 

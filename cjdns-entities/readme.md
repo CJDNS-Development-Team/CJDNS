@@ -2,33 +2,29 @@
 
 ## Traits
 
-### `LabelT`
+### `LabelBits`
 
-Trait for a label. Labels are opaque, however some traits are added for internal manipulation by other crates.
+Trait for a routing label's internal data type. Routing labels itself are opaque, so this trait is required for internal data manipulations.
 
-The following parent traits of `LabelT` are considered public: `Sized`, `Copy`, `Eq`, `PartialEq`, `ToString`.
-
-The following functions of `LabelT` are considered public: `to_bit_string`.
+The following parent traits of `LabelBits` are considered public: `Sized`, `Copy`, `Eq`, `From<u32>`, `Display`.
 
 For label manipulation routines please see the [cjdns-splice](../cjdns-splice/readme.md) crate.
 
-For more information on labels please see [the whitepaper](https://github.com/cjdelisle/cjdns/blob/master/doc/Whitepaper.md#definitions).
+This trait implemented for `u64` and `u128`.
+
+## Type aliases
+
+### `DefaultRoutingLabel`
+
+A 64 bit routing label.
 
 ## Types
 
-### `Label`
+### `RoutingLabel`
 
-Default type for labels, a synonym for `Label64`.
+Routing label. 
 
-## Structs
-
-### `Label64`
-
-A 64 bit label. Can be constructed from `u64` and `&str`.
-
-### `Label128`
-
-A 128 bit label. Can be constructed the same ways as `Label64` - from `u128` and `&str`.
+For more information on labels please refer to [the whitepaper](https://github.com/cjdelisle/cjdns/blob/master/doc/Whitepaper.md#definitions).
 
 ### `EncodingSchemeForm`
 
