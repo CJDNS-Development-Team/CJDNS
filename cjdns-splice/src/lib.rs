@@ -1,16 +1,17 @@
+//! Routing label splice/unsplice routines.
+
 use std::error;
 use std::fmt;
 
-use cjdns_entities::{EncodingScheme, EncodingSchemeForm, LabelT, PathHop, SCHEMES};
+use cjdns_entities::{EncodingScheme, EncodingSchemeForm, LabelBits, PathHop, RoutingLabel, SCHEMES};
 
 /// Result type alias.
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// Error type.
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Error {
     LabelTooLong,
-    ZeroLabel,
     NotEnoughArguments,
     BadArgument,
     CannotUnsplice,
@@ -22,7 +23,6 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Error::LabelTooLong => write!(f, "Label is too long"),
-            Error::ZeroLabel => write!(f, "Label is zero"),
             Error::NotEnoughArguments => write!(f, "Not enough arguments"),
             Error::BadArgument => write!(f, "Bad argument"),
             Error::CannotUnsplice => write!(f, "Can't unsplice"),
@@ -39,36 +39,30 @@ impl error::Error for Error {
 }
 
 /// This function takes one or more `labels` and splices them to create a resulting label.
-pub fn splice<L: LabelT>(labels: &[L]) -> Result<L> {
+pub fn splice<L: LabelBits>(labels: &[RoutingLabel<L>]) -> Result<RoutingLabel<L>> {
     if labels.len() < 2 {
         return Err(Error::NotEnoughArguments);
     }
 
-    let mut result = labels[0];
-    if result.highest_set_bit().is_none() {
-        return Err(Error::ZeroLabel);
-    }
+    let mut result_bits = labels[0].bits();
+    assert!(result_bits.highest_set_bit().is_some()); // because every RoutingLabel is always non-zero
 
     for addon in &labels[1..] {
-        match addon.highest_set_bit() {
-            None => return Err(Error::ZeroLabel),
-
-            Some(addon_bitlen) => {
-                if result.highest_set_bit().unwrap() + addon_bitlen > L::max_bit_size() - 1 {
-                    return Err(Error::LabelTooLong);
-                }
-
-                result = ((result ^ L::from_u32(1u32)) << addon_bitlen) ^ *addon;
-            }
+        let addon_bitlen = addon.highest_set_bit();
+        let result_hsb = result_bits.highest_set_bit().expect("intermediate result is zero");
+        if result_hsb + addon_bitlen > L::MAX_PAYLOAD_BITS - 1 {
+            return Err(Error::LabelTooLong);
         }
+
+        result_bits = ((result_bits ^ L::ONE) << addon_bitlen) ^ addon.bits();
     }
 
-    Ok(result)
+    RoutingLabel::try_new(result_bits).ok_or(()).map_err(|_| unreachable!("result_bits is zero"))
 }
 
 /// Get the encoding form used for the first director of the `label`.
-pub fn get_encoding_form<L: LabelT>(
-    label: L,
+pub fn get_encoding_form<L: LabelBits>(
+    label: RoutingLabel<L>,
     scheme: &EncodingScheme,
 ) -> Result<(EncodingSchemeForm, usize)> {
     for (i, form) in scheme.forms().iter().enumerate() {
@@ -85,7 +79,7 @@ pub fn get_encoding_form<L: LabelT>(
         } else {
             (1u32 << (form.prefix_len as u32)) - 1u32
         };
-        if label & L::from_u32(mask) == L::from_u32(form.prefix) {
+        if label.bits() & mask.into() == form.prefix.into() {
             return Ok((*form, i));
         }
     }
@@ -95,45 +89,49 @@ pub fn get_encoding_form<L: LabelT>(
 
 /// Extracts a director stripping the encoding.
 #[inline]
-fn get_director<L: LabelT>(label: L, form: EncodingSchemeForm) -> L {
-    let padding = L::type_bit_size() - form.bit_count as u32 - form.prefix_len as u32;
-    (label << padding) >> (padding + form.prefix_len as u32)
+fn get_director<L: LabelBits>(label: RoutingLabel<L>, form: EncodingSchemeForm) -> L {
+    let padding = L::BIT_SIZE - form.bit_count as u32 - form.prefix_len as u32;
+    (label.bits() << padding) >> (padding + form.prefix_len as u32)
 }
 
 /// Bit length of a director (not a label, e.g. without self-route).
 #[inline]
-fn director_bit_length<L: LabelT>(dir: L) -> u32 {
+fn director_bit_length<L: LabelBits>(dir: L) -> u32 {
     dir.highest_set_bit().unwrap_or(0u32) + 1u32
 }
 
+#[test]
+fn test_director_bit_length() {
+    assert_eq!(director_bit_length(0_u64), 1);
+    assert_eq!(director_bit_length(1_u64), 1);
+    assert_eq!(director_bit_length(2_u64), 2);
+    assert_eq!(director_bit_length(3_u64), 2);
+    assert_eq!(director_bit_length(4_u64), 3);
+    assert_eq!(director_bit_length(0xFFFF_u64), 16);
+    assert_eq!(director_bit_length(0xFFFFFFFF_u64), 32);
+    assert_eq!(director_bit_length(0xFFFFFFFFFFFFFFFF_u64), 64);
+}
+
 /// Detects canonical (shortest) form which has enough space to hold `dir`.
-fn find_shortest_form<L: LabelT>(dir: L, scheme: &EncodingScheme) -> Result<EncodingSchemeForm> {
+fn find_shortest_form<L: LabelBits>(dir: L, scheme: &EncodingScheme) -> Result<EncodingSchemeForm> {
     let dir_bits = director_bit_length(dir);
-    let mut best_form: Option<EncodingSchemeForm> = None;
 
-    for form in scheme {
-        if (form.bit_count as u32) < dir_bits {
-            continue;
-        }
-        if best_form.is_none() || best_form.unwrap().bit_count > form.bit_count {
-            best_form = Some(*form)
-        }
-    }
-
-    if best_form.is_none() {
-        Err(Error::CannotFindForm)
-    } else {
-        Ok(best_form.unwrap())
-    }
+    scheme
+        .forms()
+        .iter()
+        .filter(|&form| (form.bit_count as u32) >= dir_bits)
+        .min_by_key(|&form| form.bit_count)
+        .map(|&form| form)
+        .ok_or(Error::CannotFindForm)
 }
 
 /// Re-encode a `label` to the encoding form specified by `desired_form_num`
 /// (or canonical if `None`).
-pub fn re_encode<L: LabelT>(
-    label: L,
+pub fn re_encode<L: LabelBits>(
+    label: RoutingLabel<L>,
     scheme: &EncodingScheme,
     desired_form_num: Option<usize>,
-) -> Result<L> {
+) -> Result<RoutingLabel<L>> {
     let (form, _) = get_encoding_form(label, scheme)?;
     let mut dir = get_director(label, form);
 
@@ -152,91 +150,84 @@ pub fn re_encode<L: LabelT>(
             f == SCHEMES["v358"].forms()[0]
         }
 
-        if is_358_zero_form(desired_form) && dir == L::from_u32(0b111) {
+        if is_358_zero_form(desired_form) && dir == 0b111_u32.into() {
             desired_form = SCHEMES["v358"].forms()[1];
         }
 
         if is_358_zero_form(form) {
-            if dir == L::from_u32(0) {
+            if dir == L::ZERO {
                 return Err(Error::CannotReencode);
             }
-            dir = dir - 1u32;
+            dir = dir - L::ONE;
         }
         if is_358_zero_form(desired_form) {
-            dir = dir + 1u32;
+            dir = dir + L::ONE;
         }
     }
 
     // Construct result: [bits before extracted dir][padded dir][desired form prefix]
-    let mut result = label >> (form.bit_count as u32 + form.prefix_len as u32);
+    let mut result_bits = label.bits() >> (form.bit_count as u32 + form.prefix_len as u32);
 
     // check for overflow
-    let rest_bitlen = match result.highest_set_bit() {
+    let rest_bitlen = match result_bits.highest_set_bit() {
         None => 0,
         Some(len) => len + 1,
     };
-    if rest_bitlen + desired_form.bit_count as u32 + desired_form.prefix_len as u32
-        > L::max_bit_size()
-    {
+    let used_bits = rest_bitlen + desired_form.bit_count as u32 + desired_form.prefix_len as u32;
+    if used_bits > L::MAX_PAYLOAD_BITS {
         return Err(Error::LabelTooLong);
     }
 
-    result = (result << (desired_form.bit_count as u32)) | dir;
-    result = (result << (desired_form.prefix_len as u32)) | L::from_u32(desired_form.prefix);
+    result_bits = (result_bits << (desired_form.bit_count as u32)) | dir;
+    result_bits = (result_bits << (desired_form.prefix_len as u32)) | desired_form.prefix.into();
 
-    Ok(result)
+    RoutingLabel::try_new(result_bits).ok_or(()).map_err(|_| unreachable!("result_bits is zero"))
 }
 
 /// Tests if a `label` contains only one hop.
-pub fn is_one_hop<L: LabelT>(label: L, encoding_scheme: &EncodingScheme) -> Result<bool> {
-    if label.highest_set_bit().is_none() {
-        return Err(Error::ZeroLabel);
-    }
-
+pub fn is_one_hop<L: LabelBits>(label: RoutingLabel<L>, encoding_scheme: &EncodingScheme) -> Result<bool> {
     let (label_form, _) = get_encoding_form(label, encoding_scheme)?;
-    let form_bits = label_form.bit_count + label_form.prefix_len;
-
-    Ok(label.highest_set_bit().unwrap() == form_bits as u32)
+    let form_bits = (label_form.bit_count + label_form.prefix_len) as u32;
+    Ok(label.highest_set_bit() == form_bits)
 }
 
 /// This will construct a label using an array representation of a path (`path_hops`), if any label along the `path_hops` needs to be re-encoded, it will be.
-pub fn build_label<L: LabelT>(path_hops: &[PathHop<L>]) -> Result<(L, Vec<L>)> {
+pub fn build_label<L: LabelBits>(path_hops: &[PathHop<L>]) -> Result<(RoutingLabel<L>, Vec<RoutingLabel<L>>)> {
     if path_hops.len() < 2 {
         return Err(Error::NotEnoughArguments);
     }
 
-    if path_hops.first().unwrap().label_n.is_none()
-        || path_hops.last().unwrap().label_p.is_none()
-        || path_hops.first().unwrap().label_p.is_some()
-        || path_hops.last().unwrap().label_n.is_some()
-    {
-        return Err(Error::BadArgument);
+    if let (Some(first_hop), Some(last_hop)) = (path_hops.first(), path_hops.last()) {
+        assert!(path_hops.len() >= 2); // Because there exist first() and last()
+        let mid_hops = &path_hops[1..path_hops.len() - 1];
+        build_label_impl(first_hop, mid_hops, last_hop)
+    } else {
+        unreachable!() // because of the `path_hops.len()` check above
     }
+}
 
-    let mut ret_path = Vec::with_capacity(path_hops.len() - 1);
-    ret_path.push(path_hops.first().unwrap().label_n.unwrap());
+fn build_label_impl<L: LabelBits>(first_hop: &PathHop<L>, mid_hops: &[PathHop<L>], last_hop: &PathHop<L>) -> Result<(RoutingLabel<L>, Vec<RoutingLabel<L>>)> {
+    let first_hop_label_n = first_hop.label_n.ok_or(Error::BadArgument)?; // must be Some
+    let _last_hop_label_p = last_hop.label_p.ok_or(Error::BadArgument)?; // must be Some
+    first_hop.label_p.map_or(Ok(()), |_| Err(Error::BadArgument))?; // must be None
+    last_hop.label_n.map_or(Ok(()), |_| Err(Error::BadArgument))?; // must be None
 
-    let hops_to_iter_over = &path_hops[1..path_hops.len() - 1];
+    let mut ret_path = Vec::with_capacity(mid_hops.len() + 1);
+    ret_path.push(first_hop_label_n);
 
     // Iterate over hops except for first and last
-    for hop in hops_to_iter_over {
-        if hop.label_n.is_none() || hop.label_p.is_none() {
+    for hop in mid_hops {
+        if let (Some(label_p), Some(mut label_n)) = (hop.label_p, hop.label_n) {
+            let (form_label_p, form_idx) = get_encoding_form(label_p, hop.encoding_scheme)?;
+            let (form_label_n, _) = get_encoding_form(label_n, hop.encoding_scheme)?;
+            if form_label_p.bit_count + form_label_p.prefix_len > form_label_n.bit_count + form_label_n.prefix_len {
+                label_n = re_encode(label_n, hop.encoding_scheme, Some(form_idx))?;
+            }
+
+            ret_path.push(label_n);
+        } else {
             return Err(Error::BadArgument);
         }
-
-        // alias
-        let label_p = hop.label_p.unwrap();
-        let mut label_n = hop.label_n.unwrap();
-
-        let (form_label_p, form_idx) = get_encoding_form(label_p, hop.encoding_scheme)?;
-        let (form_label_n, _) = get_encoding_form(label_n, hop.encoding_scheme)?;
-        if form_label_p.bit_count + form_label_p.prefix_len
-            > form_label_n.bit_count + form_label_n.prefix_len
-        {
-            label_n = re_encode(label_n, hop.encoding_scheme, Some(form_idx))?;
-        }
-
-        ret_path.push(label_n);
     }
 
     let ret_label = if ret_path.len() > 1 {
@@ -244,64 +235,61 @@ pub fn build_label<L: LabelT>(path_hops: &[PathHop<L>]) -> Result<(L, Vec<L>)> {
         y.reverse();
         splice(&y)?
     } else {
-        *ret_path.first().unwrap()
+        first_hop_label_n
     };
 
     Ok((ret_label, ret_path))
 }
 
 /// This will return `Ok(true)` if the node at the end of the route given by `mid_path` is a hop along the path given by `destination`
-pub fn routes_through<L: LabelT>(destination: L, mid_path: L) -> Result<bool> {
-    if destination.highest_set_bit().is_none() || mid_path.highest_set_bit().is_none() {
-        return Err(Error::ZeroLabel);
+pub fn routes_through<L: LabelBits>(destination: RoutingLabel<L>, mid_path: RoutingLabel<L>) -> bool {
+    let (dest_highest_set_bit, mid_path_highest_set_bit) = (destination.highest_set_bit(), mid_path.highest_set_bit());
+    if dest_highest_set_bit < mid_path_highest_set_bit {
+        return false;
     }
-
-    if destination.highest_set_bit().unwrap() < mid_path.highest_set_bit().unwrap() {
-        return Ok(false);
-    }
-
-    let mask = (L::from_u32(1) << mid_path.highest_set_bit().unwrap()) - 1;
-    Ok(destination & mask == mid_path & mask)
+    let mask = (L::ONE << mid_path_highest_set_bit) - L::ONE;
+    destination.bits() & mask == mid_path.bits() & mask
 }
 
 /// Convert a full path to a representation which a node along that path can use
-pub fn unsplice<L: LabelT>(destination: L, mid_path: L) -> Result<L> {
-    if !(routes_through(destination, mid_path)?) {
+pub fn unsplice<L: LabelBits>(destination: RoutingLabel<L>, mid_path: RoutingLabel<L>) -> Result<RoutingLabel<L>> {
+    if !(routes_through(destination, mid_path)) {
         return Err(Error::CannotUnsplice);
     }
 
-    Ok(destination >> mid_path.highest_set_bit().unwrap())
+    RoutingLabel::try_new(destination.bits() >> mid_path.highest_set_bit()).ok_or(()).map_err(|_| unreachable!("highest_set_bit() is broken"))
 }
 
 #[cfg(test)]
 mod tests {
     use std::convert::TryFrom;
 
-    use super::*;
-    use cjdns_entities::{Label, Label128, SCHEMES};
+    use cjdns_entities::{RoutingLabel, SCHEMES};
 
-    fn l(v: &str) -> Label {
-        Label::try_from(v).unwrap()
+    use super::*;
+
+    fn l(v: &str) -> RoutingLabel<u64> {
+        RoutingLabel::try_from(v).expect("bad test data")
     }
 
-    fn l128(v: &str) -> Label128 {
-        Label128::try_from(v).unwrap()
+    fn lopt(v: &str) -> Option<RoutingLabel<u64>> {
+        RoutingLabel::try_from(v).ok()
+    }
+
+    fn l128(v: &str) -> RoutingLabel<u128> {
+        RoutingLabel::<u128>::try_from(v).expect("bad test data")
+    }
+
+    fn l128opt(v: &str) -> Option<RoutingLabel<u128>> {
+        RoutingLabel::<u128>::try_from(v).ok()
     }
 
     #[test]
     fn test_splice() {
-        assert_eq!(splice::<Label>(&[]), Err(Error::NotEnoughArguments));
+        assert_eq!(splice::<u64>(&[]), Err(Error::NotEnoughArguments));
         assert_eq!(
             splice(&[l("0000.0000.0000.0015")]),
             Err(Error::NotEnoughArguments)
-        );
-        assert_eq!(
-            splice(&[l("0000.0000.0000.0015"), l("0000.0000.0000.0000")]),
-            Err(Error::ZeroLabel)
-        );
-        assert_eq!(
-            splice(&[l("0000.0000.0000.0000"), l("0000.0000.0000.0013")]),
-            Err(Error::ZeroLabel)
         );
 
         assert_eq!(
@@ -451,60 +439,60 @@ mod tests {
     #[test]
     fn test_find_shortest_form() {
         assert_eq!(
-            find_shortest_form(l("0000.0000.0000.0002"), &SCHEMES["f4"]).unwrap(),
-            EncodingSchemeForm {
+            find_shortest_form(l("0000.0000.0000.0002").bits(), &SCHEMES["f4"]),
+            Ok(EncodingSchemeForm {
                 bit_count: 4,
                 prefix_len: 0,
                 prefix: 0,
-            }
+            })
         );
-        assert!(find_shortest_form(l("0000.0000.0000.0010"), &SCHEMES["f4"]).is_err());
+        assert!(find_shortest_form(l("0000.0000.0000.0010").bits(), &SCHEMES["f4"]).is_err());
 
         assert_eq!(
-            find_shortest_form(l("0000.0000.0000.0002"), &SCHEMES["v48"]).unwrap(),
-            EncodingSchemeForm {
+            find_shortest_form(l("0000.0000.0000.0002").bits(), &SCHEMES["v48"]),
+            Ok(EncodingSchemeForm {
                 bit_count: 4,
                 prefix_len: 1,
                 prefix: 0b01,
-            }
+            })
         );
         assert_eq!(
-            find_shortest_form(l("0000.0000.0000.0010"), &SCHEMES["v48"]).unwrap(),
-            EncodingSchemeForm {
+            find_shortest_form(l("0000.0000.0000.0010").bits(), &SCHEMES["v48"]),
+            Ok(EncodingSchemeForm {
                 bit_count: 8,
                 prefix_len: 1,
                 prefix: 0b00,
-            }
+            })
         );
-        assert!(find_shortest_form(l("0000.0000.0000.0100"), &SCHEMES["v48"]).is_err());
+        assert!(find_shortest_form(l("0000.0000.0000.0100").bits(), &SCHEMES["v48"]).is_err());
 
         assert_eq!(
-            find_shortest_form(l("0000.0000.0000.0015"), &SCHEMES["v358"]).unwrap(),
-            EncodingSchemeForm {
+            find_shortest_form(l("0000.0000.0000.0015").bits(), &SCHEMES["v358"]),
+            Ok(EncodingSchemeForm {
                 bit_count: 5,
                 prefix_len: 2,
                 prefix: 0b10,
-            }
+            })
         );
     }
 
     #[test]
     fn test_reencode_basic() {
         assert_eq!(
-            re_encode(l("0000.0000.0000.0015"), &SCHEMES["v358"], Some(2)).unwrap(),
-            l("0000.0000.0000.0404")
+            re_encode(l("0000.0000.0000.0015"), &SCHEMES["v358"], Some(2)),
+            Ok(l("0000.0000.0000.0404"))
         );
         assert_eq!(
-            re_encode(l("0000.0000.0000.0015"), &SCHEMES["v358"], Some(1)).unwrap(),
-            l("0000.0000.0000.0086")
+            re_encode(l("0000.0000.0000.0015"), &SCHEMES["v358"], Some(1)),
+            Ok(l("0000.0000.0000.0086"))
         );
         assert_eq!(
-            re_encode(l("0000.0000.0000.0015"), &SCHEMES["v358"], Some(0)).unwrap(),
-            l("0000.0000.0000.0015")
+            re_encode(l("0000.0000.0000.0015"), &SCHEMES["v358"], Some(0)),
+            Ok(l("0000.0000.0000.0015"))
         );
         assert_eq!(
-            re_encode(l("0000.0000.0000.0404"), &SCHEMES["v358"], None).unwrap(),
-            l("0000.0000.0000.0015")
+            re_encode(l("0000.0000.0000.0404"), &SCHEMES["v358"], None),
+            Ok(l("0000.0000.0000.0015"))
         );
 
         assert!(re_encode(l("0000.0000.0000.0015"), &SCHEMES["v358"], Some(3)).is_err());
@@ -529,8 +517,8 @@ mod tests {
         .is_err());
 
         assert_eq!(
-            re_encode(l("0040.0000.0000.0067"), &SCHEMES["v48"], Some(1)).unwrap(),
-            l("0400.0000.0000.0606")
+            re_encode(l("0040.0000.0000.0067"), &SCHEMES["v48"], Some(1)),
+            Ok(l("0400.0000.0000.0606"))
         );
         assert!(re_encode(l("0400.0000.0000.0067"), &SCHEMES["v48"], Some(1)).is_err());
     }
@@ -538,43 +526,41 @@ mod tests {
     #[test]
     fn test_reencode_big() {
         fn test_scheme(scheme: &EncodingScheme) {
-            let biggest_form = *(scheme.forms().last().unwrap());
+            let biggest_form = *(scheme.forms().last().expect("bad test"));
             let biggest_form_num = scheme.forms().len() - 1;
             let max = ((1u64 << (biggest_form.bit_count as u64)) - 1) as u32;
 
             for i in 0..max {
-                let full_label: Label = (Label::from_u32(1)
-                    << (biggest_form.bit_count as u32 + biggest_form.prefix_len as u32))
-                    | (Label::from_u32(i) << (biggest_form.prefix_len as u32))
-                    | Label::from_u32(biggest_form.prefix);
+                let full_label_bits = (1_u64 << (biggest_form.bit_count as u32 + biggest_form.prefix_len as u32))
+                    | ((i as u64) << (biggest_form.prefix_len as u32))
+                    | (biggest_form.prefix as u64);
+                let full_label = RoutingLabel::try_new(full_label_bits).expect("bad test data");
 
-                let dir_bits = director_bit_length(Label::from_u32(i));
+                let dir_bit_count = director_bit_length(i as u64);
                 for (form_num, form) in scheme.into_iter().enumerate() {
-                    if (form.bit_count as u32) < dir_bits {
+                    if (form.bit_count as u32) < dir_bit_count {
                         continue;
                     }
 
-                    let med = re_encode(full_label, scheme, Some(form_num)).unwrap();
+                    let med = re_encode(full_label, scheme, Some(form_num)).expect("bad test");
                     assert_eq!(
-                        re_encode(med, scheme, Some(biggest_form_num)).unwrap(),
-                        full_label
+                        re_encode(med, scheme, Some(biggest_form_num)),
+                        Ok(full_label)
                     );
 
                     for (smaller_form_num, smaller_form) in scheme.into_iter().enumerate() {
-                        if smaller_form_num >= form_num
-                            || (smaller_form.bit_count as u32) < dir_bits
-                        {
+                        if smaller_form_num >= form_num || (smaller_form.bit_count as u32) < dir_bit_count {
                             continue;
                         }
 
-                        let sml = re_encode(full_label, scheme, Some(smaller_form_num)).unwrap();
+                        let sml = re_encode(full_label, scheme, Some(smaller_form_num)).expect("bad test");
                         assert_eq!(
-                            re_encode(sml, scheme, Some(biggest_form_num)).unwrap(),
-                            full_label
+                            re_encode(sml, scheme, Some(biggest_form_num)),
+                            Ok(full_label)
                         );
 
-                        assert_eq!(re_encode(sml, scheme, Some(form_num)).unwrap(), med);
-                        assert_eq!(re_encode(med, scheme, Some(smaller_form_num)).unwrap(), sml);
+                        assert_eq!(re_encode(sml, scheme, Some(form_num)), Ok(med));
+                        assert_eq!(re_encode(med, scheme, Some(smaller_form_num)), Ok(sml));
                     }
                 }
             }
@@ -591,49 +577,37 @@ mod tests {
 
     #[test]
     fn test_reencode_358() {
-        for i in 1u32..256u32 {
-            let (form_num, label) = match director_bit_length(Label::from_u32(i)) {
-                1..=3 => (
-                    0usize,
-                    (Label::from_u32(1) << 4u32)
-                        | (Label::from_u32(i) << 1u32)
-                        | Label::from_u32(1),
-                ),
-                4 | 5 => (
-                    1usize,
-                    (Label::from_u32(1) << 7u32)
-                        | (Label::from_u32(i) << 2u32)
-                        | Label::from_u32(0b10),
-                ),
-                6..=8 => (
-                    2usize,
-                    (Label::from_u32(1) << 10u32) | (Label::from_u32(i) << 2u32),
-                ),
+        for i in 1..256 {
+            let (form_num, label): (usize, RoutingLabel<u64>) = match director_bit_length(i) {
+                1..=3 => (0, RoutingLabel::try_new((1 << 4) | (i << 1) | 1).expect("bad test data")),
+                4 | 5 => (1, RoutingLabel::try_new((1 << 7) | (i << 2) | (0b10)).expect("bad test data")),
+                6..=8 => (2, RoutingLabel::try_new((1 << 10) | (i << 2)).expect("bad test data")),
                 _ => panic!(),
             };
 
             if form_num < 2 {
-                let label2 = re_encode(label, &SCHEMES["v358"], Some(2)).unwrap();
+                let label2 = re_encode(label, &SCHEMES["v358"], Some(2)).expect("bad test");
                 assert_eq!(
-                    re_encode(label2, &SCHEMES["v358"], Some(form_num)).unwrap(),
-                    label
+                    re_encode(label2, &SCHEMES["v358"], Some(form_num)),
+                    Ok(label)
                 );
-                assert_eq!(re_encode(label2, &SCHEMES["v358"], None).unwrap(), label);
+                assert_eq!(re_encode(label2, &SCHEMES["v358"], None), Ok(label));
 
                 if form_num < 1 {
-                    let label1 = re_encode(label, &SCHEMES["v358"], Some(1)).unwrap();
+                    let label1 = re_encode(label, &SCHEMES["v358"], Some(1)).expect("bad test");
                     assert_eq!(
-                        re_encode(label2, &SCHEMES["v358"], Some(1)).unwrap(),
-                        label1
+                        re_encode(label2, &SCHEMES["v358"], Some(1)),
+                        Ok(label1)
                     );
                     assert_eq!(
-                        re_encode(label1, &SCHEMES["v358"], Some(2)).unwrap(),
-                        label2
+                        re_encode(label1, &SCHEMES["v358"], Some(2)),
+                        Ok(label2)
                     );
-                    assert_eq!(re_encode(label1, &SCHEMES["v358"], Some(0)).unwrap(), label);
-                    assert_eq!(re_encode(label1, &SCHEMES["v358"], None).unwrap(), label);
+                    assert_eq!(re_encode(label1, &SCHEMES["v358"], Some(0)), Ok(label));
+                    assert_eq!(re_encode(label1, &SCHEMES["v358"], None), Ok(label));
                 }
             }
+            //TODO what if form_num >= 2? Need some assert on it.
         }
     }
 
@@ -641,95 +615,87 @@ mod tests {
     fn test_routes_through() {
         assert_eq!(
             routes_through(l("0000.001b.0535.10e5"), l("0000.0000.0000.0015")),
-            Ok(true)
+            true
         );
         assert_eq!(
             routes_through(
                 l128("0000.0000.0000.0000.0000.001b.0535.10e5"),
                 l128("0000.0000.0000.0000.0000.0000.0000.0015")
             ),
-            Ok(true)
+            true
         );
         assert_eq!(
             routes_through(l("0000.001b.0535.10e5"), l("0000.0000.0000.0013")),
-            Ok(false)
+            false
         );
         assert_eq!(
             routes_through(
                 l128("0000.0000.0000.0000.0000.001b.0535.10e5"),
                 l128("0000.0000.0000.0000.0000.0000.0000.0013")
             ),
-            Ok(false)
+            false
         );
         // lt 2 checks
         assert_eq!(
             routes_through(l("0000.001b.0535.10e5"), l("0000.0000.0000.0001")),
-            Ok(true)
-        );
-        assert_eq!(
-            routes_through(l("0000.001b.0535.10e5"), l("0000.0000.0000.0000")),
-            Err(Error::ZeroLabel)
-        );
-        assert_eq!(
-            routes_through(l("0000.0000.0000.0000"), l("0000.001b.0535.10e5")),
-            Err(Error::ZeroLabel)
+            true
         );
         // checking other edge cases
         assert_eq!(
             routes_through(l("0000.001b.0535.10e5"), l("0000.001b.0535.10e5")),
-            Ok(true)
+            true
         );
         assert_eq!(
             routes_through(
                 l128("0000.0000.0000.0000.0000.001b.0535.10e5"),
                 l128("0000.0000.0000.0000.0000.001b.0535.10e5")
             ),
-            Ok(true)
+            true
         );
         assert_eq!(
             routes_through(l("0000.0000.0000.0001"), l("0000.0000.0000.0001")),
-            Ok(true)
+            true
         );
         assert_eq!(
             routes_through(
                 l128("0000.0000.0000.0000.0000.0000.0000.0001"),
                 l128("0000.0000.0000.0000.0000.0000.0000.0001")
             ),
-            Ok(true)
+            true
         );
         assert_eq!(
             routes_through(l("ffff.ffff.ffff.ffff"), l("ffff.ffff.ffff.fffe")),
-            Ok(false)
+            false
         );
         assert_eq!(
             routes_through(l("ffff.ffff.ffff.ffff"), l("0000.0000.0000.0001")),
-            Ok(true)
+            true
         );
         assert_eq!(
             routes_through(
                 l128("ffff.ffff.ffff.ffff.ffff.ffff.ffff.ffff"),
                 l128("0000.0000.0000.0000.0000.0000.0000.0001")
             ),
-            Ok(true)
+            true
         );
         assert_eq!(
             routes_through(l("ffff.ffff.ffff.ffff"), l("0000.0000.0000.0002")),
-            Ok(false)
+            false
         );
         assert_eq!(
             routes_through(l("0000.0000.0035.0e00"), l("0000.001b.0535.10e5")),
-            Ok(false)
+            false
         );
         assert_eq!(
             routes_through(l("0000.000b.0535.10e5"), l("0000.001b.0535.10e5")),
-            Ok(false)
+            false
         );
         assert_eq!(
             routes_through(
                 l128("0000.0000.0000.0000.0000.000b.0535.10e5"),
                 l128("0000.0000.0000.0000.0000.001b.0535.10e5")
             ),
-            Ok(false)
+            false
         );
     }
 
@@ -819,21 +785,6 @@ mod tests {
             ),
             Err(Error::CannotUnsplice)
         );
-        assert_eq!(
-            unsplice(l("0000.4500.00a0.0123"), l("0000.0000.0000.0000")),
-            Err(Error::ZeroLabel)
-        );
-        assert_eq!(
-            unsplice(
-                l128("0000.0000.0000.0000.0000.4500.00a0.0123"),
-                l128("0000.0000.0000.0000.0000.0000.0000.0000")
-            ),
-            Err(Error::ZeroLabel)
-        );
-        assert_eq!(
-            unsplice(l("0000.0000.0000.0000"), l("0000.4500.00a0.0123")),
-            Err(Error::ZeroLabel)
-        );
         let label64_array = vec![
             l("0000.0000.0000.0015"),
             l("0000.0000.0000.008e"),
@@ -844,7 +795,7 @@ mod tests {
         ];
         let mut test64_val = l("0000.001b.0535.10e5");
         for label in label64_array {
-            test64_val = unsplice(test64_val, label).unwrap();
+            test64_val = unsplice(test64_val, label).expect("failed to unsplice");
         }
         assert_eq!(test64_val, l("0000.0000.0000.0001"));
 
@@ -858,7 +809,7 @@ mod tests {
         ];
         let mut test128_val = l128("0000.0000.0000.0000.0000.001b.0535.10e5");
         for label in label128_array {
-            test128_val = unsplice(test128_val, label).unwrap();
+            test128_val = unsplice(test128_val, label).expect("failed to unsplice");
         }
         assert_eq!(test128_val, l128("0000.0000.0000.0000.0000.0000.0000.0001"));
     }
@@ -868,38 +819,38 @@ mod tests {
         assert_eq!(
             build_label(&[
                 PathHop::new(
-                    l("0000.0000.0000.0000"),
-                    l("0000.0000.0000.0015"),
+                    lopt("0000.0000.0000.0000"),
+                    lopt("0000.0000.0000.0015"),
                     &SCHEMES["v358"]
                 ),
                 PathHop::new(
-                    l("0000.0000.0000.009e"),
-                    l("0000.0000.0000.008e"),
+                    lopt("0000.0000.0000.009e"),
+                    lopt("0000.0000.0000.008e"),
                     &SCHEMES["v358"]
                 ),
                 PathHop::new(
-                    l("0000.0000.0000.0013"),
-                    l("0000.0000.0000.00a2"),
+                    lopt("0000.0000.0000.0013"),
+                    lopt("0000.0000.0000.00a2"),
                     &SCHEMES["v358"]
                 ),
                 PathHop::new(
-                    l("0000.0000.0000.001b"),
-                    l("0000.0000.0000.001d"),
+                    lopt("0000.0000.0000.001b"),
+                    lopt("0000.0000.0000.001d"),
                     &SCHEMES["v358"]
                 ),
                 PathHop::new(
-                    l("0000.0000.0000.00ee"),
-                    l("0000.0000.0000.001b"),
+                    lopt("0000.0000.0000.00ee"),
+                    lopt("0000.0000.0000.001b"),
                     &SCHEMES["v358"]
                 ),
                 PathHop::new(
-                    l("0000.0000.0000.0019"),
-                    l("0000.0000.0000.001b"),
+                    lopt("0000.0000.0000.0019"),
+                    lopt("0000.0000.0000.001b"),
                     &SCHEMES["v358"]
                 ),
                 PathHop::new(
-                    l("0000.0000.0000.0013"),
-                    l("0000.0000.0000.0000"),
+                    lopt("0000.0000.0000.0013"),
+                    lopt("0000.0000.0000.0000"),
                     &SCHEMES["v358"]
                 ),
             ]),
@@ -917,8 +868,8 @@ mod tests {
         );
         assert_eq!(
             build_label(&[PathHop::new(
-                l("0000.0000.0000.0013"),
-                l("0000.0000.0000.0000"),
+                lopt("0000.0000.0000.0013"),
+                lopt("0000.0000.0000.0000"),
                 &SCHEMES["v358"]
             )]),
             Err(Error::NotEnoughArguments)
@@ -926,13 +877,13 @@ mod tests {
         assert_eq!(
             build_label(&[
                 PathHop::new(
-                    l("0000.0000.0000.0000"),
-                    l("0000.0000.0000.0015"),
+                    lopt("0000.0000.0000.0000"),
+                    lopt("0000.0000.0000.0015"),
                     &SCHEMES["v358"]
                 ),
                 PathHop::new(
-                    l("0000.0000.0000.0013"),
-                    l("0000.0000.0000.0000"),
+                    lopt("0000.0000.0000.0013"),
+                    lopt("0000.0000.0000.0000"),
                     &SCHEMES["v358"]
                 ),
             ]),
@@ -941,28 +892,13 @@ mod tests {
         assert_eq!(
             build_label(&[
                 PathHop::new(
-                    l("0000.0000.0000.0000"),
-                    l("0000.0000.0000.0015"),
+                    lopt("0000.0000.0000.0000"),
+                    lopt("0000.0000.0000.0015"),
                     &SCHEMES["v358"]
                 ),
                 PathHop::new(
-                    l("0000.0000.0000.0000"),
-                    l("0000.0000.0000.0000"),
-                    &SCHEMES["v358"]
-                ),
-            ]),
-            Err(Error::BadArgument)
-        );
-        assert_eq!(
-            build_label(&[
-                PathHop::new(
-                    l("0000.0000.0000.0000"),
-                    l("0000.0000.0000.0000"),
-                    &SCHEMES["v358"]
-                ),
-                PathHop::new(
-                    l("0000.0000.0000.0013"),
-                    l("0000.0000.0000.0000"),
+                    lopt("0000.0000.0000.0000"),
+                    lopt("0000.0000.0000.0000"),
                     &SCHEMES["v358"]
                 ),
             ]),
@@ -971,28 +907,13 @@ mod tests {
         assert_eq!(
             build_label(&[
                 PathHop::new(
-                    l("0000.0000.0000.0001"),
-                    l("0000.0000.0000.0015"),
+                    lopt("0000.0000.0000.0000"),
+                    lopt("0000.0000.0000.0000"),
                     &SCHEMES["v358"]
                 ),
                 PathHop::new(
-                    l("0000.0000.0000.0013"),
-                    l("0000.0000.0000.0000"),
-                    &SCHEMES["v358"]
-                ),
-            ]),
-            Err(Error::BadArgument)
-        );
-        assert_eq!(
-            build_label(&[
-                PathHop::new(
-                    l("0000.0000.0000.0000"),
-                    l("0000.0000.0000.0015"),
-                    &SCHEMES["v358"]
-                ),
-                PathHop::new(
-                    l("0000.0000.0000.0013"),
-                    l("0000.0000.0000.0001"),
+                    lopt("0000.0000.0000.0013"),
+                    lopt("0000.0000.0000.0000"),
                     &SCHEMES["v358"]
                 ),
             ]),
@@ -1001,18 +922,13 @@ mod tests {
         assert_eq!(
             build_label(&[
                 PathHop::new(
-                    l("0000.0000.0000.0000"),
-                    l("0000.0000.0000.0015"),
+                    lopt("0000.0000.0000.0001"),
+                    lopt("0000.0000.0000.0015"),
                     &SCHEMES["v358"]
                 ),
                 PathHop::new(
-                    l("0000.0000.0000.0000"),
-                    l("0000.0000.0000.008e"),
-                    &SCHEMES["v358"]
-                ),
-                PathHop::new(
-                    l("0000.0000.0000.0013"),
-                    l("0000.0000.0000.0000"),
+                    lopt("0000.0000.0000.0013"),
+                    lopt("0000.0000.0000.0000"),
                     &SCHEMES["v358"]
                 ),
             ]),
@@ -1021,18 +937,13 @@ mod tests {
         assert_eq!(
             build_label(&[
                 PathHop::new(
-                    l("0000.0000.0000.0000"),
-                    l("0000.0000.0000.0015"),
+                    lopt("0000.0000.0000.0000"),
+                    lopt("0000.0000.0000.0015"),
                     &SCHEMES["v358"]
                 ),
                 PathHop::new(
-                    l("0000.0000.0000.009e"),
-                    l("0000.0000.0000.0000"),
-                    &SCHEMES["v358"]
-                ),
-                PathHop::new(
-                    l("0000.0000.0000.0013"),
-                    l("0000.0000.0000.0000"),
+                    lopt("0000.0000.0000.0013"),
+                    lopt("0000.0000.0000.0001"),
                     &SCHEMES["v358"]
                 ),
             ]),
@@ -1041,61 +952,101 @@ mod tests {
         assert_eq!(
             build_label(&[
                 PathHop::new(
-                    l("0000.0000.0000.0000"),
-                    l("0000.0000.0000.0015"),
+                    lopt("0000.0000.0000.0000"),
+                    lopt("0000.0000.0000.0015"),
                     &SCHEMES["v358"]
                 ),
                 PathHop::new(
-                    l("0000.0000.0000.009e"),
-                    l("0000.0000.0000.008e"),
+                    lopt("0000.0000.0000.0000"),
+                    lopt("0000.0000.0000.008e"),
                     &SCHEMES["v358"]
                 ),
                 PathHop::new(
-                    l("0000.0000.0000.0013"),
-                    l("0000.0000.0000.0000"),
+                    lopt("0000.0000.0000.0013"),
+                    lopt("0000.0000.0000.0000"),
+                    &SCHEMES["v358"]
+                ),
+            ]),
+            Err(Error::BadArgument)
+        );
+        assert_eq!(
+            build_label(&[
+                PathHop::new(
+                    lopt("0000.0000.0000.0000"),
+                    lopt("0000.0000.0000.0015"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    lopt("0000.0000.0000.009e"),
+                    lopt("0000.0000.0000.0000"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    lopt("0000.0000.0000.0013"),
+                    lopt("0000.0000.0000.0000"),
+                    &SCHEMES["v358"]
+                ),
+            ]),
+            Err(Error::BadArgument)
+        );
+        assert_eq!(
+            build_label(&[
+                PathHop::new(
+                    lopt("0000.0000.0000.0000"),
+                    lopt("0000.0000.0000.0015"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    lopt("0000.0000.0000.009e"),
+                    lopt("0000.0000.0000.008e"),
+                    &SCHEMES["v358"]
+                ),
+                PathHop::new(
+                    lopt("0000.0000.0000.0013"),
+                    lopt("0000.0000.0000.0000"),
                     &SCHEMES["v358"]
                 ),
             ]),
             Ok((
-                splice(&[l("0000.0000.0000.008e"), l("0000.0000.0000.0015")]).unwrap(),
+                splice(&[l("0000.0000.0000.008e"), l("0000.0000.0000.0015")]).expect("failed to splice"),
                 vec![l("0000.0000.0000.0015"), l("0000.0000.0000.008e")]
             ))
         );
         assert_eq!(
             build_label(&[
                 PathHop::new(
-                    l128("0000.0000.0000.0000.0000.0000.0000.0000"),
-                    l128("0000.0000.0000.0000.0000.0000.0000.0015"),
+                    l128opt("0000.0000.0000.0000.0000.0000.0000.0000"),
+                    l128opt("0000.0000.0000.0000.0000.0000.0000.0015"),
                     &SCHEMES["v358"]
                 ),
                 PathHop::new(
-                    l128("0000.0000.0000.0000.0000.0000.0000.009e"),
-                    l128("0000.0000.0000.0000.0000.0000.0000.008e"),
+                    l128opt("0000.0000.0000.0000.0000.0000.0000.009e"),
+                    l128opt("0000.0000.0000.0000.0000.0000.0000.008e"),
                     &SCHEMES["v358"]
                 ),
                 PathHop::new(
-                    l128("0000.0000.0000.0000.0000.0000.0000.0013"),
-                    l128("0000.0000.0000.0000.0000.0000.0000.00a2"),
+                    l128opt("0000.0000.0000.0000.0000.0000.0000.0013"),
+                    l128opt("0000.0000.0000.0000.0000.0000.0000.00a2"),
                     &SCHEMES["v358"]
                 ),
                 PathHop::new(
-                    l128("0000.0000.0000.0000.0000.0000.0000.001b"),
-                    l128("0000.0000.0000.0000.0000.0000.0000.001d"),
+                    l128opt("0000.0000.0000.0000.0000.0000.0000.001b"),
+                    l128opt("0000.0000.0000.0000.0000.0000.0000.001d"),
                     &SCHEMES["v358"]
                 ),
                 PathHop::new(
-                    l128("0000.0000.0000.0000.0000.0000.0000.00ee"),
-                    l128("0000.0000.0000.0000.0000.0000.0000.001b"),
+                    l128opt("0000.0000.0000.0000.0000.0000.0000.00ee"),
+                    l128opt("0000.0000.0000.0000.0000.0000.0000.001b"),
                     &SCHEMES["v358"]
                 ),
                 PathHop::new(
-                    l128("0000.0000.0000.0000.0000.0000.0000.0019"),
-                    l128("0000.0000.0000.0000.0000.0000.0000.001b"),
+                    l128opt("0000.0000.0000.0000.0000.0000.0000.0019"),
+                    l128opt("0000.0000.0000.0000.0000.0000.0000.001b"),
                     &SCHEMES["v358"]
                 ),
                 PathHop::new(
-                    l128("0000.0000.0000.0000.0000.0000.0000.0013"),
-                    l128("0000.0000.0000.0000.0000.0000.0000.0000"),
+                    l128opt("0000.0000.0000.0000.0000.0000.0000.0013"),
+                    l128opt("0000.0000.0000.0000.0000.0000.0000.0000"),
                     &SCHEMES["v358"]
                 ),
             ]),
@@ -1123,7 +1074,6 @@ mod tests {
             is_one_hop(l("0000.0000.0000.0015"), &SCHEMES["v358"]),
             Ok(true)
         );
-        assert!(is_one_hop(l("0000.0000.0000.0000"), &SCHEMES["v358"]).is_err());
         assert_eq!(
             is_one_hop(l("0000.0000.0000.0153"), &SCHEMES["v358"]),
             Ok(false)
