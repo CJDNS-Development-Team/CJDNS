@@ -10,3 +10,6 @@ description = "cjdns node admin lib & binary"
 
 [dependencies]
 bendy = "0.3" # bencode support
+dirs = "3.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
