@@ -71,7 +71,7 @@ mod config {
         #[serde(rename = "cjdnsadminPath")]
         pub config_file_path: Option<String>,
 
-        #[serde(rename = "anon")]
+        #[serde(rename = "anon", default)]
         pub anon: bool,
     }
 
@@ -95,14 +95,16 @@ mod config {
             }
 
             // Build resulting options
-            let res = ConnectionOptions {
-                addr: opts.addr.as_ref().map_or(DEFAULT_ADDR, |s| &s).to_string(),
-                port: opts.port.unwrap_or(DEFAULT_PORT),
-                password: opts.password.as_ref().map_or_else(|| if opts.anon { "" } else { DEFAULT_PASSWORD }, |s| &s).to_string(),
-                used_config_file: conf_file,
-            };
+            Ok(Self::build_connection_options(opts, conf_file))
+        }
 
-            Ok(res)
+        fn build_connection_options(self, conf_file: Option<PathBuf>) -> ConnectionOptions {
+            ConnectionOptions {
+                addr: self.addr.as_ref().map_or(DEFAULT_ADDR, |s| &s).to_string(),
+                port: self.port.unwrap_or(DEFAULT_PORT),
+                password: self.password.as_ref().map_or_else(|| if self.anon { "" } else { DEFAULT_PASSWORD }, |s| &s).to_string(),
+                used_config_file: conf_file,
+            }
         }
 
         fn get_config_file_location(&self) -> Option<PathBuf> {
@@ -118,9 +120,13 @@ mod config {
             None // Unable to locate HOME dir - unsupported platform?
         }
 
+        fn parse_config(json: &[u8]) -> Result<Self, Error> {
+            serde_json::from_slice(json).map_err(|e| Error::JsonError(e))
+        }
+
         fn read_config_file(file_path: &Path) -> Result<Self, Error> {
             let json = fs::read(file_path).map_err(|e| Error::FileError(e))?;
-            serde_json::from_slice(&json).map_err(|e| Error::JsonError(e))
+            Self::parse_config(&json)
         }
 
         fn read_optional_config_file(file_path: &Path) -> Result<Option<Self>, Error> {
@@ -130,6 +136,81 @@ mod config {
                 Err(err) => Err(err),
             }
         }
+    }
+
+    #[test]
+    fn test_build_connection_options() {
+        let s = |s: &str| -> String { s.to_string() };
+        let ss = |s: &str| -> Option<String> { Some(s.to_string()) };
+
+        assert_eq!(
+            Opts::default().build_connection_options(None),
+            ConnectionOptions {
+                addr: s("127.0.0.1"),
+                port: 11234,
+                password: s("NONE"),
+                used_config_file: None
+            }
+        );
+
+        assert_eq!(
+            Opts { anon: true, ..Opts::default() }.build_connection_options(None),
+            ConnectionOptions {
+                addr: s("127.0.0.1"),
+                port: 11234,
+                password: s(""),
+                used_config_file: None
+            }
+        );
+
+        assert_eq!(
+            Opts { addr: ss("192.168.1.1"), ..Opts::default() }.build_connection_options(None),
+            ConnectionOptions {
+                addr: s("192.168.1.1"),
+                port: 11234,
+                password: s("NONE"),
+                used_config_file: None
+            }
+        );
+
+        assert_eq!(
+            Opts { port: Some(1234), ..Opts::default() }.build_connection_options(None),
+            ConnectionOptions {
+                addr: s("127.0.0.1"),
+                port: 1234,
+                password: s("NONE"),
+                used_config_file: None
+            }
+        );
+
+        assert_eq!(
+            Opts { password: ss("secret"), ..Opts::default() }.build_connection_options(None),
+            ConnectionOptions {
+                addr: s("127.0.0.1"),
+                port: 11234,
+                password: s("secret"),
+                used_config_file: None
+            }
+        );
+    }
+
+    #[test]
+    fn test_parse_config() {
+        let s = |s: &str| -> Option<String> { Some(s.to_string()) };
+        let c = |json: &str| -> Opts { Opts::parse_config(json.as_bytes()).expect("bad test config") };
+
+        assert_eq!(c(r#"{}"#), Opts::default());
+
+        assert_eq!(c(r#"{ "unknown": "foo" }"#), Opts::default());
+
+        assert_eq!(c(r#"{ "addr": "192.168.1.1" }"#), Opts { addr: s("192.168.1.1"), ..Opts::default() });
+        assert_eq!(c(r#"{ "port": 1234 }"#), Opts { port: Some(1234), ..Opts::default() });
+        assert_eq!(c(r#"{ "password": "secret" }"#), Opts { password: s("secret"), ..Opts::default() });
+
+        assert_eq!(
+            c(r#"{ "addr": "192.168.1.1", "port": 1234, "password": "secret" }"#),
+            Opts { addr: s("192.168.1.1"), port: Some(1234), password: s("secret"), ..Opts::default() }
+        );
     }
 }
 
