@@ -1,7 +1,5 @@
 [workspace]
 
 members = [
-    "cjdns-splice",
-    "cjdns-entities",
-    "cjdns-keys"
+    "cjdns-core"
 ]

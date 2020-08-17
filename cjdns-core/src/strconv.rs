@@ -18,6 +18,18 @@ pub enum Error {
 
 impl fmt::Display for RoutingLabel<u64> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        <RoutingLabel<u64> as fmt::LowerHex>::fmt(self, f)
+    }
+}
+
+impl fmt::Display for RoutingLabel<u128> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        <RoutingLabel<u128> as fmt::LowerHex>::fmt(self, f)
+    }
+}
+
+impl fmt::LowerHex for RoutingLabel<u64> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let bits = self.bits();
         write!(
             f,
@@ -30,12 +42,44 @@ impl fmt::Display for RoutingLabel<u64> {
     }
 }
 
-impl fmt::Display for RoutingLabel<u128> {
+impl fmt::LowerHex for RoutingLabel<u128> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let bits = self.bits();
         write!(
             f,
             "{:04x}.{:04x}.{:04x}.{:04x}.{:04x}.{:04x}.{:04x}.{:04x}",
+            (bits >> 112) & 0xFFFFu128,
+            (bits >> 96) & 0xFFFFu128,
+            (bits >> 80) & 0xFFFFu128,
+            (bits >> 64) & 0xFFFFu128,
+            (bits >> 48) & 0xFFFFu128,
+            (bits >> 32) & 0xFFFFu128,
+            (bits >> 16) & 0xFFFFu128,
+            bits & 0xFFFFu128
+        )
+    }
+}
+
+impl fmt::UpperHex for RoutingLabel<u64> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let bits = self.bits();
+        write!(
+            f,
+            "{:04X}.{:04X}.{:04X}.{:04X}",
+            (bits >> 48) & 0xFFFFu64,
+            (bits >> 32) & 0xFFFFu64,
+            (bits >> 16) & 0xFFFFu64,
+            bits & 0xFFFFu64
+        )
+    }
+}
+
+impl fmt::UpperHex for RoutingLabel<u128> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let bits = self.bits();
+        write!(
+            f,
+            "{:04X}.{:04X}.{:04X}.{:04X}.{:04X}.{:04X}.{:04X}.{:04X}",
             (bits >> 112) & 0xFFFFu128,
             (bits >> 96) & 0xFFFFu128,
             (bits >> 80) & 0xFFFFu128,
@@ -168,6 +212,15 @@ mod tests {
 
     fn l128(v: u128) -> RoutingLabel<u128> {
         RoutingLabel::try_new(v).expect("bad test data")
+    }
+
+    #[test]
+    fn label_formatting() {
+        let label = l64(14574489829);
+        assert_eq!(format!("{}", label), "0000.0003.64b5.10e5"); // Default format is lower-hex
+        assert_eq!(format!("{:x}", label), "0000.0003.64b5.10e5");
+        assert_eq!(format!("{:X}", label), "0000.0003.64B5.10E5");
+        assert_eq!(format!("{:b}", label), "0000000000000000.0000000000000011.0110010010110101.0001000011100101");
     }
 
     #[test]

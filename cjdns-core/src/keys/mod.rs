@@ -1,8 +1,5 @@
 //! Public and private key types.
 
-#[macro_use]
-extern crate lazy_static;
-
 use std::convert::TryFrom;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -14,24 +11,21 @@ use sodiumoxide::crypto::hash::sha512::hash;
 use sodiumoxide::crypto::scalarmult;
 use sodiumoxide::init;
 use sodiumoxide::randombytes::randombytes;
+use data_encoding::BASE32_DNSCURVE;
 
-use base_32::{base32_decode, base32_encode, BASE32_ENCODED_STRING_LEN};
-use cjdns_entities::RoutingLabel;
 use errors::Error;
 
-mod base_32;
 mod errors;
+pub mod node;
 
 lazy_static! {
     static ref IP6_RE: Regex = Regex::new("^fc[0-9a-f]{2}:(?:[0-9a-f]{4}:){6}[0-9a-f]{4}$").expect("bad regexp");
     static ref PRIVATE_KEY_RE: Regex = Regex::new("^[0-9a-fA-F]{64}$").expect("bad regexp");
     static ref PUBLIC_KEY_RE: Regex = Regex::new(r"[a-z0-9]{52}\.k").expect("bad regexp");
-    static ref NODE_NAME_RE: Regex = Regex::new(
-        "^v([0-9]+)\\.\
-        ([[:xdigit:]]{4}\\.[[:xdigit:]]{4}\\.[[:xdigit:]]{4}\\.[[:xdigit:]]{4})\\.\
-        ([a-z0-9]{52}\\.k)"
-    ).expect("bad regexp");
 }
+
+/// Pub key len is 54, where last two characters are `.k`. So first 52 are the encoded ones.
+const BASE32_ENCODED_STRING_LEN: usize = 52;
 
 /// Vec<u8> representation for type instance. Implemented for `CJDNSPrivateKey`, `CJDNSPublicKey`, `CJDNS_IP6`.
 pub trait BytesRepr {
@@ -108,19 +102,6 @@ impl CJDNSKeysApi {
     pub fn gen_private_key(&self) -> CJDNSPrivateKey {
         CJDNSPrivateKey::new()
     }
-
-    /// Gets version, label and public key all together in tuple from `name` argument, if it has valid structure. Otherwise returns error.
-    pub fn parse_node_name(name: String) -> Result<(u32, RoutingLabel<u64>, CJDNSPublicKey), Error> {
-        if let Some(c) = NODE_NAME_RE.captures(&name) {
-            let str_from_captured_group = |group_num: usize| -> &str { c.get(group_num).expect("bad group index").as_str() };
-            let version = str_from_captured_group(1).parse::<u32>().expect("bad regexp - version");
-            let label = RoutingLabel::try_from(str_from_captured_group(2)).expect("bad regexp - label");
-            let public_key = CJDNSPublicKey::try_from(str_from_captured_group(3).to_string())?;
-            Ok((version, label, public_key))
-        } else {
-            Err(Error::CannotParseNodeName)
-        }
-    }
 }
 
 impl TryFrom<String> for CJDNSPrivateKey {
@@ -169,7 +150,7 @@ impl TryFrom<String> for CJDNSPublicKey {
     type Error = Error;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        if PUBLIC_KEY_RE.is_match(&value) && base32_decode(&value[..BASE32_ENCODED_STRING_LEN]).is_ok() {
+        if PUBLIC_KEY_RE.is_match(&value) && BASE32_DNSCURVE.decode(&value[..BASE32_ENCODED_STRING_LEN].as_bytes()).is_ok() {
             return Ok(CJDNSPublicKey { k: value });
         }
         Err(Error::CannotCreateFromString)
@@ -185,14 +166,14 @@ impl From<&CJDNSPrivateKey> for CJDNSPublicKey {
 
 impl From<[u8; 32]> for CJDNSPublicKey {
     fn from(bytes: [u8; 32]) -> Self {
-        let pub_key = base32_encode(bytes) + ".k";
+        let pub_key = BASE32_DNSCURVE.encode(&bytes) + ".k";
         CJDNSPublicKey { k: pub_key }
     }
 }
 
 impl BytesRepr for CJDNSPublicKey {
     fn bytes(&self) -> Vec<u8> {
-        base32_decode(&self.k[..BASE32_ENCODED_STRING_LEN]).expect("broken invariant")
+        BASE32_DNSCURVE.decode(&self.k[..BASE32_ENCODED_STRING_LEN].as_bytes()).expect("broken invariant")
     }
 }
 
@@ -322,7 +303,7 @@ mod tests {
             // can not be decoded
             pub_key_r("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.k"),
             // can not be decoded, takes lots of bytes - last char = 8
-            pub_key_r("xpr2z2s3hnr0qzpk2u121uqjv15dc335v54pccqlqj6c5p840yy8.k.k"),
+            pub_key_r("xpr2z2s3hnr0qzpk2u121uqjv15dc335v54pccqlqj6c5p840yy8.k"),
         ];
         for err_res in invalid_pub_keys {
             assert!(err_res.is_err())
@@ -384,34 +365,6 @@ mod tests {
 
         for i in invalid_ip6_bytes {
             assert!(CJDNS_IP6::try_from(i).is_err())
-        }
-    }
-
-    #[test]
-    fn test_parse_node_name() {
-        let valid_node_names = vec![
-            "v19.0000.0000.0000.0863.2v6dt6f841hzhq2wsqwt263w2dswkt6fz82vcyxqptk88mtp8y50.k",
-            "v10.0a20.00ff.00e0.9901.qgkjd0stfvk9r3j28s4gh8rgslbgx2r5xgxzxkgm5vdxqwn8xsu0.k",
-        ];
-        for valid_node_name in valid_node_names {
-            let valid_node_name = valid_node_name.to_string();
-            assert!(CJDNSKeysApi::parse_node_name(valid_node_name).is_ok());
-        }
-
-        let invalid_node_names = vec![
-            "12foo",
-            "",
-            "19.0000.0000.0000.0863.2v6dt6f841hzhq2wsqwt263w2dswkt6fz82vcyxqptk88mtp8y50.k",
-            "v1234123123.0000.00000.000.0863.2v6dt6f841hzhq2wsqwt263w2dswkt6fz82vcyxqptk88mtp8y50.k",
-            "v19.0000.0000.0000.0863.2v6dt6f841hZhq2wsqwt263w2dswkt6fz82vcyxqptk88mtp8y50.k",
-            "v19.0ffe.1200.0000.0863.2v6dt6f841hzhq2wsqwt263w2dswkt6fz82vcyxqptk88mtpy50.k",
-            "v19.gh00.0000.0000.0863.2v6dt6f841hzhq2wsqwt263w2dswkt6fz82vcyxqptk88mtp8y50.k",
-            "v10.0000.0000.0000.0001.aer2z2s3hnr0qzpk2u121uqjv15dc335v54pccqlqj6c5p840yy0.k",
-            "v10.0a20.00ff.00e0.9901.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.k)",
-        ];
-        for invalid_node_name in invalid_node_names {
-            let invalid_node_name = invalid_node_name.to_string();
-            assert!(CJDNSKeysApi::parse_node_name(invalid_node_name).is_err());
         }
     }
 }
