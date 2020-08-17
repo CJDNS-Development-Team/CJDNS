@@ -11,6 +11,7 @@ pub use self::pathhop::*;
 pub use self::routinglabel::*;
 pub use self::strconv::*;
 
+mod announcement;
 mod encoding;
 mod encoding_scheme;
 mod pathhop;
