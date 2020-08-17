@@ -1,0 +1,12 @@
+[package]
+name = "cjdns-admin"
+version = "0.1.0"
+authors = [
+    "Alex Kordys <a.kordys@mixbytes.io>"
+]
+edition = "2018"
+license = "GPL-3.0"
+description = "cjdns node admin lib & binary"
+
+[dependencies]
+bendy = "0.3" # bencode support
