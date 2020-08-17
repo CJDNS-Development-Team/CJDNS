@@ -5,14 +5,27 @@ use std::mem::size_of;
 use std::ops::{Add, BitAnd, BitOr, BitXor, Shl, Shr, Sub};
 use std::u64;
 
-/// Routing label (a sequence of encoded Directors).
+/// Routing label (a sequence of encoded **Directors**).
+///
+/// For more information on labels please refer to
+/// [the whitepaper](https://github.com/cjdelisle/cjdns/blob/master/doc/Whitepaper.md#definitions).
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub struct RoutingLabel<L: LabelBits>(L);
 
+/// A 64 bit routing label.
+///
 /// 64 bit labels are used by default.
 pub type DefaultRoutingLabel = RoutingLabel<u64>;
 
 /// Describes types which can act as routing label's underlying data type.
+///
+/// Routing labels itself are opaque, so this trait is required for internal data manipulations.
+///
+/// The following parent traits of `LabelBits` are considered public: `Sized`, `Copy`, `From<u32>`, `Eq`, `Display`.
+///
+/// For label manipulation routines please see the [cjdns-splice](../cjdns-splice) crate.
+///
+/// This trait is implemented for `u64` and `u128`.
 pub trait LabelBits:
     Sized
     + Copy
@@ -41,7 +54,7 @@ pub trait LabelBits:
 }
 
 impl<L: LabelBits> RoutingLabel<L> {
-    /// Create new non-zero routing label. Returns `None` is `bits` is zero.
+    /// Create new non-zero routing label. Returns `None` if `bits` is zero.
     pub fn try_new(bits: L) -> Option<Self> {
         if bits != L::ZERO {
             Some(RoutingLabel(bits))
@@ -50,16 +63,12 @@ impl<L: LabelBits> RoutingLabel<L> {
         }
     }
 
-    /// Raw data of this routing label.
+    /// Raw data of this routing label. Always non-zero.
+    #[inline]
     pub fn bits(&self) -> L {
         let RoutingLabel(bits) = *self;
+        debug_assert!(bits != L::ZERO, "invariant broken");
         bits
-    }
-
-    /// Index of highest set bit in binary representation.
-    pub fn highest_set_bit(&self) -> u32 {
-        assert!(self.bits() != L::ZERO);
-        self.bits().highest_set_bit().expect("zero label")
     }
 }
 
@@ -112,18 +121,5 @@ mod tests {
         assert_eq!(<u128 as LabelBits>::highest_set_bit(&14574489829), Some(33));
         assert_eq!(<u64 as LabelBits>::highest_set_bit(&(1 << 63)), Some(63));
         assert_eq!(<u128 as LabelBits>::highest_set_bit(&(1 << 100)), Some(100));
-    }
-
-    #[test]
-    fn label_highest_set_bit() {
-        let l64 = |v: u64| -> RoutingLabel<u64> { RoutingLabel(v) };
-        let l128 = |v: u128| -> RoutingLabel<u128> { RoutingLabel(v) };
-
-        assert_eq!(l64(1).highest_set_bit(), 0);
-        assert_eq!(l64(2).highest_set_bit(), 1);
-        assert_eq!(l64(14574489829).highest_set_bit(), 33);
-        assert_eq!(l128(14574489829).highest_set_bit(), 33);
-        assert_eq!(l64(1 << 63).highest_set_bit(), 63);
-        assert_eq!(l128(1 << 100).highest_set_bit(), 100);
     }
 }
