@@ -9,8 +9,9 @@ use sodiumoxide::crypto::hash::sha512::{self, Digest};
 use sodiumoxide::crypto::sign::ed25519::{verify_detached, PublicKey, Signature};
 
 use crate::{
+    deserialize_forms,
     keys::{CJDNSPublicKey, CJDNS_IP6},
-    DefaultRoutingLabel, EncodingScheme,
+    DefaultRoutingLabel, EncodingSchemeForm,
 };
 
 #[derive(Debug, Clone)]
@@ -42,10 +43,10 @@ pub struct AnnouncementEntities(Vec<Entities>);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Entities {
-    Version(u8),
+    Version(u16),
     EncodingScheme {
         hex: String,
-        scheme: EncodingScheme,
+        scheme: Vec<EncodingSchemeForm>,
     },
     Peer {
         ipv6: CJDNS_IP6,
@@ -70,7 +71,7 @@ impl Announcement {
         Self::parse_with_check_opt(ann_msg, false)
     }
 
-    /// The reason for API splitting (into `parse` and `parse_no_check`) is that parse with checking is used almost always.
+    /// The reason for API splitting into `parse` and `parse_no_check` is that parse with checking is used almost always.
     fn parse_with_check_opt(ann_msg: Vec<u8>, sig_check_flag: bool) -> Result<Self, &'static str> {
         if ann_msg.len() < Self::MIN_SIZE {
             return Err("Announcement message size is too small");
@@ -80,7 +81,7 @@ impl Announcement {
             Self::check_sig(&header, &ann_msg[AnnouncementHeader::SIG_SIZE..])?;
         }
         let (node_pub_key, node_ip) = header.get_sender_keys().or(Err("todo"))?;
-        let entities = AnnouncementEntities::parse_ann(&ann_msg);
+        let entities = AnnouncementEntities::parse_ann(&ann_msg[AnnouncementHeader::SIZE..])?;
 
         let binary_hash = sha512::hash(&ann_msg);
 
@@ -166,11 +167,65 @@ impl AnnouncementHeader {
     }
 }
 
+impl Entities {
+    const VERSION_TYPE: u8 = 2u8;
+    const ENCODING_SCHEME_TYPE: u8 = 0u8;
+    const PEER_TYPE: u8 = 1u8;
+}
+
 impl AnnouncementEntities {
-    fn parse_ann(_ann_msg: &[u8]) -> Self {
-        // Mock
-        AnnouncementEntities(vec![Entities::Version(10)])
+    // very dirty impl
+    fn parse_ann(ann_msg: &[u8]) -> Result<Self, &'static str> {
+        let mut out_vec = vec![];
+        let mut ann_msg_idx = 0usize;
+        while ann_msg_idx < ann_msg.len() {
+            if ann_msg[ann_msg_idx] == 0 { return Err("0 length entity in message"); }
+            if ann_msg[ann_msg_idx] == 1 { ann_msg_idx += 1; continue; }
+            // consider match
+            if ann_msg[ann_msg_idx + 1] == Entities::VERSION_TYPE {
+                out_vec.push(AnnouncementEntities::parse_version(&ann_msg[ann_msg_idx..ann_msg_idx+(ann_msg[ann_msg_idx]as usize)]));
+                ann_msg_idx += ann_msg[ann_msg_idx] as usize;
+            } else if ann_msg[ann_msg_idx + 1] == Entities::ENCODING_SCHEME_TYPE {
+                out_vec.push(AnnouncementEntities::parse_enc_scheme(&ann_msg[ann_msg_idx..ann_msg_idx+(ann_msg[ann_msg_idx]as usize)]));
+                ann_msg_idx += ann_msg[ann_msg_idx] as usize;
+            } else if ann_msg[ann_msg_idx + 1] == Entities::PEER_TYPE {
+                ann_msg_idx += ann_msg[ann_msg_idx] as usize;
+            } else {
+                // unrecognized staff
+                ann_msg_idx += ann_msg[ann_msg_idx] as usize;
+            }
+        }
+        //if ann_msg_idx != ann_msg.len() { return Err("garbage after the last announcement entity"); }
+        Ok(AnnouncementEntities(out_vec))
     }
+
+    fn parse_version(version_bytes: &[u8]) -> Entities {
+        let x = 0;
+        println!("{:?}", version_bytes);
+        let _len = version_bytes[x];
+        let _entity_type = version_bytes[x+1];
+        // check len/entity
+        assert_eq!((&version_bytes[x+2..]).len(), 2);
+        let mut version_bytes_array = [0u8; 2];
+        version_bytes_array.copy_from_slice(&version_bytes[x+2..]);
+        let version = u16::from_be_bytes(version_bytes_array);
+        Entities::Version(version)
+    }
+
+    // dirty as...
+    fn parse_enc_scheme(enc_scheme_bytes: &[u8]) -> Entities {
+        let x = 0;
+        let len = enc_scheme_bytes[x];
+        println!("scheme bytes {:?}", enc_scheme_bytes);
+        println!("scheme len {:?}", len);
+        let scheme_slice = &enc_scheme_bytes[x+2..len as usize];
+        let mut scheme_vec = scheme_slice.to_vec();
+        scheme_vec.reverse();
+        let hex = hex::encode(scheme_slice);
+        let scheme = deserialize_forms(&scheme_vec).expect("TODO");
+        Entities::EncodingScheme { hex, scheme }
+    }
+
 }
 
 #[cfg(test)]
@@ -188,6 +243,10 @@ mod tests {
         let test_data = format!("{}{}{}{}{}", hexed_header, hexed_version_entity, hexed_pad, hexed_enc_entity, hexed_peer_entity);
         let byte_header = hex::decode(test_data).expect("test bytes from https://github.com/cjdelisle/cjdnsann/blob/master/test.js#L30"); //expect
         let res = Announcement::parse(byte_header);
-        assert!(res.is_ok())
+        assert!(res.is_ok());
+        println!("{:?}", res.unwrap());
     }
 }
+
+// todo
+// 1. consider using EncodingScheme, not Vec<EncodingSchemeForm>
