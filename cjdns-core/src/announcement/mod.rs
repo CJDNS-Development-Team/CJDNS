@@ -4,6 +4,7 @@
 use std::convert::TryFrom;
 
 use hex;
+use libsodium_sys::crypto_sign_ed25519_pk_to_curve25519;
 use sodiumoxide::crypto::hash::sha512::{self, Digest};
 use sodiumoxide::crypto::sign::ed25519::{verify_detached, PublicKey, Signature};
 
@@ -76,9 +77,9 @@ impl Announcement {
         }
         let header = AnnouncementHeader::parse_ann(&ann_msg[..AnnouncementHeader::SIZE]).or(Err("TODO"))?;
         if sig_check_flag {
-            Self::check_sig(&header, &ann_msg[header.signature.len()..])?;
+            Self::check_sig(&header, &ann_msg[AnnouncementHeader::SIG_SIZE..])?;
         }
-        let (node_pub_key, node_ip) = header.get_sender_keys();
+        let (node_pub_key, node_ip) = header.get_sender_keys().or(Err("todo"))?;
         let entities = AnnouncementEntities::parse_ann(&ann_msg);
 
         let binary_hash = sha512::hash(&ann_msg);
@@ -140,11 +141,16 @@ impl AnnouncementHeader {
 
     // should use unsafe ffi func libsodium_sys::crypto_sign_ed25519_pk_to_curve25519
     // an example https://github.com/sunrise-choir/ssb-crypto/blob/c0aea19a417baca6f64b9cb034da319a9a646867/src/sodium/ephemeral.rs#L34
-    fn get_sender_keys(&self) -> (CJDNSPublicKey, CJDNS_IP6) {
-        // Mocks
-        let pk = CJDNSPublicKey::try_from("qgkjd0stfvk9r3j28s4gh8rgslbgx2r5xgxzxkgm5vdxqwn8xsu0.k".to_string()).expect("from crate::keys tests");
-        let ip6 = CJDNS_IP6::try_from("fcf5:c1ec:be67:9ad5:1f6c:f31b:5d74:37b0".to_string()).expect("from crate::keys tests");
-        (pk, ip6)
+    fn get_sender_keys(&self) -> Result<(CJDNSPublicKey, CJDNS_IP6), &'static str> {
+        let mut curve25519_key_bytes = [0u8; 32];
+        let (_, pk) = self.get_sodium_compliant_sig_key();
+        let ok = unsafe { crypto_sign_ed25519_pk_to_curve25519(curve25519_key_bytes.as_mut_ptr(), pk.0.as_ptr()) == 0 };
+        if !ok {
+            return Err("todo");
+        }
+        let sender_node_pub_key = CJDNSPublicKey::from(curve25519_key_bytes);
+        let sender_node_ip = CJDNS_IP6::try_from(&sender_node_pub_key).or(Err("todo"))?;
+        Ok((sender_node_pub_key, sender_node_ip))
     }
 
     fn get_sodium_compliant_sig_key(&self) -> (Signature, PublicKey) {
@@ -161,7 +167,6 @@ impl AnnouncementHeader {
 }
 
 impl AnnouncementEntities {
-
     fn parse_ann(_ann_msg: &[u8]) -> Self {
         // Mock
         AnnouncementEntities(vec![Entities::Version(10)])
@@ -174,5 +179,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn base() {}
+    fn announcement_base() {
+        let hexed_header = String::from("3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2fc928136dc1fe6e04ef6a6dd7187b85f00001576462f6f69");
+        let hexed_version_entity = String::from("04020012");
+        let hexed_pad = String::from("01");
+        let hexed_enc_entity = String::from("07006114458100");
+        let hexed_peer_entity = String::from("200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000015");
+        let test_data = format!("{}{}{}{}{}", hexed_header, hexed_version_entity, hexed_pad, hexed_enc_entity, hexed_peer_entity);
+        let byte_header = hex::decode(test_data).expect("test bytes from https://github.com/cjdelisle/cjdnsann/blob/master/test.js#L30"); //expect
+        let res = Announcement::parse(byte_header);
+        assert!(res.is_ok())
+    }
 }
