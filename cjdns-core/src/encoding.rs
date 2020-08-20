@@ -189,13 +189,13 @@ pub fn serialize_forms(encforms: &[EncodingSchemeForm]) -> Result<Vec<u8>, Error
     Ok(result_vec)
 }
 
-fn read_n_bits_from_position_into_u32(vecc: &Vec<u8>, position: u32, bits_amount: u8) -> Result<u32, Error> {
+fn read_n_bits_from_position_into_u32(data: &[u8], position: u32, bits_amount: u8) -> Result<u32, Error> {
     // TODO check errors handling
     if bits_amount > 32 {
         return Err(Error::ArgumentOutOfBounds);
     }
 
-    if (position + (bits_amount as u32)) > ((vecc.len() as u32) * 8) {
+    if (position + (bits_amount as u32)) > ((data.len() as u32) * 8) {
         return Err(Error::ArgumentOutOfBounds);
     }
     let mut accum = 0u32; // maximum that can be parsed is prefix itself (max - 32 bits)
@@ -215,7 +215,10 @@ fn read_n_bits_from_position_into_u32(vecc: &Vec<u8>, position: u32, bits_amount
         // 0000...1...0000, where "1" is on position correspondig to current bit
         let byte_mask = 128u8 >> cur_bit_num;
         accum = accum << 1;
-        if (vecc[cur_byte_num as usize] & byte_mask) == 0 {
+
+        // use reversed bytes data to read from end by index `cur_byte_num`
+        let cur_byte = data.iter().rev().nth(cur_byte_num as usize).expect("TODO");
+        if (cur_byte & byte_mask) == 0 {
             // if bit is 0 -> AND with "111111...11110"
             accum = accum & (!1u32);
         } else {
@@ -231,31 +234,29 @@ fn read_n_bits_from_position_into_u32(vecc: &Vec<u8>, position: u32, bits_amount
 /// Parse byte vector array (bits sequence) and transform it to encoding scheme.
 ///
 /// Accepts bytes array, parses it and returns vector of `EncodingSchemeForm`s.
-pub fn deserialize_forms(vecbytes: &Vec<u8>) -> Result<Vec<EncodingSchemeForm>, Error> {
-    let mut reversed_input_bytes = vecbytes.clone();
-    reversed_input_bytes.reverse();
+pub fn deserialize_forms(form_bytes: &[u8]) -> Result<Vec<EncodingSchemeForm>, Error> {
     // TODO handle errors
-    if reversed_input_bytes.len() < 2 {
+    if form_bytes.len() < 2 {
         return Err(Error::ArgumentVectorTooSmall);
     }
-    if reversed_input_bytes.len() == 0 {
+    if form_bytes.len() == 0 {
         return Err(Error::ArgumentVectorIsEmpty);
     }
 
     let mut result = Vec::new();
-    let mut cur_pos = (reversed_input_bytes.len() * 8) as u32;
+    let mut cur_pos = (form_bytes.len() * 8) as u32;
 
     loop {
         cur_pos = cur_pos - 5;
-        let prefix_len = read_n_bits_from_position_into_u32(&reversed_input_bytes, cur_pos, 5).unwrap(); //TODO need proper error handling, probably redesign
+        let prefix_len = read_n_bits_from_position_into_u32(form_bytes, cur_pos, 5).unwrap(); //TODO need proper error handling, probably redesign
 
         cur_pos = cur_pos - 5;
-        let bit_count = read_n_bits_from_position_into_u32(&reversed_input_bytes, cur_pos, 5).unwrap(); //TODO need proper error handling, probably redesign
+        let bit_count = read_n_bits_from_position_into_u32(form_bytes, cur_pos, 5).unwrap(); //TODO need proper error handling, probably redesign
 
         cur_pos = cur_pos - prefix_len;
 
         // if prefix_len == 0 we simply read 0 bits from current position, receiving prefix = 0u32
-        let prefix = read_n_bits_from_position_into_u32(&reversed_input_bytes, cur_pos, prefix_len as u8).unwrap(); //TODO need proper error handling, probably redesign
+        let prefix = read_n_bits_from_position_into_u32(form_bytes, cur_pos, prefix_len as u8).unwrap(); //TODO need proper error handling, probably redesign
 
         // println!("[DEBUG] prefix: {:b}, bit_count: {:05b}, prefix_len: {:05b}", prefix, bit_count, prefix_len);
         result.push(EncodingSchemeForm {
