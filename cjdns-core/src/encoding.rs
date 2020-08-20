@@ -26,7 +26,7 @@
 //! ].to_vec();
 //!
 //! let mut serialized = serialize_forms(&input.to_vec()).unwrap();
-//! assert_eq!(serialized, [0x08, 0x0c, 0x81].to_vec());
+//! assert_eq!(serialized, [0x81, 0x0c, 0x08].to_vec());
 //! let mut deserialized = deserialize_forms(&serialized).unwrap();
 //! assert_eq!(deserialized, input);
 //! ```
