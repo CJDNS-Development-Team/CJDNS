@@ -186,8 +186,6 @@ pub fn serialize_forms(encforms: &[EncodingSchemeForm]) -> Result<Vec<u8>, Error
         assert_eq!(accum64, 0u64);
     }
 
-    result_vec.reverse();
-    // println!("[DEBUG] result_vec: {:#x?}", result_vec);
     Ok(result_vec)
 }
 
@@ -234,28 +232,30 @@ fn read_n_bits_from_position_into_u32(vecc: &Vec<u8>, position: u32, bits_amount
 ///
 /// Accepts bytes array, parses it and returns vector of `EncodingSchemeForm`s.
 pub fn deserialize_forms(vecbytes: &Vec<u8>) -> Result<Vec<EncodingSchemeForm>, Error> {
+    let mut reversed_input_bytes = vecbytes.clone();
+    reversed_input_bytes.reverse();
     // TODO handle errors
-    if vecbytes.len() < 2 {
+    if reversed_input_bytes.len() < 2 {
         return Err(Error::ArgumentVectorTooSmall);
     }
-    if vecbytes.len() == 0 {
+    if reversed_input_bytes.len() == 0 {
         return Err(Error::ArgumentVectorIsEmpty);
     }
 
     let mut result = Vec::new();
-    let mut cur_pos = (vecbytes.len() * 8) as u32;
+    let mut cur_pos = (reversed_input_bytes.len() * 8) as u32;
 
     loop {
         cur_pos = cur_pos - 5;
-        let prefix_len = read_n_bits_from_position_into_u32(&vecbytes, cur_pos, 5).unwrap(); //TODO need proper error handling, probably redesign
+        let prefix_len = read_n_bits_from_position_into_u32(&reversed_input_bytes, cur_pos, 5).unwrap(); //TODO need proper error handling, probably redesign
 
         cur_pos = cur_pos - 5;
-        let bit_count = read_n_bits_from_position_into_u32(&vecbytes, cur_pos, 5).unwrap(); //TODO need proper error handling, probably redesign
+        let bit_count = read_n_bits_from_position_into_u32(&reversed_input_bytes, cur_pos, 5).unwrap(); //TODO need proper error handling, probably redesign
 
         cur_pos = cur_pos - prefix_len;
 
         // if prefix_len == 0 we simply read 0 bits from current position, receiving prefix = 0u32
-        let prefix = read_n_bits_from_position_into_u32(&vecbytes, cur_pos, prefix_len as u8).unwrap(); //TODO need proper error handling, probably redesign
+        let prefix = read_n_bits_from_position_into_u32(&reversed_input_bytes, cur_pos, prefix_len as u8).unwrap(); //TODO need proper error handling, probably redesign
 
         // println!("[DEBUG] prefix: {:b}, bit_count: {:05b}, prefix_len: {:05b}", prefix, bit_count, prefix_len);
         result.push(EncodingSchemeForm {
@@ -340,7 +340,7 @@ mod tests {
     #[test]
     fn test_single_forms() {
         // obj: [ { bitCount: 4, prefix: "", prefixLen: 0 } ],
-        // hex: '8000' 
+        // hex: '8000'
         // 80        00
         // 1000 0000 0000 0000
         let mut input = [
@@ -348,11 +348,11 @@ mod tests {
         ].to_vec();
 
         let mut serialized = serialize_forms(&input.to_vec()).expect("failed to serialize");
-        assert_eq!(serialized, [0x0, 0x80].to_vec());
+        // https://github.com/cjdelisle/cjdnsencode/blob/89216230daa82eb43689c6af48de3c6a138002f1/test.js#L8
+        assert_eq!(serialized, [0x80, 0x0].to_vec());
         let mut deserialized = deserialize_forms(&serialized).expect("failed to deserialize");
         assert_eq!(deserialized, input);
         assert!(validate(&deserialized).is_ok());
-
 
         // obj: [ { bitCount: 8, prefix: "", prefixLen: 0 } ],
         // hex: '0001'
@@ -363,7 +363,8 @@ mod tests {
         ].to_vec();
 
         serialized = serialize_forms(&input.to_vec()).expect("failed to serialize");
-        assert_eq!(serialized, [0x1, 0x0].to_vec());
+        // https://github.com/cjdelisle/cjdnsencode/blob/89216230daa82eb43689c6af48de3c6a138002f1/test.js#L13
+        assert_eq!(serialized, [0x0, 0x1].to_vec());
         deserialized = deserialize_forms(&serialized).expect("failed to deserialize");
         assert_eq!(deserialized, input);
         assert!(validate(&deserialized).is_ok());
@@ -381,11 +382,11 @@ mod tests {
         ].to_vec();
 
         let mut serialized = serialize_forms(&input.to_vec()).expect("failed to serialize");
-        assert_eq!(serialized, [0x08, 0x0c, 0x81].to_vec());
+        // https://github.com/cjdelisle/cjdnsencode/blob/89216230daa82eb43689c6af48de3c6a138002f1/test.js#L21
+        assert_eq!(serialized, [0x81, 0x0c, 0x08].to_vec());
         let mut deserialized = deserialize_forms(&serialized).expect("failed to deserialize");
         assert_eq!(deserialized, input);
         assert!(validate(&deserialized).is_ok());
-
 
         // name: "SCHEME_v358",
         // obj: [
@@ -403,7 +404,8 @@ mod tests {
         ].to_vec();
 
         serialized = serialize_forms(&input.to_vec()).expect("failed to serialize");
-        assert_eq!(serialized, [0x0, 0x81, 0x45, 0x14, 0x61].to_vec());
+        // https://github.com/cjdelisle/cjdnsencode/blob/89216230daa82eb43689c6af48de3c6a138002f1/test.js#L30
+        assert_eq!(serialized, [0x61, 0x14, 0x45, 0x81, 0x0].to_vec());
         deserialized = deserialize_forms(&serialized).expect("failed to deserialize");
         assert_eq!(deserialized, input);
         assert!(validate(&deserialized).is_ok());
