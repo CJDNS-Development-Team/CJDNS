@@ -8,11 +8,8 @@ use libsodium_sys::crypto_sign_ed25519_pk_to_curve25519;
 use sodiumoxide::crypto::hash::sha512::{self, Digest};
 use sodiumoxide::crypto::sign::ed25519::{verify_detached, PublicKey, Signature};
 
-use crate::{
-    deserialize_forms,
-    keys::{CJDNSPublicKey, CJDNS_IP6},
-    DefaultRoutingLabel, EncodingSchemeForm,
-};
+use crate::{deserialize_forms, keys::{CJDNSPublicKey, CJDNS_IP6}, DefaultRoutingLabel, EncodingSchemeForm};
+use crate::Entities::Peer;
 
 #[derive(Debug, Clone)]
 pub struct Announcement {
@@ -55,6 +52,7 @@ pub enum Entities {
         peer_num: u32, // size?
         unused: u32,
         encoding_form_number: u8, // size?
+        flags: u8
     },
 }
 
@@ -189,6 +187,7 @@ impl AnnouncementEntities {
                 out_vec.push(AnnouncementEntities::parse_enc_scheme(&ann_msg[ann_msg_idx..ann_msg_idx+(ann_msg[ann_msg_idx]as usize)]));
                 ann_msg_idx += ann_msg[ann_msg_idx] as usize;
             } else if ann_msg[ann_msg_idx + 1] == Entities::PEER_TYPE {
+                out_vec.push(AnnouncementEntities::parse_peer(&ann_msg[ann_msg_idx..ann_msg_idx+(ann_msg[ann_msg_idx]as usize)]));
                 ann_msg_idx += ann_msg[ann_msg_idx] as usize;
             } else {
                 // unrecognized staff
@@ -201,7 +200,6 @@ impl AnnouncementEntities {
 
     fn parse_version(version_bytes: &[u8]) -> Entities {
         let x = 0;
-        println!("{:?}", version_bytes);
         let _len = version_bytes[x];
         let _entity_type = version_bytes[x+1];
         // check len/entity
@@ -216,14 +214,73 @@ impl AnnouncementEntities {
     fn parse_enc_scheme(enc_scheme_bytes: &[u8]) -> Entities {
         let x = 0;
         let len = enc_scheme_bytes[x];
-        println!("scheme bytes {:?}", enc_scheme_bytes);
-        println!("scheme len {:?}", len);
         let scheme_slice = &enc_scheme_bytes[x+2..len as usize];
         let mut scheme_vec = scheme_slice.to_vec();
-        scheme_vec.reverse();
         let hex = hex::encode(scheme_slice);
         let scheme = deserialize_forms(&scheme_vec).expect("TODO");
         Entities::EncodingScheme { hex, scheme }
+    }
+
+    fn parse_peer(peer_bytes: &[u8]) -> Entities {
+        let mut x = 0;
+        let _peer_len_data = peer_bytes[x];
+        x+=1;
+        let _peer_type = peer_bytes[x];
+        x+=1;
+        let encoding_form_number = peer_bytes[x];
+        x+=1;
+        let flags = peer_bytes[x];
+        x+=1;
+
+        let mtu8 = {
+            let mtu_bytes_slice = &peer_bytes[x..x+2];
+            let mut mtu_bytes_array = [0u8; 2];
+            mtu_bytes_array.copy_from_slice(mtu_bytes_slice);
+            u16::from_be_bytes(mtu_bytes_array)
+        };
+        x+=2;
+
+        let peer_num = {
+            let peer_num_bytes_slice = &peer_bytes[x..x+2];
+            let mut peer_num_bytes_array = [0u8; 2];
+            peer_num_bytes_array.copy_from_slice(peer_num_bytes_slice);
+            u16::from_be_bytes(peer_num_bytes_array)
+        };
+        x+=2;
+
+        let unused = {
+            let unused_bytes_slice = &peer_bytes[x..x+4];
+            let mut unused_bytes_array = [0u8; 4];
+            unused_bytes_array.copy_from_slice(unused_bytes_slice);
+            u32::from_be_bytes(unused_bytes_array)
+        };
+        x+=4;
+
+        let ipv6bytes = &peer_bytes[x..x+16];
+        x+=16;
+        let label_bytes = &peer_bytes[x..x+4];
+        x+=4;
+
+        let mtu = (mtu8 * 8) as u32;
+        let ipv6 = CJDNS_IP6::try_from(ipv6bytes.to_vec()).expect("TODO");
+        let label_string = {
+            let a = label_bytes
+                .chunks(2)
+                .map(|x| hex::encode(x))
+                .collect::<Vec<String>>()
+                .join(".");
+            format!("{}{}", "0000.0000.", a)
+        };
+        let label = DefaultRoutingLabel::try_from(label_string.as_str()).expect("TODO");
+        Peer {
+            ipv6,
+            label,
+            mtu,
+            peer_num: peer_num as u32,
+            unused,
+            encoding_form_number,
+            flags
+        }
     }
 
 }
