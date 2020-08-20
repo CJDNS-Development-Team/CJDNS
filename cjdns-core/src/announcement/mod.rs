@@ -11,34 +11,30 @@ use sodiumoxide::crypto::sign::ed25519::{verify_detached, PublicKey, Signature};
 use crate::{deserialize_forms, keys::{CJDNSPublicKey, CJDNS_IP6}, DefaultRoutingLabel, EncodingSchemeForm};
 use crate::Entities::Peer;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Announcement {
     pub header: AnnouncementHeader,
     pub entities: AnnouncementEntities,
-
-    // Sender keys
     pub node_pub_key: CJDNSPublicKey,
     pub node_ip: CJDNS_IP6,
-
-    // Announcement Meta
     pub binary: Vec<u8>,
     pub binary_hash: Digest,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnnouncementHeader {
     pub signature: String,
     pub pub_signing_key: String,
     pub snode_ip: CJDNS_IP6,
     pub ver: u8,
     pub is_reset: bool,
-    pub timestamp: u64, // u32 is until 2038
+    pub timestamp: u64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AnnouncementEntities(Vec<Entities>);
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Entities {
     Version(u16),
     EncodingScheme {
@@ -51,7 +47,7 @@ pub enum Entities {
         mtu: u32,      // size?
         peer_num: u32, // size?
         unused: u32,
-        encoding_form_number: u8, // size?
+        encoding_form_number: u8,
         flags: u8
     },
 }
@@ -194,7 +190,7 @@ impl AnnouncementEntities {
                 ann_msg_idx += ann_msg[ann_msg_idx] as usize;
             }
         }
-        //if ann_msg_idx != ann_msg.len() { return Err("garbage after the last announcement entity"); }
+        if ann_msg_idx != ann_msg.len() { return Err("garbage after the last announcement entity"); }
         Ok(AnnouncementEntities(out_vec))
     }
 
@@ -215,9 +211,8 @@ impl AnnouncementEntities {
         let x = 0;
         let len = enc_scheme_bytes[x];
         let scheme_slice = &enc_scheme_bytes[x+2..len as usize];
-        let mut scheme_vec = scheme_slice.to_vec();
         let hex = hex::encode(scheme_slice);
-        let scheme = deserialize_forms(&scheme_vec).expect("TODO");
+        let scheme = deserialize_forms(&scheme_slice.to_vec()).expect("TODO");
         Entities::EncodingScheme { hex, scheme }
     }
 
@@ -291,17 +286,53 @@ mod tests {
     use super::*;
 
     #[test]
-    fn announcement_base() {
+    fn test_announcement_base() {
         let hexed_header = String::from("3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2fc928136dc1fe6e04ef6a6dd7187b85f00001576462f6f69");
         let hexed_version_entity = String::from("04020012");
         let hexed_pad = String::from("01");
         let hexed_enc_entity = String::from("07006114458100");
         let hexed_peer_entity = String::from("200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000015");
         let test_data = format!("{}{}{}{}{}", hexed_header, hexed_version_entity, hexed_pad, hexed_enc_entity, hexed_peer_entity);
-        let byte_header = hex::decode(test_data).expect("test bytes from https://github.com/cjdelisle/cjdnsann/blob/master/test.js#L30"); //expect
-        let res = Announcement::parse(byte_header);
-        assert!(res.is_ok());
-        println!("{:?}", res.unwrap());
+        let test_bytes = hex::decode(test_data).expect("test bytes from https://github.com/cjdelisle/cjdnsann/blob/master/test.js#L30");
+        let test_bytes_hash = sha512::hash(&test_bytes);
+        let res = Announcement::parse(test_bytes.clone());
+        assert_eq!(
+            res.unwrap(),
+            Announcement {
+                header: AnnouncementHeader {
+                    signature: "3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09".to_string(),
+                    pub_signing_key: "f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2".to_string(),
+                    snode_ip: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("cjdns base test example failed"),
+                    ver: 1,
+                    is_reset: true,
+                    timestamp: 1474857989878
+                },
+                entities: AnnouncementEntities(vec![
+                    Entities::Version(18),
+                    Entities::EncodingScheme {
+                        hex: "6114458100".to_string(),
+                        scheme: vec![
+                            EncodingSchemeForm { bit_count: 3, prefix_len: 1, prefix: 1 },
+                            EncodingSchemeForm { bit_count: 5, prefix_len: 2, prefix: 2 },
+                            EncodingSchemeForm { bit_count: 8, prefix_len: 2, prefix: 0 },
+                        ]
+                    },
+                    Entities::Peer {
+                        ipv6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("cjdns base test example failed"),
+                        label: DefaultRoutingLabel::try_from("0000.0000.0000.0015").expect("cjdns base test example failed"),
+                        mtu: 0,
+                        peer_num: 65535,
+                        unused: 4294967295,
+                        encoding_form_number: 0,
+                        flags: 0
+                    }
+                ]),
+                node_pub_key: CJDNSPublicKey::try_from("z15pzyd9wgzs2g5np7d3swrqc1533yb7xx9dq0pvrqrqs42uwgq0.k".to_string()).expect("cjdns base test example failed"),
+                node_ip: CJDNS_IP6::try_from("fc49:11cb:38c2:8d42:9865:7b8e:0d67:11b3".to_string()).expect("cjdns base test example failed"),
+                binary: test_bytes,
+                binary_hash: test_bytes_hash
+            }
+        )
     }
 }
 
