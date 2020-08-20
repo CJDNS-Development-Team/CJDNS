@@ -186,8 +186,6 @@ pub fn serialize_forms(encforms: &[EncodingSchemeForm]) -> Result<Vec<u8>, Error
         assert_eq!(accum64, 0u64);
     }
 
-    result_vec.reverse();
-    // println!("[DEBUG] result_vec: {:#x?}", result_vec);
     Ok(result_vec)
 }
 
@@ -233,32 +231,31 @@ fn read_n_bits_from_position_into_u32(vecc: &Vec<u8>, position: u32, bits_amount
 /// Parse byte vector array (bits sequence) and transform it to encoding scheme.
 ///
 /// Accepts bytes array, parses it and returns vector of `EncodingSchemeForm`s.
-// TODO
-// Do something with vecbytes type - may be &[u8]?
-// look at `strange_case` tests
 pub fn deserialize_forms(vecbytes: &Vec<u8>) -> Result<Vec<EncodingSchemeForm>, Error> {
+    let mut reversed_input_bytes = vecbytes.clone();
+    reversed_input_bytes.reverse();
     // TODO handle errors
-    if vecbytes.len() < 2 {
+    if reversed_input_bytes.len() < 2 {
         return Err(Error::ArgumentVectorTooSmall);
     }
-    if vecbytes.len() == 0 {
+    if reversed_input_bytes.len() == 0 {
         return Err(Error::ArgumentVectorIsEmpty);
     }
 
     let mut result = Vec::new();
-    let mut cur_pos = (vecbytes.len() * 8) as u32;
+    let mut cur_pos = (reversed_input_bytes.len() * 8) as u32;
 
     loop {
         cur_pos = cur_pos - 5;
-        let prefix_len = read_n_bits_from_position_into_u32(&vecbytes, cur_pos, 5).unwrap(); //TODO need proper error handling, probably redesign
+        let prefix_len = read_n_bits_from_position_into_u32(&reversed_input_bytes, cur_pos, 5).unwrap(); //TODO need proper error handling, probably redesign
 
         cur_pos = cur_pos - 5;
-        let bit_count = read_n_bits_from_position_into_u32(&vecbytes, cur_pos, 5).unwrap(); //TODO need proper error handling, probably redesign
+        let bit_count = read_n_bits_from_position_into_u32(&reversed_input_bytes, cur_pos, 5).unwrap(); //TODO need proper error handling, probably redesign
 
         cur_pos = cur_pos - prefix_len;
 
         // if prefix_len == 0 we simply read 0 bits from current position, receiving prefix = 0u32
-        let prefix = read_n_bits_from_position_into_u32(&vecbytes, cur_pos, prefix_len as u8).unwrap(); //TODO need proper error handling, probably redesign
+        let prefix = read_n_bits_from_position_into_u32(&reversed_input_bytes, cur_pos, prefix_len as u8).unwrap(); //TODO need proper error handling, probably redesign
 
         // println!("[DEBUG] prefix: {:b}, bit_count: {:05b}, prefix_len: {:05b}", prefix, bit_count, prefix_len);
         result.push(EncodingSchemeForm {
@@ -351,11 +348,11 @@ mod tests {
         ].to_vec();
 
         let mut serialized = serialize_forms(&input.to_vec()).expect("failed to serialize");
-        assert_eq!(serialized, [0x0, 0x80].to_vec());
+        // https://github.com/cjdelisle/cjdnsencode/blob/89216230daa82eb43689c6af48de3c6a138002f1/test.js#L8
+        assert_eq!(serialized, [0x80, 0x0].to_vec());
         let mut deserialized = deserialize_forms(&serialized).expect("failed to deserialize");
         assert_eq!(deserialized, input);
         assert!(validate(&deserialized).is_ok());
-
 
         // obj: [ { bitCount: 8, prefix: "", prefixLen: 0 } ],
         // hex: '0001'
@@ -366,7 +363,8 @@ mod tests {
         ].to_vec();
 
         serialized = serialize_forms(&input.to_vec()).expect("failed to serialize");
-        assert_eq!(serialized, [0x1, 0x0].to_vec());
+        // https://github.com/cjdelisle/cjdnsencode/blob/89216230daa82eb43689c6af48de3c6a138002f1/test.js#L13
+        assert_eq!(serialized, [0x0, 0x1].to_vec());
         deserialized = deserialize_forms(&serialized).expect("failed to deserialize");
         assert_eq!(deserialized, input);
         assert!(validate(&deserialized).is_ok());
@@ -384,11 +382,11 @@ mod tests {
         ].to_vec();
 
         let mut serialized = serialize_forms(&input.to_vec()).expect("failed to serialize");
-        assert_eq!(serialized, [0x08, 0x0c, 0x81].to_vec());
+        // https://github.com/cjdelisle/cjdnsencode/blob/89216230daa82eb43689c6af48de3c6a138002f1/test.js#L21
+        assert_eq!(serialized, [0x81, 0x0c, 0x08].to_vec());
         let mut deserialized = deserialize_forms(&serialized).expect("failed to deserialize");
         assert_eq!(deserialized, input);
         assert!(validate(&deserialized).is_ok());
-
 
         // name: "SCHEME_v358",
         // obj: [
@@ -406,7 +404,8 @@ mod tests {
         ].to_vec();
 
         serialized = serialize_forms(&input.to_vec()).expect("failed to serialize");
-        assert_eq!(serialized, [0x0, 0x81, 0x45, 0x14, 0x61].to_vec());
+        // https://github.com/cjdelisle/cjdnsencode/blob/89216230daa82eb43689c6af48de3c6a138002f1/test.js#L30
+        assert_eq!(serialized, [0x61, 0x14, 0x45, 0x81, 0x0].to_vec());
         deserialized = deserialize_forms(&serialized).expect("failed to deserialize");
         assert_eq!(deserialized, input);
         assert!(validate(&deserialized).is_ok());
@@ -434,51 +433,5 @@ mod tests {
         let serialized = serialize_forms(&pack).expect("failed to serialize");
         let deserialized = deserialize_forms(&serialized).expect("failed to deserialize");
         assert_eq!(deserialized, pack);
-    }
-
-    #[test]
-    fn strange_case() {
-        let mut enc_scheme_bytes_case1 = hex::decode("6114458100").unwrap();
-        let mut enc_scheme_bytes_case2 = hex::decode("810c08").unwrap();
-        let res = deserialize_forms(&enc_scheme_bytes_case1).unwrap();
-        let res2 = deserialize_forms(&enc_scheme_bytes_case2).unwrap();
-
-        // So, what's actually the problem.
-        // These are actually invalid results. Proper results in these cases are presented:
-        // here: https://github.com/cjdelisle/cjdnsencode#cjdnsencodeparsebuffer
-        // and the result of printed encoding scheme from here: https://github.com/cjdelisle/cjdnsann/blob/7ca79f7e6d8764326d15a929d73b77d10c0d1ea5/test.js#L26
-        assert_eq!(
-            vec![
-                EncodingSchemeForm { bit_count: 8, prefix_len: 0, prefix: 0 },
-                EncodingSchemeForm { bit_count: 11, prefix_len: 0, prefix: 0 },
-                EncodingSchemeForm { bit_count: 10, prefix_len: 4, prefix: 4 }
-            ],
-            res
-        );
-        assert_eq!(
-            vec![EncodingSchemeForm { bit_count: 0, prefix_len: 8, prefix: 67 }],
-            res2
-        );
-
-        // But the magic is that if we reverse bytes, we will get the proper result!
-        enc_scheme_bytes_case1.reverse();
-        enc_scheme_bytes_case2.reverse();
-        let reversed_res1 = deserialize_forms(&enc_scheme_bytes_case1).unwrap();
-        let reversed_res2 = deserialize_forms(&enc_scheme_bytes_case2).unwrap();
-        assert_eq!(
-            vec![
-                EncodingSchemeForm { bit_count: 3, prefix_len: 1, prefix: 1 },
-                EncodingSchemeForm { bit_count: 5, prefix_len: 2, prefix: 2 },
-                EncodingSchemeForm { bit_count: 8, prefix_len: 2, prefix: 0 }
-            ],
-            reversed_res1
-        );
-        assert_eq!(
-            vec![
-                EncodingSchemeForm { bit_count: 4, prefix_len: 1, prefix: 1 },
-                EncodingSchemeForm { bit_count: 8, prefix_len: 1, prefix: 0 }
-            ],
-            reversed_res2
-        );
     }
 }
