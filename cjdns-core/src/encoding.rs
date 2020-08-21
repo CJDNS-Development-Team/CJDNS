@@ -216,8 +216,8 @@ fn read_n_bits_from_position_into_u32(data: &[u8], position: u32, bits_amount: u
         let byte_mask = 128u8 >> cur_bit_num;
         accum = accum << 1;
 
-        // use reversed bytes data to read from end by index `cur_byte_num`
-        let cur_byte = data.iter().rev().nth(cur_byte_num as usize).expect("TODO");
+        // taking current byte by `cur_byte_num` index from end of `data`
+        let cur_byte = data[data.len() - 1 - cur_byte_num as usize];
         if (cur_byte & byte_mask) == 0 {
             // if bit is 0 -> AND with "111111...11110"
             accum = accum & (!1u32);
