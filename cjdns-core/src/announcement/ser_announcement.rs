@@ -1,4 +1,6 @@
-use crate::{Announcement, AnnouncementHeader, AnnouncementEntities, Entities};
+use std::convert::TryFrom;
+
+use crate::{Announcement, AnnouncementHeader, AnnouncementEntities, Entity};
 
 pub use self::ser_data::*;
 use self::parser::*;
@@ -11,7 +13,6 @@ const SIGN_KEY_SIZE: usize = 32_usize;
 const IP_SIZE: usize = 16_usize;
 
 mod ser_data {
-    use std::convert::TryFrom;
 
     use sodiumoxide::crypto::hash::sha512::{hash, Digest};
     use sodiumoxide::crypto::sign::ed25519::{verify_detached, Signature, PublicKey};
@@ -20,7 +21,7 @@ mod ser_data {
 
     type Result<T> = std::result::Result<T, PacketError>;
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct AnnouncementPacket(Vec<u8>);
 
     impl AnnouncementPacket {
@@ -37,7 +38,7 @@ mod ser_data {
         pub fn check(&self) -> Result<()>{
             let signature = Signature::from_slice(self.get_signature_bytes()).expect("input slice size ne to 64");
             let public_sign_key = PublicKey::from_slice(self.get_pub_key_bytes()).expect("input slice size ne to 32");
-            let signed_data = self.signed_data();
+            let signed_data = self.get_signed_data();
             if verify_detached(&signature, signed_data, &public_sign_key) {
                 return Ok(());
             }
@@ -45,8 +46,8 @@ mod ser_data {
         }
 
         /// Parses announcement packet and creates `Announcement` struct
-        pub fn parse(self) -> Announcement {
-            parse(self)?
+        pub fn parse(self) -> Result<Announcement> {
+            parse(self).map_err(|e| PacketError::CannotParsePacket(e))
         }
 
         /// Gets packet hash
@@ -77,26 +78,37 @@ mod ser_data {
 }
 
 mod parser {
-    use std::convert::TryFrom;
 
     use libsodium_sys::crypto_sign_ed25519_pk_to_curve25519;
     use sodiumoxide::crypto::sign::ed25519::PublicKey;
 
-    use crate::keys::{CJDNSPublicKey, CJDNS_IP6};
+    use crate::{deserialize_forms, keys::{CJDNSPublicKey, CJDNS_IP6}, DefaultRoutingLabel};
 
     use super::*;
 
     type Result<T> = std::result::Result<T, ParserError>;
 
-    const ENCODING_SCHEME_TYPE: u8 = 0u8;
-    const PEER_TYPE: u8 = 1u8;
-    const VERSION_TYPE: u8 = 2u8;
+    const PEER_TYPE: u8 = 1_u8;
+    const VERSION_TYPE: u8 = 2_u8;
+    const ENCODING_SCHEME_TYPE: u8 = 0_u8;
+    const PEER_ENTITY_SIZE: usize = 32_usize;
+    const VERSION_ENTITY_SIZE: usize = 4_usize;
+    const ENCODING_SCHEME_ENTITY_MIN_SIZE: usize = 2_usize;
 
     // Dividing logic from DS (`AnnouncementPacket`)
     pub fn parse(packet: AnnouncementPacket) -> Result<Announcement> {
         let header = parse_header(packet.get_header_bytes())?;
         let (node_encryption_key, node_ip6) = parse_sender_auth_data(header.pub_signing_key.as_bytes())?;
         let entities = parse_entities(packet.get_entities_bytes())?;
+        let binary_hash = packet.get_hash();
+        Ok(Announcement{
+            header,
+            node_encryption_key,
+            node_ip6,
+            entities,
+            binary_hash,
+            binary: packet
+        })
     }
 
     fn parse_header(header_data: &[u8]) -> Result<AnnouncementHeader> {
@@ -155,7 +167,104 @@ mod parser {
     }
 
     fn parse_entities(entities_data: &[u8]) -> Result<AnnouncementEntities> {
+        let mut parsed_entities = Vec::new();
+        let mut idx = 0_usize;
+        while idx < entities_data.len() {
+            let entity_len = entities_data[idx] as usize;
+            let entity_type = entities_data[idx + 1];
+            let entity_data = &entities_data[idx..idx + entity_len];
 
+            if entity_len == 0 || entity_len != entity_data.len() {
+                return Err(ParserError::CannotParseEntity("Invalid entity length in message"));
+            }
+            if entity_len == 1 {
+                idx += 1;
+                continue;
+            }
+
+            let parsed_entity = parse_entity(entity_type, entity_data)?; // TODO `None` is unrecognized staff. What shall we do with it? Better ok_or(Err(unrecognized entity))
+            if let Some(entity) = parsed_entity {
+                parsed_entities.push(entity)
+            }
+
+            idx += entities_data[idx] as usize;
+        }
+        // TODO how to reach this?
+        if idx != entities_data.len() {
+            return Err(ParserError::CannotParseEntity("garbage after the last announcement entity"));
+        }
+        Ok(AnnouncementEntities(parsed_entities))
+    }
+
+    fn parse_entity(entity_type: u8, entity_data: &[u8]) -> Result<Option<Entity>> {
+        // First byte of each entity data is its length. The second byte is its type. So "non meta" data of each entity starts from index 2 (3d byte).
+        let parsing_data = &entity_data[2_usize..];
+        match entity_type {
+            ENCODING_SCHEME_TYPE => {
+                if entity_data.len() < ENCODING_SCHEME_ENTITY_MIN_SIZE {
+                    return Err(ParserError::CannotParseEntity("invalid encoding scheme data size"));
+                }
+                let scheme_entity = parse_encoding_scheme(parsing_data)?;
+                Ok(Some(scheme_entity))
+            },
+            PEER_TYPE => {
+                if entity_data.len() != PEER_ENTITY_SIZE {
+                    return Err(ParserError::CannotParseEntity("invalid peer data size"));
+                }
+                let peer_entity = parse_peer(parsing_data)?;
+                Ok(Some(peer_entity))
+            },
+            VERSION_TYPE => {
+                if entity_data.len() != VERSION_ENTITY_SIZE {
+                    return Err(ParserError::CannotParseEntity("invalid version data size"));
+                }
+                let version_entity = parse_version(parsing_data)?;
+                Ok(Some(version_entity))
+            },
+            _ => Ok(None)
+        }
+    }
+
+    fn parse_encoding_scheme(encoding_scheme_data: &[u8]) -> Result<Entity> {
+        let hex = hex::encode(encoding_scheme_data);
+        let scheme = deserialize_forms(encoding_scheme_data).or(Err(ParserError::CannotParseEntity("encoding scheme deserialization failed")))?;
+        Ok(Entity::EncodingScheme {hex, scheme})
+    }
+
+    fn parse_version(version_data: &[u8]) -> Result<Entity> {
+        assert_eq!(version_data.len(), 2);
+        let version = u16::from_be_bytes(<[u8; 2]>::try_from(version_data).expect("version slice is ne to 2"));
+        Ok(Entity::Version(version))
+    }
+
+    fn parse_peer(peer_data: &[u8]) -> Result<Entity> {
+        // TODO use constants instead of [u8; 2] - take(2)?
+        let mut peer_data_iter = peer_data.iter();
+        let mut take_from_data_to_vec = |n: usize| { peer_data_iter.by_ref().take(n).map(|&byte| byte).collect::<Vec<u8>>() };
+        let Some(&encoding_form_number) = peer_data_iter.next();
+        let Some(&flags) = peer_data_iter.next();
+        let mtu = {
+            let mtu8 = u16::from_be_bytes(<[u8; 2]>::try_from(take_from_data_to_vec(2).as_slice()).expect("mtu bytes slice size is ne to 2"));
+            mtu8 as u32 * 8
+        };
+        let peer_num = u16::from_be_bytes(<[u8; 2]>::try_from(take_from_data_to_vec(2).as_slice()).expect("peer_num slice size is ne to 2"));
+        let unused = u32::from_be_bytes(<[u8; 4]>::try_from(take_from_data_to_vec(4).as_slice()).expect("unused slice size is ne to 4"));
+        let ipv6 = CJDNS_IP6::try_from(take_from_data_to_vec(16)).or(Err(ParserError::CannotParseEntity("failed ip6 creation from entity bytes")))?;
+        // TODO RoutingLabel<u32>?
+        let label = {
+            let label_bytes_hexed = take_from_data_to_vec(4).chunks(2).map(|two_bytes| hex::encode(two_bytes)).collect::<Vec<String>>().join(".");
+            let label_string = format!("{}{}", "0000.0000.", label_bytes_hexed);
+            DefaultRoutingLabel::try_from(label_string.as_str()).or(Err(ParserError::CannotParseEntity("routing label creation from peer entity bytes failed")))?
+        };
+        Ok(Entity::Peer {
+            ipv6,
+            label,
+            mtu,
+            peer_num,
+            unused,
+            encoding_form_number,
+            flags
+        })
     }
 }
 
@@ -165,6 +274,7 @@ mod errors {
     pub(super) enum PacketError {
         CannotInstantiatePacket,
         InvalidPacketSignature,
+        CannotParsePacket(ParserError)
     }
 
     impl std::fmt::Display for PacketError {
@@ -172,6 +282,7 @@ mod errors {
             match self {
                 PacketError::CannotInstantiatePacket => write!(f, "Can't instantiate AnnouncementPacket instance from providing data"),
                 PacketError::InvalidPacketSignature => write!(f, "Announcement packet has invalid signature on packet data"),
+                PacketError::CannotParsePacket(e) => write!(f, "Can't parse packet to Announcement {}", e)
             }
         }
     }
@@ -185,14 +296,16 @@ mod errors {
     #[derive(Debug, Copy, Clone, PartialEq, Eq)]
     pub(super) enum ParserError {
         CannotParseHeader(&'static str),
-        CannotParseAuthData(&'static str)
+        CannotParseAuthData(&'static str),
+        CannotParseEntity(&'static str)
     }
 
     impl std::fmt::Display for ParserError {
         fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
             match self {
-                ParserError::CannotParseHeader(fail_reason) => write!(f, "Can't create IP6 {}", fail_reason),
-                ParserError::CannotParseAuthData(fail_reason) => write!(f, "Failed sender auth data parse {}", fail_reason)
+                ParserError::CannotParseHeader(fail_reason) => write!(f, "Can't parse header: {}", fail_reason),
+                ParserError::CannotParseAuthData(fail_reason) => write!(f, "Can't parse sender auth data: {}", fail_reason),
+                ParserError::CannotParseEntity(fail_reason) => write!(f, "Can't parse entity: {}", fail_reason)
             }
         }
     }
