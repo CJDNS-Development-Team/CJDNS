@@ -1,11 +1,8 @@
 //! Announcement message
 //! `Ann` or `ann` are shorthands for `Announcement` and `announcement`.
-use std::convert::TryFrom;
-
 use sodiumoxide::crypto::hash::sha512::Digest;
 
 use crate::{
-    deserialize_forms,
     keys::{CJDNSPublicKey, CJDNS_IP6},
     DefaultRoutingLabel, EncodingSchemeForm,
 };
@@ -33,7 +30,7 @@ pub struct AnnouncementHeader {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AnnouncementEntities(Vec<Entity>);
+pub struct AnnouncementEntities(pub Vec<Entity>); // todo wat
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Entity {
@@ -56,8 +53,11 @@ pub enum Entity {
 #[cfg(test)]
 mod tests {
 
-    use super::*;
+    use std::convert::TryFrom;
+
     use sodiumoxide::crypto::hash::sha512::hash;
+
+    use super::*;
 
     #[test]
     fn test_announcement_base() {
@@ -69,7 +69,8 @@ mod tests {
         let test_data = format!("{}{}{}{}{}", hexed_header, hexed_version_entity, hexed_pad, hexed_enc_entity, hexed_peer_entity);
         let test_bytes = hex::decode(test_data).expect("test bytes from https://github.com/cjdelisle/cjdnsann/blob/master/test.js#L30");
         let test_bytes_hash = hash(&test_bytes);
-        let res = Announcement::parse(test_bytes.clone());
+        let a = super::ser_announcement::AnnouncementPacket::try_new(test_bytes.clone()).unwrap();
+        let res = a.parse();
         assert_eq!(
             res.unwrap(),
             Announcement {
@@ -118,7 +119,7 @@ mod tests {
                 node_encryption_key: CJDNSPublicKey::try_from("z15pzyd9wgzs2g5np7d3swrqc1533yb7xx9dq0pvrqrqs42uwgq0.k".to_string())
                     .expect("cjdns base test example failed"),
                 node_ip6: CJDNS_IP6::try_from("fc49:11cb:38c2:8d42:9865:7b8e:0d67:11b3".to_string()).expect("cjdns base test example failed"),
-                binary: test_bytes,
+                binary: super::ser_announcement::AnnouncementPacket(test_bytes),
                 binary_hash: test_bytes_hash
             }
         )

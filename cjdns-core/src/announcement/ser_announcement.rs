@@ -22,7 +22,7 @@ mod ser_data {
     type Result<T> = std::result::Result<T, PacketError>;
 
     #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct AnnouncementPacket(Vec<u8>);
+    pub struct AnnouncementPacket(pub Vec<u8>); // TODO WAT
 
     impl AnnouncementPacket {
 
@@ -98,7 +98,7 @@ mod parser {
     // Dividing logic from DS (`AnnouncementPacket`)
     pub fn parse(packet: AnnouncementPacket) -> Result<Announcement> {
         let header = parse_header(packet.get_header_bytes())?;
-        let (node_encryption_key, node_ip6) = parse_sender_auth_data(header.pub_signing_key.as_bytes())?;
+        let (node_encryption_key, node_ip6) = parse_sender_auth_data(&hex::decode(&header.pub_signing_key).expect("invalid_len"))?;
         let entities = parse_entities(packet.get_entities_bytes())?;
         let binary_hash = packet.get_hash();
         Ok(Announcement{
@@ -241,8 +241,12 @@ mod parser {
         // TODO use constants instead of [u8; 2] - take(2)?
         let mut peer_data_iter = peer_data.iter();
         let mut take_from_data_to_vec = |n: usize| { peer_data_iter.by_ref().take(n).map(|&byte| byte).collect::<Vec<u8>>() };
-        let Some(&encoding_form_number) = peer_data_iter.next();
-        let Some(&flags) = peer_data_iter.next();
+        let (encoding_form_number, flags) = {
+            let e_f = take_from_data_to_vec(2);
+            let err_msg = "peer data is empty";
+            let (&encoding_form_number, &flags) = (e_f.first().expect(err_msg), e_f.last().expect(err_msg));
+            (encoding_form_number, flags)
+        };
         let mtu = {
             let mtu8 = u16::from_be_bytes(<[u8; 2]>::try_from(take_from_data_to_vec(2).as_slice()).expect("mtu bytes slice size is ne to 2"));
             mtu8 as u32 * 8
@@ -271,7 +275,7 @@ mod parser {
 mod errors {
 
     #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-    pub(super) enum PacketError {
+    pub enum PacketError {
         CannotInstantiatePacket,
         InvalidPacketSignature,
         CannotParsePacket(ParserError)
@@ -294,7 +298,7 @@ mod errors {
     }
 
     #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-    pub(super) enum ParserError {
+    pub enum ParserError {
         CannotParseHeader(&'static str),
         CannotParseAuthData(&'static str),
         CannotParseEntity(&'static str)
