@@ -26,8 +26,8 @@ fn run() -> Result<(), Error> {
         //      For now can only execute function without arguments
         let fn_call = args.last().expect("empty program args");
         let fn_name = &fn_call[..fn_call.find("()").expect("empty func arg list expected")];
-        let _ = cjdns.call_func::<Empty, Empty>(fn_name, Empty{}, false)?;
-        // TODO Dump function call result as JSON
+        let res = cjdns.call_func::<Empty, DefaultResponsePayload>(fn_name, Empty{}, false)?;
+        println!("{:?}", res); // TODO Dump function call result as JSON
     };
 
     // Client disconnects automatically when `cjdns` drops out of scope

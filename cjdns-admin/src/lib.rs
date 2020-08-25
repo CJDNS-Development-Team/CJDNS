@@ -620,6 +620,18 @@ pub mod msgs {
     pub struct Empty {
     }
 
+    /// Return value with `q` and `error` fields.
+    #[derive(Deserialize, Default, Clone, PartialEq, Eq, Debug)]
+    pub struct DefaultResponsePayload {
+        /// Response name.
+        #[serde(rename = "q", default)]
+        pub q: String,
+
+        /// Error message, if request failed.
+        #[serde(rename = "error", default)]
+        pub error: String,
+    }
+
     /// Return value for `cookie` remote function.
     #[derive(Deserialize, Default, Clone, PartialEq, Eq, Debug)]
     pub(crate) struct CookieResponsePayload {
