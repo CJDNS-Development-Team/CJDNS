@@ -307,8 +307,7 @@ mod conn {
     use crate::ConnectionOptions;
     use crate::errors::{ConnOptions, Error};
     use crate::func_list::Funcs;
-    use crate::msgs;
-    use crate::msgs::Request;
+    use crate::msgs::{self, Empty, Request};
     use crate::txid::Counter;
 
     const PING_TIMEOUT: Duration = Duration::from_millis(1_000);
@@ -348,11 +347,11 @@ mod conn {
 
         fn probe_connection(&self, opts: ConnectionOptions) -> Result<(), Error> {
             self.set_timeout(PING_TIMEOUT)?;
-            self.call_func("ping", (), true).map_err(|_| Error::ConnectError(ConnOptions::wrap(&opts)))?;
+            self.call_func::<(), Empty>("ping", (), true).map_err(|_| Error::ConnectError(ConnOptions::wrap(&opts)))?;
 
             self.set_timeout(DEFAULT_TIMEOUT)?;
             if !self.password.is_empty() {
-                self.call_func("AuthorizedPasswords_list", (), false).map_err(|_| Error::AuthError(ConnOptions::wrap(&opts)))?;
+                self.call_func::<(), Empty>("AuthorizedPasswords_list", (), false).map_err(|_| Error::AuthError(ConnOptions::wrap(&opts)))?;
             }
 
             Ok(())
@@ -505,7 +504,7 @@ mod txid {
 }
 
 /// RPC messages.
-mod msgs {
+pub mod msgs {
     use std::collections::BTreeMap;
 
     use serde::{de::DeserializeOwned, Deserialize, Serialize};
@@ -589,6 +588,19 @@ mod msgs {
             #[serde(bound(deserialize = "P: DeserializeOwned"))]
             pub(crate) payload: P,
         }
+
+        #[test]
+        fn test_bencode_leading_zeroes() {
+            /*
+             * Bencode does not allow leading zeroes in encoded integers.
+             * Alas, cjdns' original implementation violates this rule,
+             * and sometimes encodes ints with leading zeroes.
+             * To work around this, bencode library (bendy) should be patched
+             * to support this.
+             * This test checks that we use correct (patched) library.
+             */
+            assert_eq!(u8::from_bencode("i042e".as_bytes()).ok(), Some(42_u8));
+        }
     }
 
     /// Trait for RPC query arguments. Can be any serializable type.
@@ -602,6 +614,11 @@ mod msgs {
 
     // Blanket `Payload` impl for any deserializable type with `Default`.
     impl<T: DeserializeOwned + Default> Payload for T {}
+
+    /// Empty payload or arguments.
+    #[derive(Deserialize, Serialize, Default, Clone, PartialEq, Eq, Debug)]
+    pub struct Empty {
+    }
 
     /// Return value for `cookie` remote function.
     #[derive(Deserialize, Default, Clone, PartialEq, Eq, Debug)]
@@ -634,10 +651,10 @@ mod msgs {
     #[derive(Deserialize, Default, Clone, PartialEq, Eq, Debug)]
     pub(crate) struct RemoteFnArgDescr {
         #[serde(rename = "required")]
-        pub(crate) required: bool,
+        pub(crate) required: u8,
 
         #[serde(rename = "type")]
-        pub(crate) typ: bool,
+        pub(crate) typ: String,
     }
 }
 
@@ -667,7 +684,7 @@ mod func_list {
     pub struct Arg {
         pub name: String,
         pub required: bool,
-        pub typ: bool,
+        pub typ: String,
     }
 
     impl Funcs {
@@ -689,7 +706,7 @@ mod func_list {
             for (arg_name, arg_descr) in fn_args {
                 let arg = Arg {
                     name: arg_name,
-                    required: arg_descr.required,
+                    required: arg_descr.required != 0,
                     typ: arg_descr.typ,
                 };
                 args.push(arg);
@@ -723,7 +740,7 @@ mod func_list {
         fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
             let Args(list) = self;
             let args: Vec<String> = list.iter().map(Arg::to_string).collect();
-            writeln!(f, "{}", args.join(", "))
+            write!(f, "{}", args.join(", "))
         }
     }
 
