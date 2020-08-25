@@ -24,7 +24,7 @@ pub mod serialized_data {
     type Result<T> = std::result::Result<T, PacketError>;
 
     #[derive(Debug, Clone, PartialEq, Eq)]
-    pub struct AnnouncementPacket(pub Vec<u8>); // TODO WAT
+    pub struct AnnouncementPacket(Vec<u8>);
 
     impl AnnouncementPacket {
         /// Instantiates wrapper on announcement message
@@ -191,7 +191,7 @@ mod parser {
         if idx != entities_data.len() {
             return Err(ParserError::CannotParseEntity("garbage after the last announcement entity"));
         }
-        Ok(AnnouncementEntities(parsed_entities))
+        Ok(parsed_entities)
     }
 
     fn parse_entity(entity_type: u8, entity_data: &[u8]) -> Result<Option<Entity>> {
@@ -286,18 +286,29 @@ mod tests {
 
     #[test]
     fn test_general() {
-        let hexed_header = String::from("3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2fc928136dc1fe6e04ef6a6dd7187b85f00001576462f6f69");
-        let hexed_version_entity = String::from("04020012");
-        let hexed_pad = String::from("01");
-        let hexed_enc_entity = String::from("07006114458100");
-        let hexed_peer_entity = String::from("200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000015");
-        let test_data = format!("{}{}{}{}{}", hexed_header, hexed_version_entity, hexed_pad, hexed_enc_entity, hexed_peer_entity);
-        let test_bytes = hex::decode(test_data).expect("test bytes from https://github.com/cjdelisle/cjdnsann/blob/master/test.js#L30");
-        let test_bytes_hash = hash(&test_bytes);
-        let a = serialized_data::AnnouncementPacket::try_new(test_bytes.clone()).unwrap();
-        let res = a.parse();
+        // TODO still dirty
+        let hexed_header = {
+            let s = String::from(
+                "3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09"
+            );
+            let pk = "f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2";
+            let super_node_ip = "fc928136dc1fe6e04ef6a6dd7187b85f";
+            let rest_data = "00001576462f6f69";
+            s + pk + super_node_ip + rest_data
+        };
+        let hexed_version_entity = "04020012";
+        let hexed_pad = "01";
+        let hexed_enc_entity = "07006114458100";
+        let hexed_peer_entity = "200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000015";
+
+        let test_data_hexed = hexed_header + hexed_version_entity + hexed_pad + hexed_enc_entity + hexed_peer_entity;
+        let test_data_bytes = hex::decode(test_data_hexed).expect("test bytes from https://github.com/cjdelisle/cjdnsann/blob/master/test.js#L30");
+        let test_bytes_hash = hash(&test_data_bytes);
+
+        let ann_packet = serialized_data::AnnouncementPacket::try_new(test_data_bytes.clone()).expect("wrong packet size");
+        let res = ann_packet.parse().expect("failed basic cjdnsann js impl test");
         assert_eq!(
-            res.unwrap(),
+            res,
             Announcement {
                 header: AnnouncementHeader {
                     signature:
@@ -309,7 +320,7 @@ mod tests {
                     is_reset: true,
                     timestamp: 1474857989878
                 },
-                entities: AnnouncementEntities(vec![
+                entities: vec![
                     Entity::Version(18),
                     Entity::EncodingScheme {
                         hex: "6114458100".to_string(),
@@ -340,11 +351,11 @@ mod tests {
                         encoding_form_number: 0,
                         flags: 0
                     }
-                ]),
+                ],
                 node_encryption_key: CJDNSPublicKey::try_from("z15pzyd9wgzs2g5np7d3swrqc1533yb7xx9dq0pvrqrqs42uwgq0.k".to_string())
                     .expect("cjdns base test example failed"),
                 node_ip6: CJDNS_IP6::try_from("fc49:11cb:38c2:8d42:9865:7b8e:0d67:11b3".to_string()).expect("cjdns base test example failed"),
-                binary: serialized_data::AnnouncementPacket(test_bytes),
+                binary: serialized_data::AnnouncementPacket::try_new(test_data_bytes).expect("wrong packet size"),
                 binary_hash: test_bytes_hash
             }
         )

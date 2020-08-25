@@ -16,3 +16,4 @@ mod errors;
 // 4. Resolve pub/mod/pub use/pub mod problems
 // 5. parse_header - seems a lot of copy/paste. May be implement own iterator, that iterates over chunks size N, that after each next are divided by D (64-32-16)
 // 6. is there always
+// 7. refactoring

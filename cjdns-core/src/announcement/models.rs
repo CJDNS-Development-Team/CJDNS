@@ -26,8 +26,7 @@ pub struct AnnouncementHeader {
     pub timestamp: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AnnouncementEntities(pub Vec<Entity>); // todo wat
+pub type AnnouncementEntities = Vec<Entity>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Entity {
