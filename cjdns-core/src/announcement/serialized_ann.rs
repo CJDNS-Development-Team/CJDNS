@@ -1,10 +1,15 @@
 use std::convert::TryFrom;
 
-use crate::{Announcement, AnnouncementEntities, AnnouncementHeader, Entity};
+use sodiumoxide::crypto::hash::sha512::{hash, Digest};
+use sodiumoxide::crypto::sign::ed25519::{verify_detached, PublicKey, Signature};
 
-use self::errors::*;
-use self::parser::*;
-pub use self::ser_data::*;
+use crate::{
+    deserialize_forms,
+    keys::{CJDNSPublicKey, CJDNS_IP6},
+    announcement::errors::*,
+    DefaultRoutingLabel, EncodingSchemeForm,
+    Announcement, AnnouncementHeader, AnnouncementEntities, Entity,
+};
 
 const MIN_SIZE: usize = HEADER_SIZE;
 const HEADER_SIZE: usize = SIGN_SIZE + SIGN_KEY_SIZE + IP_SIZE + 8;
@@ -12,10 +17,7 @@ const SIGN_SIZE: usize = 64_usize;
 const SIGN_KEY_SIZE: usize = 32_usize;
 const IP_SIZE: usize = 16_usize;
 
-mod ser_data {
-
-    use sodiumoxide::crypto::hash::sha512::{hash, Digest};
-    use sodiumoxide::crypto::sign::ed25519::{verify_detached, PublicKey, Signature};
+pub mod serialized_data {
 
     use super::*;
 
@@ -46,7 +48,7 @@ mod ser_data {
 
         /// Parses announcement packet and creates `Announcement` struct
         pub fn parse(self) -> Result<Announcement> {
-            parse(self).map_err(|e| PacketError::CannotParsePacket(e))
+            parser::parse(self).map_err(|e| PacketError::CannotParsePacket(e))
         }
 
         /// Gets packet hash
@@ -79,13 +81,6 @@ mod ser_data {
 mod parser {
 
     use libsodium_sys::crypto_sign_ed25519_pk_to_curve25519;
-    use sodiumoxide::crypto::sign::ed25519::PublicKey;
-
-    use crate::{
-        deserialize_forms,
-        keys::{CJDNSPublicKey, CJDNS_IP6},
-        DefaultRoutingLabel,
-    };
 
     use super::*;
 
@@ -99,7 +94,7 @@ mod parser {
     const ENCODING_SCHEME_ENTITY_MIN_SIZE: usize = 2_usize;
 
     // Dividing logic from DS (`AnnouncementPacket`)
-    pub fn parse(packet: AnnouncementPacket) -> Result<Announcement> {
+    pub fn parse(packet: serialized_data::AnnouncementPacket) -> Result<Announcement> {
         let header = parse_header(packet.get_header_bytes())?;
         let (node_encryption_key, node_ip6) = parse_sender_auth_data(packet.get_pub_key_bytes())?;
         let entities = parse_entities(packet.get_entities_bytes())?;
@@ -241,7 +236,7 @@ mod parser {
     }
 
     fn parse_peer(peer_data: &[u8]) -> Result<Entity> {
-        // TODO use constants instead of [u8; 2] - take(2)?
+        assert_eq!(peer_data.len(), 30);
         let mut peer_data_iter = peer_data.iter();
         let mut take_from_data_to_vec = |n: usize| peer_data_iter.by_ref().take(n).map(|&byte| byte).collect::<Vec<u8>>();
         let (encoding_form_number, flags) = {
@@ -280,51 +275,78 @@ mod parser {
     }
 }
 
-mod errors {
+#[cfg(test)]
+mod tests {
 
-    #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-    pub enum PacketError {
-        CannotInstantiatePacket,
-        InvalidPacketSignature,
-        CannotParsePacket(ParserError),
-    }
+    use std::convert::TryFrom;
 
-    impl std::fmt::Display for PacketError {
-        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-            match self {
-                PacketError::CannotInstantiatePacket => write!(f, "Can't instantiate AnnouncementPacket instance from providing data"),
-                PacketError::InvalidPacketSignature => write!(f, "Announcement packet has invalid signature on packet data"),
-                PacketError::CannotParsePacket(e) => write!(f, "Can't parse packet to Announcement {}", e),
+    use sodiumoxide::crypto::hash::sha512::hash;
+
+    use super::*;
+
+    #[test]
+    fn test_general() {
+        let hexed_header = String::from("3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2fc928136dc1fe6e04ef6a6dd7187b85f00001576462f6f69");
+        let hexed_version_entity = String::from("04020012");
+        let hexed_pad = String::from("01");
+        let hexed_enc_entity = String::from("07006114458100");
+        let hexed_peer_entity = String::from("200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000015");
+        let test_data = format!("{}{}{}{}{}", hexed_header, hexed_version_entity, hexed_pad, hexed_enc_entity, hexed_peer_entity);
+        let test_bytes = hex::decode(test_data).expect("test bytes from https://github.com/cjdelisle/cjdnsann/blob/master/test.js#L30");
+        let test_bytes_hash = hash(&test_bytes);
+        let a = serialized_data::AnnouncementPacket::try_new(test_bytes.clone()).unwrap();
+        let res = a.parse();
+        assert_eq!(
+            res.unwrap(),
+            Announcement {
+                header: AnnouncementHeader {
+                    signature:
+                    "3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09"
+                        .to_string(),
+                    pub_signing_key: "f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2".to_string(),
+                    super_node_ip: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("cjdns base test example failed"),
+                    version: 1,
+                    is_reset: true,
+                    timestamp: 1474857989878
+                },
+                entities: AnnouncementEntities(vec![
+                    Entity::Version(18),
+                    Entity::EncodingScheme {
+                        hex: "6114458100".to_string(),
+                        scheme: vec![
+                            EncodingSchemeForm {
+                                bit_count: 3,
+                                prefix_len: 1,
+                                prefix: 1
+                            },
+                            EncodingSchemeForm {
+                                bit_count: 5,
+                                prefix_len: 2,
+                                prefix: 2
+                            },
+                            EncodingSchemeForm {
+                                bit_count: 8,
+                                prefix_len: 2,
+                                prefix: 0
+                            },
+                        ]
+                    },
+                    Entity::Peer {
+                        ipv6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("cjdns base test example failed"),
+                        label: DefaultRoutingLabel::try_from("0000.0000.0000.0015").expect("cjdns base test example failed"),
+                        mtu: 0,
+                        peer_num: 65535,
+                        unused: 4294967295,
+                        encoding_form_number: 0,
+                        flags: 0
+                    }
+                ]),
+                node_encryption_key: CJDNSPublicKey::try_from("z15pzyd9wgzs2g5np7d3swrqc1533yb7xx9dq0pvrqrqs42uwgq0.k".to_string())
+                    .expect("cjdns base test example failed"),
+                node_ip6: CJDNS_IP6::try_from("fc49:11cb:38c2:8d42:9865:7b8e:0d67:11b3".to_string()).expect("cjdns base test example failed"),
+                binary: serialized_data::AnnouncementPacket(test_bytes),
+                binary_hash: test_bytes_hash
             }
-        }
-    }
-
-    impl std::error::Error for PacketError {
-        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-            None
-        }
-    }
-
-    #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-    pub enum ParserError {
-        CannotParseHeader(&'static str),
-        CannotParseAuthData(&'static str),
-        CannotParseEntity(&'static str),
-    }
-
-    impl std::fmt::Display for ParserError {
-        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-            match self {
-                ParserError::CannotParseHeader(fail_reason) => write!(f, "Can't parse header: {}", fail_reason),
-                ParserError::CannotParseAuthData(fail_reason) => write!(f, "Can't parse sender auth data: {}", fail_reason),
-                ParserError::CannotParseEntity(fail_reason) => write!(f, "Can't parse entity: {}", fail_reason),
-            }
-        }
-    }
-
-    impl std::error::Error for ParserError {
-        fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-            None
-        }
+        )
     }
 }
