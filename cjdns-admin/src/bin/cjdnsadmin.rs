@@ -1,8 +1,10 @@
 //! CJDNS Admin tool
 
-use std::{env, path};
+use std::{env, error::Error, path};
 
-use cjdns_admin::{*, msgs::*};
+use regex::Regex;
+
+use cjdns_admin::{func_args::{Args, ArgValue}, func_list::Func, msgs::DefaultResponsePayload};
 
 fn main() {
     if let Err(e) = run() {
@@ -10,7 +12,9 @@ fn main() {
     }
 }
 
-fn run() -> Result<(), Error> {
+type Err = Box<dyn Error>;
+
+fn run() -> Result<(), Err> {
     let cjdns = cjdns_admin::connect(None)?;
 
     let args = env::args().skip(1).collect::<Vec<_>>();
@@ -22,15 +26,98 @@ fn run() -> Result<(), Error> {
         eprintln!("List of available RPC requests with parameters is as follows:");
         eprintln!("{}", cjdns.functions)
     } else {
-        // TODO Properly parse function call string (like `foo(123, "bar", false, "baz")`) and prepare remote call name & args.
-        //      For now can only execute function without arguments
-        let fn_call = args.last().expect("empty program args");
-        let fn_name = &fn_call[..fn_call.find("()").expect("empty func arg list expected")];
-        let res = cjdns.call_func::<Empty, DefaultResponsePayload>(fn_name, Empty{}, false)?;
+        let fn_call_str = args.last().cloned().ok_or_else(|| Err::from("empty program args"))?;
+        //dbg!(&fn_call_str);
+
+        let (fn_name, fn_args) = split_fn_invocation_str(&fn_call_str).map_err(|_| Err::from("bad function invocation expression"))?;
+        //dbg!(&fn_name, &fn_args);
+
+        let fn_args = parse_remote_fn_args(&fn_args).map_err(|_| Err::from("bad function arguments"))?;
+
+        let func = cjdns.functions.find(&fn_name).ok_or_else(|| Err::from("unknown function name"))?;
+        let fn_args = make_args(func, fn_args);
+
+        let res = cjdns.call_func::<_, DefaultResponsePayload>(&fn_name, fn_args, false)?;
         println!("{:?}", res); // TODO Dump function call result as JSON
     };
 
     // Client disconnects automatically when `cjdns` drops out of scope
 
     Ok(())
+}
+
+fn split_fn_invocation_str(s: &str) -> Result<(String, String), ()> {
+    // Regexp for function invocation, e.g. `foo_func(42, "ololo")`, captures func name and arg list.
+    let re_fn_call = Regex::new(r"([\w]+)\(([^)]*)\)").expect("bad regex");
+
+    let caps = re_fn_call.captures(s).ok_or(())?;
+    let name = caps.get(1).ok_or(())?.as_str().to_string();
+    let args = caps.get(2).ok_or(())?.as_str().to_string();
+
+    Ok((name, args))
+}
+
+#[test]
+fn test_split_fn_invocation_str() -> Result<(), ()> {
+    let a = |func: &str, args: &str| (func.to_string(), args.to_string());
+    assert_eq!(split_fn_invocation_str(r#"foo()"#)?, a("foo", r#""#));
+    assert_eq!(split_fn_invocation_str(r#"bar(42)"#)?, a("bar", r#"42"#));
+    assert_eq!(split_fn_invocation_str(r#"bar("baz")"#)?, a("bar", r#""baz""#));
+    assert_eq!(split_fn_invocation_str(r#"baz(42, 43)"#)?, a("baz", r#"42, 43"#));
+    assert_eq!(split_fn_invocation_str(r#"test(42,"arg",-42)"#)?, a("test", r#"42,"arg",-42"#));
+    assert_eq!(split_fn_invocation_str(r#"test("str",42,"other")"#)?, a("test", r#""str",42,"other""#));
+    assert_eq!(split_fn_invocation_str(r#"func(nonsense)"#)?, a("func", r#"nonsense"#)); // Makes no sense, but parses ok
+
+    Ok(())
+}
+
+fn parse_remote_fn_args(s: &str) -> Result<Vec<ArgValue>, ()> {
+    if s.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut fn_args = Vec::new();
+    for arg in s.split(",").map(str::trim) {
+        let arg = match arg.chars().next().ok_or(())? {
+            '-' | '0'..='9' => {
+                let value = arg.parse().map_err(|_| ())?;
+                ArgValue::Int(value)
+            },
+            '"' => {
+                let n = arg.len();
+                if n < 2 || arg.chars().last().ok_or(())? != '"' {
+                    return Err(()); // Bad string argument - unpaired quotes
+                }
+                ArgValue::String(arg[1..n-1].to_string())
+            },
+            _ => return Err(()), // Bad argument - unknown type
+        };
+        fn_args.push(arg);
+    }
+    Ok(fn_args)
+}
+
+#[test]
+fn test_parse_remote_fn_args() -> Result<(), ()> {
+    assert_eq!(parse_remote_fn_args(r#""#)?, Vec::new());
+    assert_eq!(parse_remote_fn_args(r#" "#)?, Vec::new());
+    assert_eq!(parse_remote_fn_args(r#"42"#)?, vec![ArgValue::Int(42)]);
+    assert_eq!(parse_remote_fn_args(r#" 42 "#)?, vec![ArgValue::Int(42)]);
+    assert_eq!(parse_remote_fn_args(r#" 42"#)?, vec![ArgValue::Int(42)]);
+    assert_eq!(parse_remote_fn_args(r#"42 "#)?, vec![ArgValue::Int(42)]);
+    assert_eq!(parse_remote_fn_args(r#""foo""#)?, vec![ArgValue::String("foo".to_string())]);
+    assert_eq!(parse_remote_fn_args(r#"42,"foo",-42"#)?, vec![ArgValue::Int(42), ArgValue::String("foo".to_string()), ArgValue::Int(-42)]);
+    assert_eq!(parse_remote_fn_args(r#"42, "foo", -42"#)?, vec![ArgValue::Int(42), ArgValue::String("foo".to_string()), ArgValue::Int(-42)]);
+
+    Ok(())
+}
+
+fn make_args(func: &Func, arg_values: Vec<ArgValue>) -> Args {
+    let mut args = Args::new();
+    for (arg, arg_value) in func.args.iter().zip(arg_values) {
+        // Here we won't check argument types, required or not etc.
+        // Let the remote side do all necessry checks and return error if needed.
+        args.add(arg.name.clone(), arg_value);
+    }
+    args
 }

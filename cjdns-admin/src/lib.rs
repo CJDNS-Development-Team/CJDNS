@@ -671,35 +671,52 @@ pub mod msgs {
 }
 
 /// List of remote functions.
-mod func_list {
+pub mod func_list {
     use std::fmt;
 
     use crate::msgs::{RemoteFnArgsDescr, RemoteFnDescrs};
 
     /// List of available remote functions.
     #[derive(Clone, Default, PartialEq, Eq, Debug)]
-    pub struct Funcs(pub Vec<Func>);
+    pub struct Funcs(Vec<Func>);
 
     /// Remote function description.
     #[derive(Clone, PartialEq, Eq, Debug)]
     pub struct Func {
+        /// Function name.
         pub name: String,
+        /// Function argument descriptions.
         pub args: Args,
     }
 
     /// Remote function arguments description.
     #[derive(Clone, PartialEq, Eq, Debug)]
-    pub struct Args(pub Vec<Arg>);
+    pub struct Args(Vec<Arg>);
 
     /// Remote function argument description.
     #[derive(Clone, PartialEq, Eq, Debug)]
     pub struct Arg {
+        /// Argument name.
         pub name: String,
+        /// Required argument flag.
         pub required: bool,
-        pub typ: String,
+        /// Argument type.
+        pub typ: ArgType,
+    }
+
+    /// Remote function argument type.
+    #[derive(Clone, PartialEq, Eq, Debug)]
+    pub enum ArgType {
+        /// Integer argument.
+        Int,
+        /// String argument.
+        String,
+        /// Some other type which is not supported directly.
+        Other(String),
     }
 
     impl Funcs {
+        #[inline]
         pub(super) fn new() -> Self {
             Funcs(Vec::new())
         }
@@ -719,7 +736,7 @@ mod func_list {
                 let arg = Arg {
                     name: arg_name,
                     required: arg_descr.required != 0,
-                    typ: arg_descr.typ,
+                    typ: arg_descr.typ.into(),
                 };
                 args.push(arg);
             }
@@ -728,6 +745,41 @@ mod func_list {
             Func {
                 name: fn_name,
                 args: Args(args),
+            }
+        }
+
+        /// Iterator over functions in this list returned in alphabetical order.
+        #[inline]
+        pub fn iter(&self) -> impl Iterator<Item=&Func> {
+            let Funcs(list) = self;
+            list.iter()
+        }
+
+        /// Find function by name.
+        #[inline]
+        pub fn find(&self, name: &str) -> Option<&Func> {
+            let Funcs(list) = self;
+            list.iter().find(|&f| f.name == name)
+        }
+    }
+
+    impl Args {
+        /// Iterator over arguments in this list.
+        /// Returns required args first in alphabetical order, then non-required in alphabetical order.
+        #[inline]
+        pub fn iter(&self) -> impl Iterator<Item=&Arg> {
+            let Args(list) = self;
+            list.iter()
+        }
+    }
+
+    impl From<String> for ArgType {
+        #[inline]
+        fn from(s: String) -> Self {
+            match s.as_str() {
+                "Int" => Self::Int,
+                "String" => Self::String,
+                _ => Self::Other(s),
             }
         }
     }
@@ -763,5 +815,82 @@ mod func_list {
             }
             write!(f, "{} {}", self.typ, self.name)
         }
+    }
+
+    impl fmt::Display for ArgType {
+        fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+            match self {
+                ArgType::Int => write!(f, "Int"),
+                ArgType::String => write!(f, "String"),
+                ArgType::Other(t) => write!(f, "{}", t),
+            }
+        }
+    }
+}
+
+/// Remote function argument list.
+pub mod func_args {
+    use std::collections::BTreeMap;
+
+    use serde::{Serialize, Serializer};
+    use serde::ser::SerializeMap;
+
+    /// Argument name (alias to `String`).
+    pub type ArgName = String;
+
+    /// Argument value (either integer or string).
+    #[derive(Clone, PartialEq, Eq, Debug)]
+    pub enum ArgValue {
+        /// Integer argument value.
+        Int(i64),
+        /// String argument value.
+        String(String),
+    }
+
+    /// Remote function argument values.
+    #[derive(Clone, Default, PartialEq, Eq, Debug)]
+    pub struct Args(BTreeMap<ArgName, ArgValue>);
+
+    impl Args {
+        /// New empty instance.
+        #[inline]
+        pub fn new() -> Self {
+            Args(BTreeMap::new())
+        }
+
+        /// Add argument value to list.
+        #[inline]
+        pub fn add(&mut self, name: ArgName, value: ArgValue) -> &mut Self {
+            let Args(map) = self;
+            map.insert(name, value);
+            self
+        }
+    }
+
+    impl Serialize for Args {
+        fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+            let Args(map) = self;
+            let mut encoder = serializer.serialize_map(Some(map.len()))?;
+            for (k, v) in map {
+                match v {
+                    ArgValue::Int(int_val) => encoder.serialize_entry(k, int_val)?,
+                    ArgValue::String(str_val) => encoder.serialize_entry(k, str_val)?,
+                }
+            }
+            encoder.end()
+        }
+    }
+
+    #[test]
+    fn test_args_ser() -> Result<(), Box<dyn std::error::Error>> {
+        let mut args = Args::new();
+        args.add("foo".to_string(), ArgValue::String("bar".to_string()));
+        args.add("boo".to_string(), ArgValue::Int(42));
+        args.add("zoo".to_string(), ArgValue::Int(-42));
+
+        let benc = String::from_utf8(bendy::serde::to_bytes(&args)?)?;
+        assert_eq!(benc, "d3:booi42e3:foo3:bar3:zooi-42ee");
+
+        Ok(())
     }
 }
