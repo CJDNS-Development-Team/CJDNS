@@ -2,7 +2,7 @@ use sodiumoxide::crypto::hash::sha512::Digest;
 
 use crate::{
     keys::{CJDNSPublicKey, CJDNS_IP6},
-    DefaultRoutingLabel, EncodingSchemeForm,
+    RoutingLabel, EncodingScheme,
     AnnouncementPacket
 };
 
@@ -30,14 +30,14 @@ pub type AnnouncementEntities = Vec<Entity>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Entity {
-    Version(u16),
+    NodeProtocolVersion(u16),
     EncodingScheme {
         hex: String,
-        scheme: Vec<EncodingSchemeForm>,
+        scheme: EncodingScheme,
     },
     Peer {
         ipv6: CJDNS_IP6,
-        label: DefaultRoutingLabel,
+        label: Option<RoutingLabel<u32>>,
         mtu: u32,
         peer_num: u16,
         unused: u32,

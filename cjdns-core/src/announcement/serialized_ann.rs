@@ -7,7 +7,7 @@ use crate::{
     deserialize_forms,
     keys::{CJDNSPublicKey, CJDNS_IP6},
     announcement::errors::*,
-    DefaultRoutingLabel, EncodingSchemeForm,
+    RoutingLabel, EncodingScheme,
     Announcement, AnnouncementHeader, AnnouncementEntities, Entity,
 };
 
@@ -89,6 +89,7 @@ mod parser {
     const PEER_TYPE: u8 = 1_u8;
     const VERSION_TYPE: u8 = 2_u8;
     const ENCODING_SCHEME_TYPE: u8 = 0_u8;
+    const ENTITY_MAX_SIZE: usize = 255_usize;
     const PEER_ENTITY_SIZE: usize = 32_usize;
     const VERSION_ENTITY_SIZE: usize = 4_usize;
     const ENCODING_SCHEME_ENTITY_MIN_SIZE: usize = 2_usize;
@@ -117,7 +118,7 @@ mod parser {
         let pub_signing_key = hex::encode(signing_key_data);
 
         let (super_node_data, rest_header) = header_without_sign_n_key.split_at(IP_SIZE);
-        let super_node_ip = CJDNS_IP6::try_from(super_node_data.to_vec()).or(Err(ParserError::CannotParseHeader("failed ip6 creation from bytes data")))?; // todo actually it's ugly
+        let super_node_ip = CJDNS_IP6::try_from(super_node_data.to_vec()).or(Err(ParserError::CannotParseHeader("failed ip6 creation from bytes data")))?;
 
         assert_eq!(rest_header.len(), 8, "Header size is gt 120 bytes");
         let last_byte = rest_header[7];
@@ -136,8 +137,8 @@ mod parser {
             (last_byte >> 3) & 1 == 1
         };
 
-        // TODO is this `rest_msg[7] &= 0xf0` really necessary, if we shift timestamp to right?
         let mut timestamp = u64::from_be_bytes(<[u8; 8]>::try_from(rest_header).expect("slice array size is ne to 8"));
+        // removing `version` and `is_reset` bits form timestamp bytes
         timestamp >>= 4;
 
         Ok(AnnouncementHeader {
@@ -168,29 +169,26 @@ mod parser {
         let mut parsed_entities = Vec::new();
         let mut idx = 0_usize;
         while idx < entities_data.len() {
-            let entity_len = entities_data[idx] as usize;
-            let entity_type = entities_data[idx + 1];
-            let entity_data = &entities_data[idx..idx + entity_len];
+            let encoded_entity_len = entities_data[idx] as usize;
+            let entity_data = &entities_data[idx..idx + encoded_entity_len];
 
-            if entity_len == 0 || entity_len != entity_data.len() {
-                return Err(ParserError::CannotParseEntity("Invalid entity length in message"));
+            if encoded_entity_len == 0 || encoded_entity_len != entity_data.len() {
+                return Err(ParserError::CannotParseEntity("Invalid entity inside entities data"));
             }
-            if entity_len == 1 {
+            if encoded_entity_len == 1 {
                 idx += 1;
                 continue;
             }
 
-            let parsed_entity = parse_entity(entity_type, entity_data)?; // TODO `None` is unrecognized staff. What shall we do with it? Better ok_or(Err(unrecognized entity))
+            let &entity_type = entities_data.get(idx + 1).expect("entity data length is ne to encoded length in it");
+            let parsed_entity = parse_entity(entity_type, entity_data)?;
             if let Some(entity) = parsed_entity {
                 parsed_entities.push(entity)
             }
 
             idx += entities_data[idx] as usize;
         }
-        // TODO how to reach this?
-        if idx != entities_data.len() {
-            return Err(ParserError::CannotParseEntity("garbage after the last announcement entity"));
-        }
+        
         Ok(parsed_entities)
     }
 
@@ -199,7 +197,7 @@ mod parser {
         let parsing_data = &entity_data[2_usize..];
         match entity_type {
             ENCODING_SCHEME_TYPE => {
-                if entity_data.len() < ENCODING_SCHEME_ENTITY_MIN_SIZE {
+                if entity_data.len() < ENCODING_SCHEME_ENTITY_MIN_SIZE || entity_data.len() > ENTITY_MAX_SIZE {
                     return Err(ParserError::CannotParseEntity("invalid encoding scheme data size"));
                 }
                 let scheme_entity = parse_encoding_scheme(parsing_data)?;
@@ -225,14 +223,15 @@ mod parser {
 
     fn parse_encoding_scheme(encoding_scheme_data: &[u8]) -> Result<Entity> {
         let hex = hex::encode(encoding_scheme_data);
-        let scheme = deserialize_forms(encoding_scheme_data).or(Err(ParserError::CannotParseEntity("encoding scheme deserialization failed")))?;
+        let scheme_forms = deserialize_forms(encoding_scheme_data).or(Err(ParserError::CannotParseEntity("encoding scheme deserialization failed")))?;
+        let scheme = EncodingScheme::new(&scheme_forms);
         Ok(Entity::EncodingScheme { hex, scheme })
     }
 
     fn parse_version(version_data: &[u8]) -> Result<Entity> {
         assert_eq!(version_data.len(), 2);
         let version = u16::from_be_bytes(<[u8; 2]>::try_from(version_data).expect("version slice is ne to 2"));
-        Ok(Entity::Version(version))
+        Ok(Entity::NodeProtocolVersion(version))
     }
 
     fn parse_peer(peer_data: &[u8]) -> Result<Entity> {
@@ -252,16 +251,11 @@ mod parser {
         let peer_num = u16::from_be_bytes(<[u8; 2]>::try_from(take_from_data_to_vec(2).as_slice()).expect("peer_num slice size is ne to 2"));
         let unused = u32::from_be_bytes(<[u8; 4]>::try_from(take_from_data_to_vec(4).as_slice()).expect("unused slice size is ne to 4"));
         let ipv6 = CJDNS_IP6::try_from(take_from_data_to_vec(16)).or(Err(ParserError::CannotParseEntity("failed ip6 creation from entity bytes")))?;
-        // TODO RoutingLabel<u32>?
         let label = {
-            let label_bytes_hexed = take_from_data_to_vec(4)
-                .chunks(2)
-                .map(|two_bytes| hex::encode(two_bytes))
-                .collect::<Vec<String>>()
-                .join(".");
-            let label_string = format!("{}{}", "0000.0000.", label_bytes_hexed);
-            DefaultRoutingLabel::try_from(label_string.as_str())
-                .or(Err(ParserError::CannotParseEntity("routing label creation from peer entity bytes failed")))?
+            let label_bits = u32::from_be_bytes(<[u8; 4]>::try_from(take_from_data_to_vec(4).as_slice()).expect("unused slice size is ne to 4"));
+            // A label of 0 indicates that the route is being withdrawn and it is no longer usable. Handling of zero label is not a job for parser
+            // So we return an Option
+            RoutingLabel::<u32>::try_new(label_bits)
         };
         Ok(Entity::Peer {
             ipv6,
@@ -273,6 +267,50 @@ mod parser {
             flags,
         })
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn test_without_entities() {
+            let _hexed_header = {
+                let s = String::from(
+                    "3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09"
+                );
+                let pk = "f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2";
+                let super_node_ip = "fc928136dc1fe6e04ef6a6dd7187b85f";
+                let rest_data = "00001576462f6f69";
+                s + pk + super_node_ip + rest_data
+            };
+        }
+
+        #[test]
+        fn test_multiple_entities() {
+            let multiple_peer_entity = {
+                let peer = "200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000015";
+                format!("{}{}", peer, peer)
+            };
+            let entities_data_vec = hex::decode(multiple_peer_entity).expect("invalid hex string");
+            let parsed_entities = parse_entities(entities_data_vec.as_slice()).expect("parsing entities failed");
+            assert_eq!(
+                parsed_entities,
+                vec![
+                    Entity::Peer {
+                        ipv6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("cjdns base test example failed"),
+                        label: Some(RoutingLabel::<u32>::try_new(21_u32).expect("zero label bits")),
+                        mtu: 0,
+                        peer_num: 65535,
+                        unused: 4294967295,
+                        encoding_form_number: 0,
+                        flags: 0
+                    };
+                    2
+                ]
+            )
+        }
+    }
+
 }
 
 #[cfg(test)]
@@ -282,11 +320,12 @@ mod tests {
 
     use sodiumoxide::crypto::hash::sha512::hash;
 
+    use crate::{EncodingSchemeForm};
+
     use super::*;
 
     #[test]
     fn test_general() {
-        // TODO still dirty
         let hexed_header = {
             let s = String::from(
                 "3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09"
@@ -321,10 +360,10 @@ mod tests {
                     timestamp: 1474857989878
                 },
                 entities: vec![
-                    Entity::Version(18),
+                    Entity::NodeProtocolVersion(18),
                     Entity::EncodingScheme {
                         hex: "6114458100".to_string(),
-                        scheme: vec![
+                        scheme: EncodingScheme::new(&vec![
                             EncodingSchemeForm {
                                 bit_count: 3,
                                 prefix_len: 1,
@@ -340,11 +379,11 @@ mod tests {
                                 prefix_len: 2,
                                 prefix: 0
                             },
-                        ]
+                        ])
                     },
                     Entity::Peer {
                         ipv6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("cjdns base test example failed"),
-                        label: DefaultRoutingLabel::try_from("0000.0000.0000.0015").expect("cjdns base test example failed"),
+                        label: Some(RoutingLabel::<u32>::try_new(21_u32).expect("zero routing label bits")),
                         mtu: 0,
                         peer_num: 65535,
                         unused: 4294967295,
