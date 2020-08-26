@@ -4,7 +4,7 @@ use std::{env, error::Error, path};
 
 use regex::Regex;
 
-use cjdns_admin::{func_args::{Args, ArgValue}, func_list::Func, msgs::DefaultResponsePayload};
+use cjdns_admin::{func_args::{Args, ArgValue}, func_list::Func, msgs::GenericResponsePayload};
 
 fn main() {
     if let Err(e) = run() {
@@ -27,18 +27,16 @@ fn run() -> Result<(), Err> {
         eprintln!("{}", cjdns.functions)
     } else {
         let fn_call_str = args.last().cloned().ok_or_else(|| Err::from("empty program args"))?;
-        //dbg!(&fn_call_str);
 
         let (fn_name, fn_args) = split_fn_invocation_str(&fn_call_str).map_err(|_| Err::from("bad function invocation expression"))?;
-        //dbg!(&fn_name, &fn_args);
 
         let fn_args = parse_remote_fn_args(&fn_args).map_err(|_| Err::from("bad function arguments"))?;
 
         let func = cjdns.functions.find(&fn_name).ok_or_else(|| Err::from("unknown function name"))?;
         let fn_args = make_args(func, fn_args);
 
-        let res = cjdns.call_func::<_, DefaultResponsePayload>(&fn_name, fn_args, false)?;
-        println!("{:?}", res); // TODO Dump function call result as JSON
+        let res = cjdns.call_func::<_, GenericResponsePayload>(&fn_name, fn_args, false)?;
+        println!("{:?}", res);
     };
 
     // Client disconnects automatically when `cjdns` drops out of scope
@@ -82,14 +80,14 @@ fn parse_remote_fn_args(s: &str) -> Result<Vec<ArgValue>, ()> {
             '-' | '0'..='9' => {
                 let value = arg.parse().map_err(|_| ())?;
                 ArgValue::Int(value)
-            },
+            }
             '"' => {
                 let n = arg.len();
                 if n < 2 || arg.chars().last().ok_or(())? != '"' {
                     return Err(()); // Bad string argument - unpaired quotes
                 }
-                ArgValue::String(arg[1..n-1].to_string())
-            },
+                ArgValue::String(arg[1..n - 1].to_string())
+            }
             _ => return Err(()), // Bad argument - unknown type
         };
         fn_args.push(arg);

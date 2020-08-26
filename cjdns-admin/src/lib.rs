@@ -55,6 +55,9 @@ mod errors {
         /// Failed to serialize/deserialize protocol message (using *bencode*).
         Protocol(bendy::serde::Error),
 
+        /// Remote invocation failed and returned `error` message.
+        RemoteError(String),
+
         /// Unexpected transaction id during message exchange. Supposed to be internal error.
         #[allow(missing_docs)]
         BrokenTx { sent_txid: String, received_txid: String },
@@ -90,6 +93,7 @@ mod errors {
                 Error::BadNetworkAddress(e) => write!(f, "Address parse error: {}", e),
                 Error::NetworkOperation(e) => write!(f, "UDP error: {}", e),
                 Error::Protocol(e) => write!(f, "Encoding error: {}", e),
+                Error::RemoteError(msg) => write!(f, "Remote call error: {}", msg),
                 Error::BrokenTx { sent_txid, received_txid } => write!(f, "Broken txid: sent {} but received {}", sent_txid, received_txid),
             }
         }
@@ -105,6 +109,7 @@ mod errors {
                 Error::BadNetworkAddress(e) => Some(e),
                 Error::NetworkOperation(e) => Some(e),
                 Error::Protocol(e) => Some(e),
+                Error::RemoteError(_) => None,
                 Error::BrokenTx { .. } => None,
             }
         }
@@ -394,6 +399,7 @@ mod conn {
 
             let resp: msgs::GenericResponse<P> = self.send_msg(&msg)?;
             check_txid(&msg.txid, &resp.txid)?;
+            check_remote_error(&resp.error)?;
 
             Ok(resp.payload)
         }
@@ -433,6 +439,7 @@ mod conn {
             // Send/receive
             let resp: msgs::GenericResponse<P> = self.send_msg(&msg)?;
             check_txid(&msg.txid, &resp.txid)?;
+            check_remote_error(&resp.error)?;
 
             Ok(resp.payload)
         }
@@ -479,6 +486,15 @@ mod conn {
             Err(Error::BrokenTx { sent_txid: sent_txid.clone(), received_txid: received_txid.clone() })
         }
     }
+
+    #[inline]
+    fn check_remote_error(remote_error_msg: &str) -> Result<(), Error> {
+        if remote_error_msg.is_empty() || remote_error_msg.eq_ignore_ascii_case("none") {
+            Ok(())
+        } else {
+            Err(Error::RemoteError(remote_error_msg.to_string()))
+        }
+    }
 }
 
 /// Transaction counter.
@@ -508,6 +524,8 @@ pub mod msgs {
     use std::collections::BTreeMap;
 
     use serde::{de::DeserializeOwned, Deserialize, Serialize};
+
+    use crate::func_ret::ReturnValue;
 
     pub(crate) use self::internal::*;
 
@@ -584,6 +602,9 @@ pub mod msgs {
             #[serde(rename = "txid")]
             pub(crate) txid: String,
 
+            #[serde(rename = "error", default)]
+            pub(crate) error: String,
+
             #[serde(flatten, default)]
             #[serde(bound(deserialize = "P: DeserializeOwned"))]
             pub(crate) payload: P,
@@ -620,17 +641,8 @@ pub mod msgs {
     pub struct Empty {
     }
 
-    /// Return value with `q` and `error` fields.
-    #[derive(Deserialize, Default, Clone, PartialEq, Eq, Debug)]
-    pub struct DefaultResponsePayload {
-        /// Response name.
-        #[serde(rename = "q", default)]
-        pub q: String,
-
-        /// Error message, if request failed.
-        #[serde(rename = "error", default)]
-        pub error: String,
-    }
+    /// Generic return value with fields exposed as a map.
+    pub type GenericResponsePayload = BTreeMap<String, ReturnValue>;
 
     /// Return value for `cookie` remote function.
     #[derive(Deserialize, Default, Clone, PartialEq, Eq, Debug)]
@@ -892,5 +904,90 @@ pub mod func_args {
         assert_eq!(benc, "d3:booi42e3:foo3:bar3:zooi-42ee");
 
         Ok(())
+    }
+}
+
+/// Remote function return values.
+pub mod func_ret {
+    use std::collections::BTreeMap;
+    use std::fmt;
+
+    use serde::{Deserialize, Deserializer};
+    use serde::de::{Error, MapAccess, SeqAccess, Unexpected, Visitor};
+
+    /// Remote function return value. Supports json-like data types.
+    #[derive(Clone, PartialEq, Eq)]
+    pub enum ReturnValue {
+        /// Integer return value.
+        Int(i64),
+        /// String return value.
+        String(String),
+        /// List return value.
+        List(Vec<ReturnValue>),
+        /// Map return value.
+        Map(BTreeMap<String, ReturnValue>),
+    }
+
+    impl<'de> Deserialize<'de> for ReturnValue {
+        fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+            deserializer.deserialize_any(ReturnValueVisitor)
+        }
+    }
+
+    struct ReturnValueVisitor;
+
+    impl<'de> Visitor<'de> for ReturnValueVisitor {
+        type Value = ReturnValue;
+
+        fn expecting(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            write!(f, "an integer, byte string, list or map")
+        }
+
+        fn visit_i64<E: Error>(self, v: i64) -> Result<Self::Value, E> {
+            Ok(ReturnValue::Int(v))
+        }
+
+        fn visit_u64<E: Error>(self, v: u64) -> Result<Self::Value, E> {
+            if v > i64::MAX as u64 {
+                return Err(Error::invalid_value(Unexpected::Unsigned(v), &"64-bit signed integer"));
+            }
+            Ok(ReturnValue::Int(v as i64))
+        }
+
+        fn visit_bytes<E: Error>(self, v: &[u8]) -> Result<Self::Value, E> {
+            let s = String::from_utf8(v.to_owned()).map_err(|_| Error::invalid_value(Unexpected::Bytes(v), &"cannot parse byte array as UTF-8 string"))?;
+            Ok(ReturnValue::String(s))
+        }
+
+        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+            let mut res = Vec::with_capacity(seq.size_hint().unwrap_or_default());
+
+            while let Some(item) = seq.next_element()? {
+                res.push(item)
+            }
+
+            Ok(ReturnValue::List(res))
+        }
+
+        fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+            let mut res = BTreeMap::new();
+
+            while let Some((key, value)) = map.next_entry()? {
+                res.insert(key, value);
+            }
+
+            Ok(ReturnValue::Map(res))
+        }
+    }
+
+    impl fmt::Debug for ReturnValue {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            match self {
+                ReturnValue::Int(v) => write!(f, "{}", v),
+                ReturnValue::String(s) => write!(f, r#""{}""#, s),
+                ReturnValue::List(list) => write!(f, "{:?}", list),
+                ReturnValue::Map(map) => write!(f, "{:?}", map),
+            }
+        }
     }
 }
