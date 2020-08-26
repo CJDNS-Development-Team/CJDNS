@@ -80,14 +80,14 @@ mod errors {
                         "Could not find cjdns ({}:{}){} see: https://github.com/cjdelisle/cjdnsadmin#connecting",
                         opts.addr, opts.port, used_config_str(&opts.used_config_file)
                     )
-                },
+                }
                 Error::AuthError(ConnOptions(opts)) => {
                     write!(
                         f,
                         "Could not authenticate with CJDNS ({}:{}){} see: https://github.com/cjdelisle/cjdnsadmin#authentication-issues",
                         opts.addr, opts.port, used_config_str(&opts.used_config_file)
                     )
-                },
+                }
                 Error::ConfigFileRead(e) => write!(f, "File error: {}", e),
                 Error::BadConfigFile(e) => write!(f, "JSON parse error: {}", e),
                 Error::BadNetworkAddress(e) => write!(f, "Address parse error: {}", e),
@@ -229,7 +229,7 @@ mod config {
                 addr: s("127.0.0.1"),
                 port: 11234,
                 password: s("NONE"),
-                used_config_file: None
+                used_config_file: None,
             }
         );
 
@@ -239,7 +239,7 @@ mod config {
                 addr: s("127.0.0.1"),
                 port: 11234,
                 password: s(""),
-                used_config_file: None
+                used_config_file: None,
             }
         );
 
@@ -249,7 +249,7 @@ mod config {
                 addr: s("192.168.1.1"),
                 port: 11234,
                 password: s("NONE"),
-                used_config_file: None
+                used_config_file: None,
             }
         );
 
@@ -259,7 +259,7 @@ mod config {
                 addr: s("127.0.0.1"),
                 port: 1234,
                 password: s("NONE"),
-                used_config_file: None
+                used_config_file: None,
             }
         );
 
@@ -269,7 +269,7 @@ mod config {
                 addr: s("127.0.0.1"),
                 port: 11234,
                 password: s("secret"),
-                used_config_file: None
+                used_config_file: None,
             }
         );
     }
@@ -638,8 +638,7 @@ pub mod msgs {
 
     /// Empty payload or arguments.
     #[derive(Deserialize, Serialize, Default, Clone, PartialEq, Eq, Debug)]
-    pub struct Empty {
-    }
+    pub struct Empty {}
 
     /// Generic return value with fields exposed as a map.
     pub type GenericResponsePayload = BTreeMap<String, ReturnValue>;
