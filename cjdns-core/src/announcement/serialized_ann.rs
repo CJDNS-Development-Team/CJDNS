@@ -274,6 +274,9 @@ mod parser {
     }
 
     fn parse_header(header_data: &[u8]) -> Result<AnnouncementHeader> {
+        if header_data.len() != HEADER_SIZE {
+            return Err(ParserError::CannotParseHeader("invalid data size"));
+        }
         let (signature_data, header_without_sign) = header_data.split_at(SIGN_SIZE);
         let signature = hex::encode(signature_data);
 
@@ -433,19 +436,78 @@ mod parser {
 
     #[cfg(test)]
     mod tests {
+
+        use sodiumoxide::*;
+
         use super::*;
+        use crate::keys::{CJDNSKeysApi, BytesRepr};
+
+        #[test]
+        fn test_parse_header() {
+            let keys_api = CJDNSKeysApi::new().expect("sodium init failed");
+            for _ in 0..10 {
+                let random_signature = randombytes::randombytes(64);
+                let keys = keys_api.key_pair();
+                let random_timestamp = randombytes::randombytes(8);
+
+                let ann_timestamp = {
+                    let mut timestamp = u64::from_be_bytes(<[u8; 8]>::try_from(random_timestamp.as_slice()).expect("slice array size is ne to 8"));
+                    timestamp >>= 4;
+                    timestamp
+                };
+                let version = random_timestamp[7] & 7;
+                let is_reset = (random_timestamp[7] >> 3) & 1 == 1;
+
+                let header_bytes = {
+                    let mut header_bytes = Vec::with_capacity(120);
+                    header_bytes.extend_from_slice(random_signature.as_slice());
+                    header_bytes.extend_from_slice(keys.public_key.bytes().as_slice());
+                    header_bytes.extend_from_slice(keys.ip6.bytes().as_slice());
+                    header_bytes.extend_from_slice(random_timestamp.as_slice());
+                    header_bytes
+                };
+
+                let parsed_header = parse_header(header_bytes.as_slice()).expect("parse failed");
+                assert_eq!(
+                    parsed_header,
+                    AnnouncementHeader {
+                        signature: hex::encode(random_signature),
+                        pub_signing_key: hex::encode(keys.public_key.bytes()),
+                        super_node_ip6: keys.ip6,
+                        timestamp: ann_timestamp,
+                        version,
+                        is_reset
+                    }
+                )
+            }
+        }
+
+        #[test]
+        fn test_parse_header_invalid_len() {
+            init().expect("sodium init failed");
+
+            // invalid len
+            let header_lengths = 0_usize..256;
+            for len in header_lengths {
+                if len == 120 {
+                    continue;
+                }
+                let random_header_bytes = randombytes::randombytes(len);
+                assert!(parse_header(&random_header_bytes).is_err())
+            }
+        }
 
         #[test]
         fn test_without_entities() {
-            let _hexed_header = {
-                let s = String::from(
-                    "3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09",
-                );
-                let pk = "f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2";
-                let super_node_ip = "fc928136dc1fe6e04ef6a6dd7187b85f";
-                let rest_data = "00001576462f6f69";
-                s + pk + super_node_ip + rest_data
-            };
+            let _valid_hexed_header =
+                // signature
+                "9dcdafaf6a129d4194eb52586ec81ecbf7f52abf183268a314e19e066baa7bfbe01121ba42ff8fa41356420894d576ce0a0105577cca0e50d945283c18d89c07".to_string() +
+                // pub key
+                "f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2" +
+                // ip6
+                "fc928136dc1fe6e04ef6a6dd7187b85f" +
+                // timestamp version is_reset
+                "0000157354c540c1";
         }
 
         #[test]
