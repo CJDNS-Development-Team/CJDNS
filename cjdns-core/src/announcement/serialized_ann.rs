@@ -6,10 +6,10 @@ use sodiumoxide::crypto::sign::ed25519::{verify_detached, PublicKey, Signature};
 use crate::{
     deserialize_forms,
     keys::{CJDNSPublicKey, CJDNS_IP6},
-    announcement::errors::*,
-    RoutingLabel, EncodingScheme,
-    Announcement, AnnouncementHeader, AnnouncementEntities, Entity,
+    Announcement, AnnouncementEntities, AnnouncementHeader, EncodingScheme, Entity, RoutingLabel,
 };
+
+use super::errors::*;
 
 const MIN_SIZE: usize = HEADER_SIZE;
 const HEADER_SIZE: usize = SIGN_SIZE + SIGN_KEY_SIZE + IP_SIZE + 8;
@@ -74,6 +74,169 @@ pub mod serialized_data {
 
         fn get_signed_data(&self) -> &[u8] {
             &self.0[SIGN_SIZE..]
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::EncodingSchemeForm;
+        use sodiumoxide::*;
+
+        fn bytes_from_hex(hex_string: &str) -> Vec<u8> {
+            hex::decode(hex_string).expect("invalid hex string")
+        }
+
+        fn create_ann_data(ann_data_header: &[u8], ann_data_entities: &[u8]) -> Vec<u8> {
+            let mut ann_data = Vec::new();
+            ann_data.extend_from_slice(ann_data_header);
+            ann_data.extend_from_slice(ann_data_entities);
+            ann_data
+        }
+
+        #[test]
+        fn test_packet_creation() {
+            init().expect("sodium init failed");
+
+            // actually, lengths could be greater than 144
+            let packet_lengths = 0_usize..144;
+            for len in packet_lengths {
+                let packet = AnnouncementPacket::try_new(randombytes::randombytes(len));
+                let invalid_case = len < 120;
+                if invalid_case {
+                    // invalid cases
+                    assert!(packet.is_err());
+                } else {
+                    assert!(packet.is_ok());
+                }
+            }
+        }
+
+        #[test]
+        fn test_packet_pure_fns() {
+            let sign = [1_u8; 64];
+            let pub_key = [2_u8; 32];
+            let super_node_ip6 = [3_u8; 16];
+            let rest_data = [4_u8; 8];
+            let header_data: Vec<u8> = { [sign.as_ref(), pub_key.as_ref(), super_node_ip6.as_ref(), rest_data.as_ref()].concat() };
+            for entities_len in 0_usize..100 {
+                let entities_data = randombytes::randombytes(entities_len);
+                let packet = AnnouncementPacket::try_new(create_ann_data(&header_data, &entities_data)).expect("invalid data len");
+                assert_eq!(packet.get_entities_bytes(), entities_data.as_slice());
+                assert_eq!(packet.get_header_bytes(), header_data.as_slice());
+                assert_eq!(packet.get_pub_key_bytes(), pub_key.as_ref());
+                assert_eq!(packet.get_signature_bytes(), sign.as_ref());
+                assert_eq!(packet.get_signed_data(), &create_ann_data(&header_data, &entities_data)[64..]);
+            }
+        }
+
+        #[test]
+        fn test_sign_check() {
+            init().expect("sodium init failed");
+            fn create_header_bytes() -> Vec<u8> {
+                let (sodium_pk, sodium_sk) = crypto::sign::gen_keypair();
+                let header_signing_data = {
+                    let mut h_s_d: Vec<u8> = Vec::with_capacity(56);
+                    let rest_header_data = randombytes::randombytes(24);
+                    h_s_d.extend_from_slice(&sodium_pk.0);
+                    h_s_d.extend_from_slice(rest_header_data.as_slice());
+                    assert_eq!(h_s_d.len(), 56);
+                    h_s_d
+                };
+                let sign = crypto::sign::sign_detached(header_signing_data.as_slice(), &sodium_sk);
+                let announcement_header_data = {
+                    let mut a_h_d = Vec::with_capacity(120);
+                    a_h_d.extend_from_slice(&sign.0);
+                    a_h_d.extend(header_signing_data);
+                    assert_eq!(a_h_d.len(), 120);
+                    a_h_d
+                };
+                announcement_header_data
+            };
+
+            for _ in 0..100 {
+                let packet = AnnouncementPacket::try_new(create_header_bytes()).expect("invalid packet data len");
+                assert!(packet.check().is_ok());
+            }
+        }
+
+        #[test]
+        fn test_parse() {
+            let test_data_hexed = {
+                let hexed_header = {
+                    let s = String::from(
+                        "3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09",
+                    );
+                    let pk = "f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2";
+                    let super_node_ip = "fc928136dc1fe6e04ef6a6dd7187b85f";
+                    let rest_data = "00001576462f6f69";
+                    s + pk + super_node_ip + rest_data
+                };
+                let hexed_version_entity = "04020012";
+                let hexed_pad = "01";
+                let hexed_enc_entity = "07006114458100";
+                let hexed_peer_entity = "200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000015";
+
+                hexed_header + hexed_version_entity + hexed_pad + hexed_enc_entity + hexed_peer_entity
+            };
+            let test_bytes_hash = hash(&bytes_from_hex(test_data_hexed.as_str()));
+
+            let ann_packet = AnnouncementPacket::try_new(bytes_from_hex(test_data_hexed.as_str())).expect("wrong packet size");
+            assert!(ann_packet.check().is_ok());
+
+            let parse_res = ann_packet.parse().expect("failed parsing basic `cjdnsann` test");
+            assert_eq!(
+                parse_res,
+                Announcement {
+                    header: AnnouncementHeader {
+                        signature:
+                            "3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09"
+                                .to_string(),
+                        pub_signing_key: "f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2".to_string(),
+                        super_node_ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("failed ip6 creation"),
+                        version: 1,
+                        is_reset: true,
+                        timestamp: 1474857989878
+                    },
+                    entities: vec![
+                        Entity::NodeProtocolVersion(18),
+                        Entity::EncodingScheme {
+                            hex: "6114458100".to_string(),
+                            scheme: EncodingScheme::new(&vec![
+                                EncodingSchemeForm {
+                                    bit_count: 3,
+                                    prefix_len: 1,
+                                    prefix: 1
+                                },
+                                EncodingSchemeForm {
+                                    bit_count: 5,
+                                    prefix_len: 2,
+                                    prefix: 2
+                                },
+                                EncodingSchemeForm {
+                                    bit_count: 8,
+                                    prefix_len: 2,
+                                    prefix: 0
+                                },
+                            ])
+                        },
+                        Entity::Peer {
+                            ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("failed ip6 creation"),
+                            label: Some(RoutingLabel::<u32>::try_new(21_u32).expect("zero routing label bits")),
+                            mtu: 0,
+                            peer_num: 65535,
+                            unused: 4294967295,
+                            encoding_form_number: 0,
+                            flags: 0
+                        }
+                    ],
+                    node_encryption_key: CJDNSPublicKey::try_from("z15pzyd9wgzs2g5np7d3swrqc1533yb7xx9dq0pvrqrqs42uwgq0.k".to_string())
+                        .expect("failed pub key creation"),
+                    node_ip6: CJDNS_IP6::try_from("fc49:11cb:38c2:8d42:9865:7b8e:0d67:11b3".to_string()).expect("failed ip6 creation"),
+                    binary: AnnouncementPacket(bytes_from_hex(test_data_hexed.as_str())),
+                    binary_hash: test_bytes_hash
+                }
+            )
         }
     }
 }
@@ -144,7 +307,7 @@ mod parser {
         Ok(AnnouncementHeader {
             signature,
             pub_signing_key,
-            super_node_ip,
+            super_node_ip6: super_node_ip,
             version,
             is_reset,
             timestamp,
@@ -188,7 +351,7 @@ mod parser {
 
             idx += entities_data[idx] as usize;
         }
-        
+
         Ok(parsed_entities)
     }
 
@@ -239,9 +402,9 @@ mod parser {
         let mut peer_data_iter = peer_data.iter();
         let mut take_from_data_to_vec = |n: usize| peer_data_iter.by_ref().take(n).map(|&byte| byte).collect::<Vec<u8>>();
         let (encoding_form_number, flags) = {
-            let e_f = take_from_data_to_vec(2);
+            let efn_f = take_from_data_to_vec(2);
             let err_msg = "peer data is empty";
-            let (&encoding_form_number, &flags) = (e_f.first().expect(err_msg), e_f.last().expect(err_msg));
+            let (&encoding_form_number, &flags) = (efn_f.first().expect(err_msg), efn_f.last().expect(err_msg));
             (encoding_form_number, flags)
         };
         let mtu = {
@@ -250,7 +413,7 @@ mod parser {
         };
         let peer_num = u16::from_be_bytes(<[u8; 2]>::try_from(take_from_data_to_vec(2).as_slice()).expect("peer_num slice size is ne to 2"));
         let unused = u32::from_be_bytes(<[u8; 4]>::try_from(take_from_data_to_vec(4).as_slice()).expect("unused slice size is ne to 4"));
-        let ipv6 = CJDNS_IP6::try_from(take_from_data_to_vec(16)).or(Err(ParserError::CannotParseEntity("failed ip6 creation from entity bytes")))?;
+        let ip6 = CJDNS_IP6::try_from(take_from_data_to_vec(16)).or(Err(ParserError::CannotParseEntity("failed ip6 creation from entity bytes")))?;
         let label = {
             let label_bits = u32::from_be_bytes(<[u8; 4]>::try_from(take_from_data_to_vec(4).as_slice()).expect("unused slice size is ne to 4"));
             // A label of 0 indicates that the route is being withdrawn and it is no longer usable. Handling of zero label is not a job for parser
@@ -258,7 +421,7 @@ mod parser {
             RoutingLabel::<u32>::try_new(label_bits)
         };
         Ok(Entity::Peer {
-            ipv6,
+            ip6,
             label,
             mtu,
             peer_num,
@@ -276,7 +439,7 @@ mod parser {
         fn test_without_entities() {
             let _hexed_header = {
                 let s = String::from(
-                    "3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09"
+                    "3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09",
                 );
                 let pk = "f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2";
                 let super_node_ip = "fc928136dc1fe6e04ef6a6dd7187b85f";
@@ -286,117 +449,25 @@ mod parser {
         }
 
         #[test]
-        fn test_multiple_entities() {
-            let multiple_peer_entity = {
-                let peer = "200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000015";
-                format!("{}{}", peer, peer)
+        fn test_multiple_peers() {
+            let multiple_peer_entity_hex = {
+                let peer_data_hex = "200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000015";
+                format!("{}{}{}", peer_data_hex, peer_data_hex, peer_data_hex)
             };
-            let entities_data_vec = hex::decode(multiple_peer_entity).expect("invalid hex string");
+            let entities_data_vec = hex::decode(multiple_peer_entity_hex).expect("invalid hex string");
+
+            let parsed_peer = Entity::Peer {
+                ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("failed ip6 creation"),
+                label: Some(RoutingLabel::<u32>::try_new(21_u32).expect("zero label bits")),
+                mtu: 0,
+                peer_num: 65535,
+                unused: 4294967295,
+                encoding_form_number: 0,
+                flags: 0,
+            };
             let parsed_entities = parse_entities(entities_data_vec.as_slice()).expect("parsing entities failed");
-            assert_eq!(
-                parsed_entities,
-                vec![
-                    Entity::Peer {
-                        ipv6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("cjdns base test example failed"),
-                        label: Some(RoutingLabel::<u32>::try_new(21_u32).expect("zero label bits")),
-                        mtu: 0,
-                        peer_num: 65535,
-                        unused: 4294967295,
-                        encoding_form_number: 0,
-                        flags: 0
-                    };
-                    2
-                ]
-            )
+
+            assert_eq!(parsed_entities, vec![parsed_peer; 3]);
         }
-    }
-
-}
-
-#[cfg(test)]
-mod tests {
-
-    use std::convert::TryFrom;
-
-    use sodiumoxide::crypto::hash::sha512::hash;
-
-    use crate::{EncodingSchemeForm};
-
-    use super::*;
-
-    #[test]
-    fn test_general() {
-        let hexed_header = {
-            let s = String::from(
-                "3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09"
-            );
-            let pk = "f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2";
-            let super_node_ip = "fc928136dc1fe6e04ef6a6dd7187b85f";
-            let rest_data = "00001576462f6f69";
-            s + pk + super_node_ip + rest_data
-        };
-        let hexed_version_entity = "04020012";
-        let hexed_pad = "01";
-        let hexed_enc_entity = "07006114458100";
-        let hexed_peer_entity = "200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000015";
-
-        let test_data_hexed = hexed_header + hexed_version_entity + hexed_pad + hexed_enc_entity + hexed_peer_entity;
-        let test_data_bytes = hex::decode(test_data_hexed).expect("test bytes from https://github.com/cjdelisle/cjdnsann/blob/master/test.js#L30");
-        let test_bytes_hash = hash(&test_data_bytes);
-
-        let ann_packet = serialized_data::AnnouncementPacket::try_new(test_data_bytes.clone()).expect("wrong packet size");
-        let res = ann_packet.parse().expect("failed basic cjdnsann js impl test");
-        assert_eq!(
-            res,
-            Announcement {
-                header: AnnouncementHeader {
-                    signature:
-                    "3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09"
-                        .to_string(),
-                    pub_signing_key: "f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2".to_string(),
-                    super_node_ip: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("cjdns base test example failed"),
-                    version: 1,
-                    is_reset: true,
-                    timestamp: 1474857989878
-                },
-                entities: vec![
-                    Entity::NodeProtocolVersion(18),
-                    Entity::EncodingScheme {
-                        hex: "6114458100".to_string(),
-                        scheme: EncodingScheme::new(&vec![
-                            EncodingSchemeForm {
-                                bit_count: 3,
-                                prefix_len: 1,
-                                prefix: 1
-                            },
-                            EncodingSchemeForm {
-                                bit_count: 5,
-                                prefix_len: 2,
-                                prefix: 2
-                            },
-                            EncodingSchemeForm {
-                                bit_count: 8,
-                                prefix_len: 2,
-                                prefix: 0
-                            },
-                        ])
-                    },
-                    Entity::Peer {
-                        ipv6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("cjdns base test example failed"),
-                        label: Some(RoutingLabel::<u32>::try_new(21_u32).expect("zero routing label bits")),
-                        mtu: 0,
-                        peer_num: 65535,
-                        unused: 4294967295,
-                        encoding_form_number: 0,
-                        flags: 0
-                    }
-                ],
-                node_encryption_key: CJDNSPublicKey::try_from("z15pzyd9wgzs2g5np7d3swrqc1533yb7xx9dq0pvrqrqs42uwgq0.k".to_string())
-                    .expect("cjdns base test example failed"),
-                node_ip6: CJDNS_IP6::try_from("fc49:11cb:38c2:8d42:9865:7b8e:0d67:11b3".to_string()).expect("cjdns base test example failed"),
-                binary: serialized_data::AnnouncementPacket::try_new(test_data_bytes).expect("wrong packet size"),
-                binary_hash: test_bytes_hash
-            }
-        )
     }
 }

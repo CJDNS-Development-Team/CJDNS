@@ -2,8 +2,7 @@ use sodiumoxide::crypto::hash::sha512::Digest;
 
 use crate::{
     keys::{CJDNSPublicKey, CJDNS_IP6},
-    RoutingLabel, EncodingScheme,
-    AnnouncementPacket
+    AnnouncementPacket, EncodingScheme, RoutingLabel,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,7 +19,7 @@ pub struct Announcement {
 pub struct AnnouncementHeader {
     pub signature: String,
     pub pub_signing_key: String,
-    pub super_node_ip: CJDNS_IP6,
+    pub super_node_ip6: CJDNS_IP6,
     pub version: u8,
     pub is_reset: bool,
     pub timestamp: u64,
@@ -36,7 +35,7 @@ pub enum Entity {
         scheme: EncodingScheme,
     },
     Peer {
-        ipv6: CJDNS_IP6,
+        ip6: CJDNS_IP6,
         label: Option<RoutingLabel<u32>>,
         mtu: u32,
         peer_num: u16,
