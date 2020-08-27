@@ -19,27 +19,27 @@ pub enum ArgValue {
 
 /// Remote function argument values.
 #[derive(Clone, Default, PartialEq, Eq, Debug)]
-pub struct Args(BTreeMap<ArgName, ArgValue>);
+pub struct ArgValues(BTreeMap<ArgName, ArgValue>);
 
-impl Args {
+impl ArgValues {
     /// New empty instance.
     #[inline]
     pub fn new() -> Self {
-        Args(BTreeMap::new())
+        ArgValues(BTreeMap::new())
     }
 
     /// Add argument value to list.
     #[inline]
     pub fn add(&mut self, name: ArgName, value: ArgValue) -> &mut Self {
-        let Args(map) = self;
+        let ArgValues(map) = self;
         map.insert(name, value);
         self
     }
 }
 
-impl Serialize for Args {
+impl Serialize for ArgValues {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        let Args(map) = self;
+        let ArgValues(map) = self;
         let mut encoder = serializer.serialize_map(Some(map.len()))?;
         for (k, v) in map {
             match v {
@@ -53,7 +53,7 @@ impl Serialize for Args {
 
 #[test]
 fn test_args_ser() -> Result<(), Box<dyn std::error::Error>> {
-    let mut args = Args::new();
+    let mut args = ArgValues::new();
     args.add("foo".to_string(), ArgValue::String("bar".to_string()));
     args.add("boo".to_string(), ArgValue::Int(42));
     args.add("zoo".to_string(), ArgValue::Int(-42));

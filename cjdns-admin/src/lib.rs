@@ -2,17 +2,20 @@
 
 #![deny(missing_docs)]
 
-pub use self::config::Opts;
-pub use self::conn::Connection;
-pub use self::errors::Error;
+pub use crate::config::Opts;
+pub use crate::conn::Connection;
+pub use crate::errors::Error;
+pub use crate::func_args::{ArgName, ArgValue, ArgValues};
+pub use crate::func_list::{Arg, Args, ArgType, Func, Funcs};
+pub use crate::func_ret::ReturnValue;
 
 mod config;
 mod conn;
 mod errors;
+mod func_args;
+mod func_list;
+mod func_ret;
 mod txid;
-pub mod func_args;
-pub mod func_list;
-pub mod func_ret;
 pub mod msgs;
 
 #[derive(Clone, Default, PartialEq, Eq, Debug)]

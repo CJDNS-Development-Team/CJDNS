@@ -4,7 +4,7 @@ use std::{env, error::Error, path};
 
 use regex::Regex;
 
-use cjdns_admin::{func_args::{Args, ArgValue}, func_list::Func, msgs::GenericResponsePayload};
+use cjdns_admin::{ArgValue, ArgValues, Func, msgs::GenericResponsePayload};
 
 #[tokio::main]
 async fn main() {
@@ -111,8 +111,8 @@ fn test_parse_remote_fn_args() -> Result<(), ()> {
     Ok(())
 }
 
-fn make_args(func: &Func, arg_values: Vec<ArgValue>) -> Args {
-    let mut args = Args::new();
+fn make_args(func: &Func, arg_values: Vec<ArgValue>) -> ArgValues {
+    let mut args = ArgValues::new();
     for (arg, arg_value) in func.args.iter().zip(arg_values) {
         // Here we won't check argument types, required or not etc.
         // Let the remote side do all necessry checks and return error if needed.
