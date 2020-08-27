@@ -11,7 +11,7 @@ use crate::{
 
 use super::errors::*;
 
-const MIN_SIZE: usize = HEADER_SIZE;
+const ANNOUNCEMENT_MIN_SIZE: usize = HEADER_SIZE;
 const HEADER_SIZE: usize = SIGN_SIZE + SIGN_KEY_SIZE + IP_SIZE + 8;
 const SIGN_SIZE: usize = 64_usize;
 const SIGN_KEY_SIZE: usize = 32_usize;
@@ -29,7 +29,7 @@ pub mod serialized_data {
     impl AnnouncementPacket {
         /// Instantiates wrapper on announcement message
         pub fn try_new(ann_data: Vec<u8>) -> Result<Self> {
-            if ann_data.len() < MIN_SIZE {
+            if ann_data.len() < ANNOUNCEMENT_MIN_SIZE {
                 return Err(PacketError::CannotInstantiatePacket);
             }
             Ok(Self(ann_data))
@@ -83,15 +83,12 @@ pub mod serialized_data {
         use crate::EncodingSchemeForm;
         use sodiumoxide::*;
 
-        fn bytes_from_hex(hex_string: &str) -> Vec<u8> {
-            hex::decode(hex_string).expect("invalid hex string")
+        fn collect_slices_to_vec(slice1: &[u8], slice2: &[u8]) -> Vec<u8> {
+            slice1.iter().chain(slice2.iter()).map(|&x| x).collect()
         }
 
-        fn create_ann_data(ann_data_header: &[u8], ann_data_entities: &[u8]) -> Vec<u8> {
-            let mut ann_data = Vec::new();
-            ann_data.extend_from_slice(ann_data_header);
-            ann_data.extend_from_slice(ann_data_entities);
-            ann_data
+        fn hex_to_bytes(hex_string: String) -> Vec<u8> {
+            hex::decode(hex_string).expect("invalid hex string")
         }
 
         #[test]
@@ -101,61 +98,52 @@ pub mod serialized_data {
             // actually, lengths could be greater than 144
             let packet_lengths = 0_usize..144;
             for len in packet_lengths {
-                let packet = AnnouncementPacket::try_new(randombytes::randombytes(len));
-                let invalid_case = len < 120;
-                if invalid_case {
-                    // invalid cases
-                    assert!(packet.is_err());
-                } else {
+                let packet_data = randombytes::randombytes(len);
+                let packet = AnnouncementPacket::try_new(packet_data);
+
+                let valid_case = len >= ANNOUNCEMENT_MIN_SIZE;
+                if valid_case {
                     assert!(packet.is_ok());
+                } else {
+                    assert!(packet.is_err());
                 }
             }
         }
 
         #[test]
         fn test_packet_pure_fns() {
-            let sign = [1_u8; 64];
-            let pub_key = [2_u8; 32];
-            let super_node_ip6 = [3_u8; 16];
-            let rest_data = [4_u8; 8];
-            let header_data: Vec<u8> = { [sign.as_ref(), pub_key.as_ref(), super_node_ip6.as_ref(), rest_data.as_ref()].concat() };
+            init().expect("sodium init failed");
+
+            let header_data = randombytes::randombytes(HEADER_SIZE);
             for entities_len in 0_usize..100 {
                 let entities_data = randombytes::randombytes(entities_len);
-                let packet = AnnouncementPacket::try_new(create_ann_data(&header_data, &entities_data)).expect("invalid data len");
-                assert_eq!(packet.get_entities_bytes(), entities_data.as_slice());
+                let announcement_data = collect_slices_to_vec(header_data.as_slice(), entities_data.as_slice());
+                let packet = AnnouncementPacket::try_new(announcement_data.to_vec()).expect("invalid data len");
+
+                assert_eq!(packet.get_signed_data(), &announcement_data[SIGN_SIZE..]);
+                assert_eq!(packet.get_signature_bytes(), &header_data[..SIGN_SIZE]);
+                assert_eq!(packet.get_pub_key_bytes(), &header_data[SIGN_SIZE..][..SIGN_KEY_SIZE]);
                 assert_eq!(packet.get_header_bytes(), header_data.as_slice());
-                assert_eq!(packet.get_pub_key_bytes(), pub_key.as_ref());
-                assert_eq!(packet.get_signature_bytes(), sign.as_ref());
-                assert_eq!(packet.get_signed_data(), &create_ann_data(&header_data, &entities_data)[64..]);
+                assert_eq!(packet.get_entities_bytes(), entities_data.as_slice());
             }
         }
 
         #[test]
         fn test_sign_check() {
             init().expect("sodium init failed");
-            fn create_header_bytes() -> Vec<u8> {
+
+            fn create_signed_header() -> Vec<u8> {
                 let (sodium_pk, sodium_sk) = crypto::sign::gen_keypair();
-                let header_signing_data = {
-                    let mut h_s_d: Vec<u8> = Vec::with_capacity(56);
-                    let rest_header_data = randombytes::randombytes(24);
-                    h_s_d.extend_from_slice(&sodium_pk.0);
-                    h_s_d.extend_from_slice(rest_header_data.as_slice());
-                    assert_eq!(h_s_d.len(), 56);
-                    h_s_d
+                let header_data_to_sign = {
+                    let rest_header_data = randombytes::randombytes(HEADER_SIZE - SIGN_SIZE - SIGN_KEY_SIZE);
+                    collect_slices_to_vec(sodium_pk.as_ref(), rest_header_data.as_slice())
                 };
-                let sign = crypto::sign::sign_detached(header_signing_data.as_slice(), &sodium_sk);
-                let announcement_header_data = {
-                    let mut a_h_d = Vec::with_capacity(120);
-                    a_h_d.extend_from_slice(&sign.0);
-                    a_h_d.extend(header_signing_data);
-                    assert_eq!(a_h_d.len(), 120);
-                    a_h_d
-                };
-                announcement_header_data
+                let sign = crypto::sign::sign_detached(header_data_to_sign.as_slice(), &sodium_sk);
+                collect_slices_to_vec(sign.as_ref(), header_data_to_sign.as_slice())
             };
 
             for _ in 0..100 {
-                let packet = AnnouncementPacket::try_new(create_header_bytes()).expect("invalid packet data len");
+                let packet = AnnouncementPacket::try_new(create_signed_header()).expect("invalid packet data len");
                 assert!(packet.check().is_ok());
             }
         }
@@ -163,25 +151,24 @@ pub mod serialized_data {
         #[test]
         fn test_parse() {
             let test_data_hexed = {
-                let hexed_header = {
-                    let s = String::from(
-                        "3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09",
-                    );
-                    let pk = "f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2";
-                    let super_node_ip = "fc928136dc1fe6e04ef6a6dd7187b85f";
-                    let rest_data = "00001576462f6f69";
-                    s + pk + super_node_ip + rest_data
-                };
-                let hexed_version_entity = "04020012";
-                let hexed_pad = "01";
-                let hexed_enc_entity = "07006114458100";
-                let hexed_peer_entity = "200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000015";
+                // header hex data
+                let sign = "3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09";
+                let pub_key = "f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2";
+                let super_node_ip = "fc928136dc1fe6e04ef6a6dd7187b85f";
+                let rest_header_data = "00001576462f6f69";
 
-                hexed_header + hexed_version_entity + hexed_pad + hexed_enc_entity + hexed_peer_entity
+                // entities hexed data
+                let version_entity = "04020012";
+                let pad = "01";
+                let encoding_scheme_entity = "07006114458100";
+                let peer_entity = "200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000015";
+
+                format!("{}{}{}{}{}{}{}{}", sign, pub_key, super_node_ip, rest_header_data, version_entity, pad, encoding_scheme_entity, peer_entity)
             };
-            let test_bytes_hash = hash(&bytes_from_hex(test_data_hexed.as_str()));
+            let test_data_bytes = hex_to_bytes(test_data_hexed);
+            let test_bytes_hash = hash(test_data_bytes.as_slice());
 
-            let ann_packet = AnnouncementPacket::try_new(bytes_from_hex(test_data_hexed.as_str())).expect("wrong packet size");
+            let ann_packet = AnnouncementPacket::try_new(test_data_bytes.clone()).expect("wrong packet size");
             assert!(ann_packet.check().is_ok());
 
             let parse_res = ann_packet.parse().expect("failed parsing basic `cjdnsann` test");
@@ -233,7 +220,7 @@ pub mod serialized_data {
                     node_encryption_key: CJDNSPublicKey::try_from("z15pzyd9wgzs2g5np7d3swrqc1533yb7xx9dq0pvrqrqs42uwgq0.k".to_string())
                         .expect("failed pub key creation"),
                     node_ip6: CJDNS_IP6::try_from("fc49:11cb:38c2:8d42:9865:7b8e:0d67:11b3".to_string()).expect("failed ip6 creation"),
-                    binary: AnnouncementPacket(bytes_from_hex(test_data_hexed.as_str())),
+                    binary: AnnouncementPacket(test_data_bytes),
                     binary_hash: test_bytes_hash
                 }
             )
