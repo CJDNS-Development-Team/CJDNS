@@ -15,8 +15,9 @@ struct ConnectionOptions {
 }
 
 mod errors {
-    use std;
     use std::fmt;
+
+    use async_std::io;
 
     use crate::ConnectionOptions;
 
@@ -41,7 +42,7 @@ mod errors {
         AuthError(ConnOptions),
 
         /// Failed to read cjdnsadmin config file (`~/.cjdnsadmin` by default).
-        ConfigFileRead(std::io::Error),
+        ConfigFileRead(io::Error),
 
         /// Error parsing cjdnsadmin config file (`~/.cjdnsadmin` by default) - must be a valid JSON file.
         BadConfigFile(serde_json::Error),
@@ -50,7 +51,7 @@ mod errors {
         BadNetworkAddress(std::net::AddrParseError),
 
         /// Network I/O error.
-        NetworkOperation(std::io::Error),
+        NetworkOperation(io::Error),
 
         /// Failed to serialize/deserialize protocol message (using *bencode*).
         Protocol(bendy::serde::Error),
@@ -117,10 +118,9 @@ mod errors {
 }
 
 mod config {
-    use std::fs;
-    use std::io;
-    use std::path::{Path, PathBuf};
-
+    use async_std::fs;
+    use async_std::io;
+    use async_std::path::{Path, PathBuf};
     use serde::Deserialize;
 
     use crate::ConnectionOptions;
@@ -156,7 +156,7 @@ mod config {
     }
 
     impl Opts {
-        pub(super) fn into_connection_options(self) -> Result<ConnectionOptions, Error> {
+        pub(super) async fn into_connection_options(self) -> Result<ConnectionOptions, Error> {
             // Do we need to try to read config file?
             let is_configured = (self.addr.is_some() || self.port.is_some() || self.password.is_some()) && self.config_file_path.is_none();
 
@@ -167,7 +167,7 @@ mod config {
             // Try to read config file
             if !is_configured {
                 if let Some(config_file) = opts.get_config_file_location() {
-                    if let Some(config) = Self::read_optional_config_file(&config_file)? {
+                    if let Some(config) = Self::read_optional_config_file(&config_file).await? {
                         opts = config;
                         conf_file = Some(config_file);
                     }
@@ -194,7 +194,7 @@ mod config {
 
             if let Some(mut path) = dirs::home_dir() {
                 path.push(DEFAULT_CONFIG_FILE_NAME);
-                return Some(path);
+                return Some(path.into());
             }
 
             None // Unable to locate HOME dir - unsupported platform?
@@ -204,13 +204,13 @@ mod config {
             serde_json::from_slice(json).map_err(|e| Error::BadConfigFile(e))
         }
 
-        fn read_config_file(file_path: &Path) -> Result<Self, Error> {
-            let json = fs::read(file_path).map_err(|e| Error::ConfigFileRead(e))?;
+        async fn read_config_file(file_path: &Path) -> Result<Self, Error> {
+            let json = fs::read(file_path).await.map_err(|e| Error::ConfigFileRead(e))?;
             Self::parse_config(&json)
         }
 
-        fn read_optional_config_file(file_path: &Path) -> Result<Option<Self>, Error> {
-            match Self::read_config_file(file_path) {
+        async fn read_optional_config_file(file_path: &Path) -> Result<Option<Self>, Error> {
+            match Self::read_config_file(file_path).await {
                 Ok(conf) => Ok(Some(conf)),
                 Err(Error::ConfigFileRead(err)) if err.kind() == io::ErrorKind::NotFound => Ok(None),
                 Err(err) => Err(err),
@@ -298,15 +298,15 @@ mod config {
 /// If `opts` is not provided, the default config file is read.
 /// or only specified config file name,
 /// the corresponding config file is read.
-pub fn connect(opts: Option<Opts>) -> Result<Connection, Error> {
-    let opts = opts.unwrap_or_default().into_connection_options()?;
-    conn::Connection::new(opts)
+pub async fn connect(opts: Option<Opts>) -> Result<Connection, Error> {
+    let opts = opts.unwrap_or_default().into_connection_options().await?;
+    conn::Connection::new(opts).await
 }
 
 mod conn {
-    use std::net::{IpAddr, SocketAddr, UdpSocket};
     use std::time::Duration;
 
+    use async_std::net::{IpAddr, SocketAddr, UdpSocket};
     use sodiumoxide::crypto::hash::sha256::hash;
 
     use crate::ConnectionOptions;
@@ -329,44 +329,43 @@ mod conn {
     }
 
     impl Connection {
-        pub(super) fn new(opts: ConnectionOptions) -> Result<Self, Error> {
+        pub(super) async fn new(opts: ConnectionOptions) -> Result<Self, Error> {
             let mut conn = Connection {
-                socket: create_udp_socket_sender(&opts.addr, opts.port)?,
+                socket: create_udp_socket_sender(&opts.addr, opts.port).await?,
                 password: opts.password.clone(),
                 counter: Counter::new_random(),
                 functions: Funcs::default(),
             };
 
-            conn.probe_connection(opts)?;
-            let fns = conn.load_available_functions()?;
+            conn.probe_connection(opts).await?;
+            let fns = conn.load_available_functions().await?;
             conn.functions = fns;
 
             Ok(conn)
         }
 
-        fn set_timeout(&self, timeout: Duration) -> Result<(), Error> {
-            self.socket.set_read_timeout(Some(timeout)).map_err(|e| Error::NetworkOperation(e))?;
-            self.socket.set_write_timeout(Some(timeout)).map_err(|e| Error::NetworkOperation(e))?;
+        fn set_timeout(&self, _timeout: Duration) -> Result<(), Error> {
+            // TODO implement proper timeout policy
             Ok(())
         }
 
-        fn probe_connection(&self, opts: ConnectionOptions) -> Result<(), Error> {
+        async fn probe_connection(&self, opts: ConnectionOptions) -> Result<(), Error> {
             self.set_timeout(PING_TIMEOUT)?;
-            self.call_func::<(), Empty>("ping", (), true).map_err(|_| Error::ConnectError(ConnOptions::wrap(&opts)))?;
+            self.call_func::<(), Empty>("ping", (), true).await.map_err(|_| Error::ConnectError(ConnOptions::wrap(&opts)))?;
 
             self.set_timeout(DEFAULT_TIMEOUT)?;
             if !self.password.is_empty() {
-                self.call_func::<(), Empty>("AuthorizedPasswords_list", (), false).map_err(|_| Error::AuthError(ConnOptions::wrap(&opts)))?;
+                self.call_func::<(), Empty>("AuthorizedPasswords_list", (), false).await.map_err(|_| Error::AuthError(ConnOptions::wrap(&opts)))?;
             }
 
             Ok(())
         }
 
-        fn load_available_functions(&self) -> Result<Funcs, Error> {
+        async fn load_available_functions(&self) -> Result<Funcs, Error> {
             let mut res = Funcs::new();
 
             for i in 0.. {
-                let ret: msgs::AvailableFnsResponsePayload = self.call_func("Admin_availableFunctions", msgs::AvailableFnsQueryArg { page: i }, false)?;
+                let ret: msgs::AvailableFnsResponsePayload = self.call_func("Admin_availableFunctions", msgs::AvailableFnsQueryArg { page: i }, false).await?;
                 let funcs = ret.available_fns;
 
                 if funcs.is_empty() {
@@ -380,34 +379,34 @@ mod conn {
         }
 
         /// Call remote function.
-        pub fn call_func<A: msgs::Args, P: msgs::Payload>(&self, remote_fn_name: &str, args: A, disable_auth: bool) -> Result<P, Error> {
+        pub async fn call_func<A: msgs::Args, P: msgs::Payload>(&self, remote_fn_name: &str, args: A, disable_auth: bool) -> Result<P, Error> {
             //dbg!(remote_fn_name);
 
             if disable_auth || self.password.is_empty() {
-                self.call_func_no_auth(remote_fn_name, args)
+                self.call_func_no_auth(remote_fn_name, args).await
             } else {
-                self.call_func_auth(remote_fn_name, args)
+                self.call_func_auth(remote_fn_name, args).await
             }
         }
 
-        fn call_func_no_auth<A: msgs::Args, P: msgs::Payload>(&self, remote_fn_name: &str, args: A) -> Result<P, Error> {
+        async fn call_func_no_auth<A: msgs::Args, P: msgs::Payload>(&self, remote_fn_name: &str, args: A) -> Result<P, Error> {
             let msg = msgs::Query {
                 txid: self.counter.next().to_string(),
                 q: remote_fn_name.to_string(),
                 args,
             };
 
-            let resp: msgs::GenericResponse<P> = self.send_msg(&msg)?;
+            let resp: msgs::GenericResponse<P> = self.send_msg(&msg).await?;
             check_txid(&msg.txid, &resp.txid)?;
             check_remote_error(&resp.error)?;
 
             Ok(resp.payload)
         }
 
-        fn call_func_auth<A: msgs::Args, P: msgs::Payload>(&self, remote_fn_name: &str, args: A) -> Result<P, Error> {
+        async fn call_func_auth<A: msgs::Args, P: msgs::Payload>(&self, remote_fn_name: &str, args: A) -> Result<P, Error> {
             // Ask cjdns for a cookie first
             let new_cookie = {
-                let resp: msgs::CookieResponsePayload = self.call_func_no_auth("cookie", ())?;
+                let resp: msgs::CookieResponsePayload = self.call_func_no_auth("cookie", ()).await?;
                 resp.cookie
             };
 
@@ -437,27 +436,27 @@ mod conn {
             msg.hash = msg_hash;
 
             // Send/receive
-            let resp: msgs::GenericResponse<P> = self.send_msg(&msg)?;
+            let resp: msgs::GenericResponse<P> = self.send_msg(&msg).await?;
             check_txid(&msg.txid, &resp.txid)?;
             check_remote_error(&resp.error)?;
 
             Ok(resp.payload)
         }
 
-        fn send_msg<RQ, RS>(&self, req: &RQ) -> Result<RS, Error>
+        async fn send_msg<RQ, RS>(&self, req: &RQ) -> Result<RS, Error>
             where RQ: msgs::Request,
                   RS: msgs::Response
         {
             // Send encoded request
             let msg = req.to_bencode()?;
             //dbg!(String::from_utf8_lossy(&msg));
-            self.socket.send(&msg).map_err(|e| Error::NetworkOperation(e))?;
+            self.socket.send(&msg).await.map_err(|e| Error::NetworkOperation(e))?;
 
             // Limit receive packet lenght to typical Ethernet MTU for now; need to check actual max packet length on CJDNS Node side though.
             let mut buf = [0; 1500];
 
             // Reseive encoded response synchronously
-            let received = self.socket.recv(&mut buf).map_err(|e| Error::NetworkOperation(e))?;
+            let received = self.socket.recv(&mut buf).await.map_err(|e| Error::NetworkOperation(e))?;
             let response = &buf[..received];
             //dbg!(String::from_utf8_lossy(&response));
 
@@ -466,14 +465,13 @@ mod conn {
         }
     }
 
-    #[inline]
-    fn create_udp_socket_sender(addr: &str, port: u16) -> Result<UdpSocket, Error> {
+    async fn create_udp_socket_sender(addr: &str, port: u16) -> Result<UdpSocket, Error> {
         let ip_addr = addr.parse::<IpAddr>().map_err(|e| Error::BadNetworkAddress(e))?;
         let remote_address = SocketAddr::new(ip_addr, port);
 
         let local_address = "0.0.0.0:0";
-        let socket = UdpSocket::bind(local_address).map_err(|e| Error::NetworkOperation(e))?;
-        socket.connect(&remote_address).map_err(|e| Error::NetworkOperation(e))?;
+        let socket = UdpSocket::bind(local_address).await.map_err(|e| Error::NetworkOperation(e))?;
+        socket.connect(&remote_address).await.map_err(|e| Error::NetworkOperation(e))?;
 
         Ok(socket)
     }

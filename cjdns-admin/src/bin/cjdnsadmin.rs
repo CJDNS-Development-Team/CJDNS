@@ -1,21 +1,25 @@
 //! CJDNS Admin tool
 
-use std::{env, error::Error, path};
+use std::{env, error::Error};
 
+use async_std::path;
+use async_std::task;
 use regex::Regex;
 
 use cjdns_admin::{func_args::{Args, ArgValue}, func_list::Func, msgs::GenericResponsePayload};
 
 fn main() {
-    if let Err(e) = run() {
-        eprintln!("Error: {}", e);
-    }
+    task::block_on(async {
+        if let Err(e) = run().await {
+            eprintln!("Error: {}", e);
+        }
+    });
 }
 
 type Err = Box<dyn Error>;
 
-fn run() -> Result<(), Err> {
-    let cjdns = cjdns_admin::connect(None)?;
+async fn run() -> Result<(), Err> {
+    let cjdns = cjdns_admin::connect(None).await?;
 
     let args = env::args().skip(1).collect::<Vec<_>>();
 
@@ -35,7 +39,7 @@ fn run() -> Result<(), Err> {
         let func = cjdns.functions.find(&fn_name).ok_or_else(|| Err::from("unknown function name"))?;
         let fn_args = make_args(func, fn_args);
 
-        let res = cjdns.call_func::<_, GenericResponsePayload>(&fn_name, fn_args, false)?;
+        let res = cjdns.call_func::<_, GenericResponsePayload>(&fn_name, fn_args, false).await?;
         println!("{:?}", res);
     };
 
