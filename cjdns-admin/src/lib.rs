@@ -17,7 +17,7 @@ struct ConnectionOptions {
 mod errors {
     use std::fmt;
 
-    use async_std::io;
+    use tokio::io;
 
     use crate::ConnectionOptions;
 
@@ -118,10 +118,10 @@ mod errors {
 }
 
 mod config {
-    use async_std::fs;
-    use async_std::io;
-    use async_std::path::{Path, PathBuf};
+    use std::path::{Path, PathBuf};
+
     use serde::Deserialize;
+    use tokio::{fs, io};
 
     use crate::ConnectionOptions;
     use crate::errors::Error;
@@ -304,10 +304,11 @@ pub async fn connect(opts: Option<Opts>) -> Result<Connection, Error> {
 }
 
 mod conn {
+    use std::net::{IpAddr, SocketAddr};
     use std::time::Duration;
 
-    use async_std::net::{IpAddr, SocketAddr, UdpSocket};
     use sodiumoxide::crypto::hash::sha256::hash;
+    use tokio::net::UdpSocket;
 
     use crate::ConnectionOptions;
     use crate::errors::{ConnOptions, Error};
@@ -349,7 +350,7 @@ mod conn {
             Ok(())
         }
 
-        async fn probe_connection(&self, opts: ConnectionOptions) -> Result<(), Error> {
+        async fn probe_connection(&mut self, opts: ConnectionOptions) -> Result<(), Error> {
             self.set_timeout(PING_TIMEOUT)?;
             self.call_func::<(), Empty>("ping", (), true).await.map_err(|_| Error::ConnectError(ConnOptions::wrap(&opts)))?;
 
@@ -361,7 +362,7 @@ mod conn {
             Ok(())
         }
 
-        async fn load_available_functions(&self) -> Result<Funcs, Error> {
+        async fn load_available_functions(&mut self) -> Result<Funcs, Error> {
             let mut res = Funcs::new();
 
             for i in 0.. {
@@ -379,7 +380,7 @@ mod conn {
         }
 
         /// Call remote function.
-        pub async fn call_func<A: msgs::Args, P: msgs::Payload>(&self, remote_fn_name: &str, args: A, disable_auth: bool) -> Result<P, Error> {
+        pub async fn call_func<A: msgs::Args, P: msgs::Payload>(&mut self, remote_fn_name: &str, args: A, disable_auth: bool) -> Result<P, Error> {
             //dbg!(remote_fn_name);
 
             if disable_auth || self.password.is_empty() {
@@ -389,7 +390,7 @@ mod conn {
             }
         }
 
-        async fn call_func_no_auth<A: msgs::Args, P: msgs::Payload>(&self, remote_fn_name: &str, args: A) -> Result<P, Error> {
+        async fn call_func_no_auth<A: msgs::Args, P: msgs::Payload>(&mut self, remote_fn_name: &str, args: A) -> Result<P, Error> {
             let msg = msgs::Query {
                 txid: self.counter.next().to_string(),
                 q: remote_fn_name.to_string(),
@@ -403,7 +404,7 @@ mod conn {
             Ok(resp.payload)
         }
 
-        async fn call_func_auth<A: msgs::Args, P: msgs::Payload>(&self, remote_fn_name: &str, args: A) -> Result<P, Error> {
+        async fn call_func_auth<A: msgs::Args, P: msgs::Payload>(&mut self, remote_fn_name: &str, args: A) -> Result<P, Error> {
             // Ask cjdns for a cookie first
             let new_cookie = {
                 let resp: msgs::CookieResponsePayload = self.call_func_no_auth("cookie", ()).await?;
@@ -443,7 +444,7 @@ mod conn {
             Ok(resp.payload)
         }
 
-        async fn send_msg<RQ, RS>(&self, req: &RQ) -> Result<RS, Error>
+        async fn send_msg<RQ, RS>(&mut self, req: &RQ) -> Result<RS, Error>
             where RQ: msgs::Request,
                   RS: msgs::Response
         {

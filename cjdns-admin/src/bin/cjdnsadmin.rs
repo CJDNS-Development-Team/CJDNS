@@ -1,25 +1,22 @@
 //! CJDNS Admin tool
 
-use std::{env, error::Error};
+use std::{env, error::Error, path};
 
-use async_std::path;
-use async_std::task;
 use regex::Regex;
 
 use cjdns_admin::{func_args::{Args, ArgValue}, func_list::Func, msgs::GenericResponsePayload};
 
-fn main() {
-    task::block_on(async {
-        if let Err(e) = run().await {
-            eprintln!("Error: {}", e);
-        }
-    });
+#[tokio::main]
+async fn main() {
+    if let Err(e) = run().await {
+        eprintln!("Error: {}", e);
+    }
 }
 
 type Err = Box<dyn Error>;
 
 async fn run() -> Result<(), Err> {
-    let cjdns = cjdns_admin::connect(None).await?;
+    let mut cjdns = cjdns_admin::connect(None).await?;
 
     let args = env::args().skip(1).collect::<Vec<_>>();
 
