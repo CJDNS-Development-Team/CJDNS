@@ -8,18 +8,14 @@ pub enum PacketError {
 impl std::fmt::Display for PacketError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
-            PacketError::CannotInstantiatePacket => write!(f, "Can't instantiate AnnouncementPacket instance from providing data"),
+            PacketError::CannotInstantiatePacket => write!(f, "Can't instantiate AnnouncementPacket from providing data"),
             PacketError::InvalidPacketSignature => write!(f, "Announcement packet has invalid signature on packet data"),
             PacketError::CannotParsePacket(e) => write!(f, "Can't parse packet to Announcement {}", e),
         }
     }
 }
 
-impl std::error::Error for PacketError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        None
-    }
-}
+impl std::error::Error for PacketError {}
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ParserError {
@@ -38,8 +34,4 @@ impl std::fmt::Display for ParserError {
     }
 }
 
-impl std::error::Error for ParserError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        None
-    }
-}
+impl std::error::Error for ParserError {}

@@ -283,7 +283,7 @@ mod parser {
         let (super_node_data, rest_header) = header_without_sign_n_key.split_at(IP_SIZE);
         let super_node_ip = CJDNS_IP6::try_from(super_node_data.to_vec()).or(Err(ParserError::CannotParseHeader("failed ip6 creation from bytes data")))?;
 
-        assert_eq!(rest_header.len(), 8, "Header size is gt 120 bytes");
+        assert_eq!(rest_header.len(), 8, "Header size is ne to 120 bytes");
         let last_byte = rest_header[7];
         let version = {
             // version is encoded as a number from last 3 bits
@@ -415,7 +415,7 @@ mod parser {
         let unused = u32::from_be_bytes(<[u8; 4]>::try_from(take_from_data_to_vec(4).as_slice()).expect("unused slice size is ne to 4"));
         let ip6 = CJDNS_IP6::try_from(take_from_data_to_vec(16)).or(Err(ParserError::CannotParseEntity("failed ip6 creation from entity bytes")))?;
         let label = {
-            let label_bits = u32::from_be_bytes(<[u8; 4]>::try_from(take_from_data_to_vec(4).as_slice()).expect("unused slice size is ne to 4"));
+            let label_bits = u32::from_be_bytes(<[u8; 4]>::try_from(take_from_data_to_vec(4).as_slice()).expect("label bytes slice size is ne to 4"));
             // A label of 0 indicates that the route is being withdrawn and it is no longer usable. Handling of zero label is not a job for parser
             // So we return an Option
             RoutingLabel::<u32>::try_new(label_bits)
