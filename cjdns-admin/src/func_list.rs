@@ -154,3 +154,65 @@ impl fmt::Display for ArgType {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use crate::msgs::RemoteFnArgDescr;
+
+    use super::*;
+
+    #[test]
+    fn test_funcs() {
+        let funcs = {
+            let fns1 = mk_funcs(vec![
+                ("fn_a", mk_args(vec![])),
+                ("fn_c", mk_args(vec![("arg1", true, "Int"), ("arg2", true, "String")])),
+            ]);
+            let fns2 = mk_funcs(vec![
+                ("fn_b", mk_args(vec![("c", false, "Int"), ("b", true, "Int"), ("a", false, "Int")])),
+            ]);
+
+            let mut funcs = Funcs::new();
+            funcs.add_funcs(fns1);
+            funcs.add_funcs(fns2);
+
+            funcs
+        };
+
+        let a = |nm: &str, req: bool, typ: ArgType| {
+            Arg {
+                name: nm.to_string(),
+                required: req,
+                typ,
+            }
+        };
+
+        assert_eq!(
+            funcs,
+            Funcs(vec![
+                Func { name: "fn_a".to_string(), args: Args(vec![]) },
+                Func { name: "fn_b".to_string(), args: Args(vec![a("b", true, ArgType::Int), a("a", false, ArgType::Int), a("c", false, ArgType::Int)]) },
+                Func { name: "fn_c".to_string(), args: Args(vec![a("arg1", true, ArgType::Int), a("arg2", true, ArgType::String)]) },
+            ])
+        );
+    }
+
+    fn mk_funcs(list: Vec<(&str, RemoteFnArgsDescr)>) -> RemoteFnDescrs {
+        let mut res = BTreeMap::new();
+        for (name, args) in list {
+            res.insert(name.to_string(), args);
+        }
+        res
+    }
+
+    fn mk_args(list: Vec<(&str, bool, &str)>) -> RemoteFnArgsDescr {
+        let mut res = BTreeMap::new();
+        for (name, req, typ) in list {
+            let descr = RemoteFnArgDescr { required: if req { 1 } else { 0 }, typ: typ.to_string() };
+            res.insert(name.to_string(), descr);
+        }
+        res
+    }
+}
