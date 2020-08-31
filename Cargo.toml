@@ -1,5 +1,6 @@
 [workspace]
 
 members = [
-    "cjdns-core"
+    "cjdns-core",
+    "cjdns-admin"
 ]
