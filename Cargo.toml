@@ -3,5 +3,6 @@
 members = [
     "cjdns-core",
     "cjdns-admin",
-    "cjdns-snode"
+    "cjdns-snode",
+    "netchecksum",
 ]
