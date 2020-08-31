@@ -1,0 +1,13 @@
+[package]
+name = "cjdns-snode"
+version = "0.1.0"
+authors = [
+    "Alex Kordys <a.kordys@mixbytes.io>"
+]
+edition = "2018"
+license = "GPL-3.0"
+description = "cjdns supernode"
+
+[dependencies]
+clap = { version = "3.0.0-beta.1", default-features = false, features = [ "std", "derive" ] }
+tokio = { version = "0.2", features = ["fs", "net", "macros"] }
