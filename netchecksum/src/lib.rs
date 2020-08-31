@@ -1,43 +1,51 @@
 //! The 1s complement checksum used by TCP, UDP and ICMP.
+//!
+//! This implementation, though, is not 100% compatible with the standard one
+//! used in TCP, UDP and ICMP.
+//! This is made compatible with the original cjdns javascript implementation
+//! which uses little-endian summing and byte-flipping the sum in the end.
+//! For long buffers the result is different! This is a note of warning
+//! not to use any "standard" checksum here, if we want to keep compatibility
+//! with the JS implementation.
 
 use std::convert::TryInto;
 
 /// Sum all words (16 bit chunks) in the given data.
-/// Each word is treated as big endian.
+/// Each word should be treated as big endian, but we read them as little endian
+/// (this is faster on LE machines which is a common case nowdays),
+/// so the resulting sum must be byte-flipped.
 fn sum_be_words(data: &[u8]) -> u32 {
     if data.len() == 0 {
         return 0;
     }
-    let len = data.len();
+
     let mut cur_data = &data[..];
     let mut sum = 0_u32;
-    let mut hbit = 0_u32;
     while cur_data.len() >= 2 {
         // It's safe to unwrap because we verified there are at least 2 bytes
         let word = cur_data[0..2].try_into().unwrap();
-        sum += u16::from_be_bytes(word) as u32;
-        if sum > 0x7fffffff {
-            hbit ^= 1;
-            sum &= 0x7fffffff;
-        }
+        let word = u16::from_le_bytes(word);
+        sum = sum.wrapping_add(word as u32);
         cur_data = &cur_data[2..];
     }
 
     // If the length is odd, make sure to checksum the final byte
+    let len = data.len();
     if len & 1 != 0 {
-        sum += (data[len - 1] as u32) << 8;
+        sum += data[len - 1] as u32;
     }
-
-    sum |= hbit << 31;
 
     sum
 }
 
 fn finalize_checksum(mut sum: u32) -> u16 {
-    while sum >> 16 != 0 {
+    while sum > 0xFFFF {
         sum = (sum >> 16) + (sum & 0xFFFF);
     }
-    !sum as u16
+    let sum = sum as u16;
+    // Flip checksum bytes, because we summed it without flipping each word separately
+    let sum = u16::from_be(sum);
+    !sum
 }
 
 pub fn cksum_raw(buf: &[u8]) -> u16 {
@@ -73,14 +81,13 @@ pub fn cksum_udp4(src_ip: [u8; 4], dst_ip: [u8; 4], src_port: u16, dst_port: u16
 fn test_raw() {
     let hexbuf = |s: &str| hex::decode(s).expect("bad test data");
 
-    /*let fill = |len: usize, filler: &[u8]| {
+    let fill = |len: usize, filler: &[u8]| {
         let mut buf = Vec::with_capacity(len);
-        while buf.len() < len {
+        for _ in 0..len {
             buf.extend_from_slice(filler);
         }
-        buf.truncate(len);
         buf
-    };*/
+    };
 
     let cases = [
         (
@@ -88,14 +95,14 @@ fn test_raw() {
             0x4972
         ),
         // Validate that even when the int rolls over it still works.
-        /*(fill(40000, b"This_is_a_test__"), 0x62d0),
-        (fill(50000, b"This_is_a_test__"), 0x7c44),*/
+        (fill(40000, b"This_is_a_test__"), 0x62d0),
+        (fill(50000, b"This_is_a_test__"), 0x7c44),
         (hexbuf("45000054ccf3000040010000c0a80001c0a8000b"), 0x2c59),
         (hexbuf("45000034fa4d400040064b8d0a4206015cde87c8"), 0x0000),
         (hexbuf("45000034fa4d4000400600000a4206015cde87c8"), 0x4b8d),
     ];
     for &(ref buf, sum) in &cases {
-        assert_eq!(cksum_raw(buf), sum, "{:x} vs {:x}: failed for {:?}", cksum_raw(buf), sum, hex::encode(buf));
+        assert_eq!(cksum_raw(buf), sum);
     }
 }
 
