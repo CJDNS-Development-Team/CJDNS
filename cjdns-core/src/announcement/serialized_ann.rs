@@ -163,7 +163,10 @@ pub mod serialized_data {
                 let encoding_scheme_entity = "07006114458100";
                 let peer_entity = "200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000015";
 
-                format!("{}{}{}{}{}{}{}{}", sign, pub_key, super_node_ip, rest_header_data, version_entity, pad, encoding_scheme_entity, peer_entity)
+                format!(
+                    "{}{}{}{}{}{}{}{}",
+                    sign, pub_key, super_node_ip, rest_header_data, version_entity, pad, encoding_scheme_entity, peer_entity
+                )
             };
             let test_data_bytes = hex_to_bytes(test_data_hexed);
             let test_bytes_hash = hash(test_data_bytes.as_slice());
@@ -242,7 +245,7 @@ mod parser {
     const ENTITY_MAX_SIZE: usize = 255_usize;
     const PEER_ENTITY_SIZE: usize = 32_usize;
     const VERSION_ENTITY_SIZE: usize = 4_usize;
-    const ENCODING_SCHEME_ENTITY_MIN_SIZE: usize = 2_usize;
+    const ENCODING_SCHEME_ENTITY_MIN_SIZE: usize = 2_usize; // TODO may be 4?
 
     // Dividing logic from DS (`AnnouncementPacket`)
     pub fn parse(packet: serialized_data::AnnouncementPacket) -> Result<Announcement> {
@@ -309,9 +312,13 @@ mod parser {
         let mut curve25519_key_bytes = [0u8; SIGN_KEY_SIZE];
         // ed25519 key
         let public_sign_key = PublicKey::from_slice(sender_auth_data).expect("sender sign key size is gt 32");
-        let ok = unsafe { crypto_sign_ed25519_pk_to_curve25519(curve25519_key_bytes.as_mut_ptr(), public_sign_key.0.as_ptr()) == 0 };
+        let ok = unsafe {
+            // call to an extern function which uses raw pointers
+            // considered safe, because data under these pointers is consistent during function call
+            crypto_sign_ed25519_pk_to_curve25519(curve25519_key_bytes.as_mut_ptr(), public_sign_key.0.as_ptr()) == 0
+        };
         if !ok {
-            return Err(ParserError::CannotParseAuthData("Convertion from x25519 to curve25519 failed"));
+            return Err(ParserError::CannotParseAuthData("Conversion from x25519 to curve25519 failed"));
         }
         let node_encryption_key = CJDNSPublicKey::from(curve25519_key_bytes);
         let node_ip6 = CJDNS_IP6::try_from(&node_encryption_key).or(Err(ParserError::CannotParseAuthData("failed ip6 creation from auth pub key")))?;
@@ -323,10 +330,12 @@ mod parser {
         let mut idx = 0_usize;
         while idx < entities_data.len() {
             let encoded_entity_len = entities_data[idx] as usize;
-            let entity_data = &entities_data[idx..idx + encoded_entity_len];
+            let entity_data = entities_data
+                .get(idx..idx + encoded_entity_len)
+                .ok_or(ParserError::CannotParseEntity("entity with invalid encoded length"))?;
 
-            if encoded_entity_len == 0 || encoded_entity_len != entity_data.len() {
-                return Err(ParserError::CannotParseEntity("Invalid entity inside entities data"));
+            if encoded_entity_len == 0 {
+                return Err(ParserError::CannotParseEntity("zero entity inside entities data"));
             }
             if encoded_entity_len == 1 {
                 idx += 1;
@@ -390,22 +399,22 @@ mod parser {
     fn parse_peer(peer_data: &[u8]) -> Result<Entity> {
         assert_eq!(peer_data.len(), 30);
         let mut peer_data_iter = peer_data.iter();
-        let mut take_from_data_to_vec = |n: usize| peer_data_iter.by_ref().take(n).map(|&byte| byte).collect::<Vec<u8>>();
+        let mut take_peer_bytes = |n: usize| peer_data_iter.by_ref().take(n).map(|&byte| byte).collect::<Vec<u8>>();
         let (encoding_form_number, flags) = {
-            let efn_f = take_from_data_to_vec(2);
+            let efn_f = take_peer_bytes(2);
             let err_msg = "peer data is empty";
             let (&encoding_form_number, &flags) = (efn_f.first().expect(err_msg), efn_f.last().expect(err_msg));
             (encoding_form_number, flags)
         };
         let mtu = {
-            let mtu8 = u16::from_be_bytes(<[u8; 2]>::try_from(take_from_data_to_vec(2).as_slice()).expect("mtu bytes slice size is ne to 2"));
+            let mtu8 = u16::from_be_bytes(<[u8; 2]>::try_from(take_peer_bytes(2).as_slice()).expect("mtu bytes slice size is ne to 2"));
             mtu8 as u32 * 8
         };
-        let peer_num = u16::from_be_bytes(<[u8; 2]>::try_from(take_from_data_to_vec(2).as_slice()).expect("peer_num slice size is ne to 2"));
-        let unused = u32::from_be_bytes(<[u8; 4]>::try_from(take_from_data_to_vec(4).as_slice()).expect("unused slice size is ne to 4"));
-        let ip6 = CJDNS_IP6::try_from(take_from_data_to_vec(16)).or(Err(ParserError::CannotParseEntity("failed ip6 creation from entity bytes")))?;
+        let peer_num = u16::from_be_bytes(<[u8; 2]>::try_from(take_peer_bytes(2).as_slice()).expect("peer_num slice size is ne to 2"));
+        let unused = u32::from_be_bytes(<[u8; 4]>::try_from(take_peer_bytes(4).as_slice()).expect("unused slice size is ne to 4"));
+        let ip6 = CJDNS_IP6::try_from(take_peer_bytes(16)).or(Err(ParserError::CannotParseEntity("failed ip6 creation from entity bytes")))?;
         let label = {
-            let label_bits = u32::from_be_bytes(<[u8; 4]>::try_from(take_from_data_to_vec(4).as_slice()).expect("label bytes slice size is ne to 4"));
+            let label_bits = u32::from_be_bytes(<[u8; 4]>::try_from(take_peer_bytes(4).as_slice()).expect("label bytes slice size is ne to 4"));
             // A label of 0 indicates that the route is being withdrawn and it is no longer usable. Handling of zero label is not a job for parser
             // So we return an Option
             RoutingLabel::<u32>::try_new(label_bits)
@@ -427,46 +436,45 @@ mod parser {
         use sodiumoxide::*;
 
         use super::*;
-        use crate::keys::{CJDNSKeysApi, BytesRepr};
+        use crate::keys::{BytesRepr, CJDNSKeysApi};
+        use crate::AnnouncementPacket;
 
         #[test]
         fn test_parse_header() {
             let keys_api = CJDNSKeysApi::new().expect("sodium init failed");
-            for _ in 0..10 {
-                let random_signature = randombytes::randombytes(64);
-                let keys = keys_api.key_pair();
-                let random_timestamp = randombytes::randombytes(8);
+            let rand_data = randombytes::randombytes(72);
+            let (random_signature, random_timestamp) = rand_data.split_at(64);
+            let keys = keys_api.key_pair();
 
-                let ann_timestamp = {
-                    let mut timestamp = u64::from_be_bytes(<[u8; 8]>::try_from(random_timestamp.as_slice()).expect("slice array size is ne to 8"));
-                    timestamp >>= 4;
-                    timestamp
-                };
-                let version = random_timestamp[7] & 7;
-                let is_reset = (random_timestamp[7] >> 3) & 1 == 1;
+            let ann_timestamp = {
+                let mut timestamp = u64::from_be_bytes(<[u8; 8]>::try_from(random_timestamp).expect("slice array size is ne to 8"));
+                timestamp >>= 4;
+                timestamp
+            };
+            let version = random_timestamp[7] & 7;
+            let is_reset = (random_timestamp[7] >> 3) & 1 == 1;
 
-                let header_bytes = {
-                    let mut header_bytes = Vec::with_capacity(120);
-                    header_bytes.extend_from_slice(random_signature.as_slice());
-                    header_bytes.extend_from_slice(keys.public_key.bytes().as_slice());
-                    header_bytes.extend_from_slice(keys.ip6.bytes().as_slice());
-                    header_bytes.extend_from_slice(random_timestamp.as_slice());
-                    header_bytes
-                };
+            let header_bytes = {
+                let mut header_bytes = Vec::with_capacity(120);
+                header_bytes.extend_from_slice(random_signature);
+                header_bytes.extend_from_slice(keys.public_key.bytes().as_slice());
+                header_bytes.extend_from_slice(keys.ip6.bytes().as_slice());
+                header_bytes.extend_from_slice(random_timestamp);
+                header_bytes
+            };
 
-                let parsed_header = parse_header(header_bytes.as_slice()).expect("parse failed");
-                assert_eq!(
-                    parsed_header,
-                    AnnouncementHeader {
-                        signature: hex::encode(random_signature),
-                        pub_signing_key: hex::encode(keys.public_key.bytes()),
-                        super_node_ip6: keys.ip6,
-                        timestamp: ann_timestamp,
-                        version,
-                        is_reset
-                    }
-                )
-            }
+            let parsed_header = parse_header(header_bytes.as_slice()).expect("parse failed");
+            assert_eq!(
+                parsed_header,
+                AnnouncementHeader {
+                    signature: hex::encode(random_signature),
+                    pub_signing_key: hex::encode(keys.public_key.bytes()),
+                    super_node_ip6: keys.ip6,
+                    timestamp: ann_timestamp,
+                    version,
+                    is_reset
+                }
+            )
         }
 
         #[test]
@@ -474,27 +482,124 @@ mod parser {
             init().expect("sodium init failed");
 
             // invalid len
-            let header_lengths = 0_usize..256;
-            for len in header_lengths {
-                if len == 120 {
-                    continue;
-                }
+            let invalid_header_lengths = (0_usize..256).filter(|&x| x != HEADER_SIZE);
+            for len in invalid_header_lengths {
                 let random_header_bytes = randombytes::randombytes(len);
                 assert!(parse_header(&random_header_bytes).is_err())
             }
         }
 
         #[test]
-        fn test_without_entities() {
-            let _valid_hexed_header =
+        fn test_parse_ann_with_no_entities() {
+            let valid_hexed_header =
                 // signature
                 "9dcdafaf6a129d4194eb52586ec81ecbf7f52abf183268a314e19e066baa7bfbe01121ba42ff8fa41356420894d576ce0a0105577cca0e50d945283c18d89c07".to_string() +
                 // pub key
                 "f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2" +
                 // ip6
                 "fc928136dc1fe6e04ef6a6dd7187b85f" +
-                // timestamp version is_reset
+                // timestamp-version-is_reset
                 "0000157354c540c1";
+            let header_bytes = hex::decode(valid_hexed_header).expect("invalid hex string");
+            let parsed_announcement = parser::parse(AnnouncementPacket::try_new(header_bytes).expect("invalid bytes len")).expect("invalid ann data");
+            assert_eq!(parsed_announcement.entities, vec![]);
+        }
+
+        #[test]
+        fn test_parse_entities() {
+            let invalid_entities_data_hexed = [
+                // zero length entity
+                "00123123132412",
+                "02050001",
+                // zero byte at the end - corrupt
+                "02050100",
+                // invalid encoded len: not equal to actual buffer len
+                "02",
+                "0305",
+                "02050302",
+                // invalid data size for entities
+                "030201",     // version entity len should be 4
+                "0501000220", // peer entity len should be 32
+                // mixing valid and invalid
+                "030507006114458100",                                                 // 0305 and valid encoding entity
+                "0204020012",                                                         // 02 and valid version entity
+                "20200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000015", // 20 and valid peer entity
+            ];
+            for &invalid_entity_data in invalid_entities_data_hexed.iter() {
+                let data_bytes = hex::decode(invalid_entity_data).expect("invalid hex string");
+                assert!(parse_entities(data_bytes.as_slice()).is_err());
+            }
+
+            let valid_tests = vec![
+                // no entities passed
+                ("", vec![]),
+                (
+                    "200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000003",
+                    vec![Entity::Peer {
+                        ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("failed ip6 creation"),
+                        label: Some(RoutingLabel::<u32>::try_new(3_u32).expect("zero label bits")),
+                        mtu: 0,
+                        peer_num: 65535,
+                        unused: 4294967295,
+                        encoding_form_number: 0,
+                        flags: 0,
+                    }],
+                ),
+                (
+                    "04020002200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000020",
+                    vec![
+                        Entity::NodeProtocolVersion(2),
+                        Entity::Peer {
+                            ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("failed ip6 creation"),
+                            label: Some(RoutingLabel::<u32>::try_new(32_u32).expect("zero label bits")),
+                            mtu: 0,
+                            peer_num: 65535,
+                            unused: 4294967295,
+                            encoding_form_number: 0,
+                            flags: 0,
+                        },
+                    ],
+                ),
+                (
+                    // with some pads
+                    "0402000201010101200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000013",
+                    vec![
+                        Entity::NodeProtocolVersion(2),
+                        Entity::Peer {
+                            ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("failed ip6 creation"),
+                            label: Some(RoutingLabel::<u32>::try_new(19_u32).expect("zero label bits")),
+                            mtu: 0,
+                            peer_num: 65535,
+                            unused: 4294967295,
+                            encoding_form_number: 0,
+                            flags: 0,
+                        },
+                    ],
+                ),
+                (
+                    // with unrecognised entities at the beginning and at the end
+                    "020701200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000003030510",
+                    vec![Entity::Peer {
+                        ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("failed ip6 creation"),
+                        label: Some(RoutingLabel::<u32>::try_new(3_u32).expect("zero label bits")),
+                        mtu: 0,
+                        peer_num: 65535,
+                        unused: 4294967295,
+                        encoding_form_number: 0,
+                        flags: 0,
+                    }],
+                ),
+                (
+                    // all of them are unrecognised
+                    "03100102050504020304",
+                    vec![],
+                ),
+            ];
+            for (test_data_hexed, res) in valid_tests.into_iter() {
+                let test_bytes = hex::decode(test_data_hexed).expect("invalid hex string");
+                let parsed_entity = parse_entities(test_bytes.as_slice()).expect("invalid entity passed");
+                assert_eq!(parsed_entity, res);
+            }
         }
 
         #[test]
