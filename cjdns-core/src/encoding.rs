@@ -32,40 +32,36 @@
 //! ```
 
 use std::collections::HashSet;
-use std::fmt;
+
+use thiserror::Error;
 
 use crate::EncodingSchemeForm;
 
-#[derive(Debug, PartialEq)]
-pub enum Error {
+#[derive(Error, Debug, PartialEq, Eq)]
+pub enum EncodingSchemeError {
+    #[error("Vector passed to method is emtpy")]
     ArgumentVectorIsEmpty,
+    #[error("Vector passed to method has too big size")]
     ArgumentVectorSizeTooBig,
+    #[error("Vector passed to method is too small")]
     ArgumentVectorTooSmall,
+    #[error("Numerical argument is out of bounds")]
     ArgumentOutOfBounds,
+    #[error("Single form in scheme has non-empty prefix")]
     SchemeNotValidNonEmptyPrefixSingleForm,
+    #[error("Form has bit_count out of bounds (from 1 to 31)")]
     SchemeNotValidBitCountOutOfBounds,
+    #[error("Multiple forms - prefix is out of bounds (must be from 1 to 31)")]
     SchemeNotValidPrefixLenOutOfBounds,
+    #[error("Multiple forms - bit_count must be in ascending order")]
     SchemeNotValidBitCountNotInAscendingOrder,
+    #[error("Form size too big (bit_count + prefix_len > 59)")]
     SchemeNotValidFormSizeTooBig,
+    #[error("Multiple forms - must have unique prefixes - found non-unique")]
     SchemeNotValidPrefixNonUnique,
 }
 
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Error::ArgumentVectorIsEmpty => write!(f, "Vector passed to method is emtpy"),
-            Error::ArgumentVectorSizeTooBig => write!(f, "Vector passed to method has too big size"),
-            Error::ArgumentVectorTooSmall => write!(f, "Vector passed to method is too small"),
-            Error::ArgumentOutOfBounds => write!(f, "Numerical argument is out of bounds"),
-            Error::SchemeNotValidNonEmptyPrefixSingleForm => write!(f, "Single form in scheme has non-empty prefix"),
-            Error::SchemeNotValidBitCountOutOfBounds => write!(f, "Form has bit_count out of bounds (from 1 to 31)"),
-            Error::SchemeNotValidPrefixLenOutOfBounds => write!(f, "Multiple forms - prefix is out of bounds (must be from 1 to 31)"),
-            Error::SchemeNotValidBitCountNotInAscendingOrder => write!(f, "Multiple forms - bit_count must be in ascending order"),
-            Error::SchemeNotValidFormSizeTooBig => write!(f, "Form size too big (bit_count + prefix_len > 59)"),
-            Error::SchemeNotValidPrefixNonUnique => write!(f, "Multiple forms - must have unique prefixes - found non-unique"),
-        }
-    }
-}
+type Result<T> = std::result::Result<T, EncodingSchemeError>;
 
 /// As a scheme is represented as an array of **forms**, this function will tell you how many bits of
 /// label space is occupied by a representation of a given form.
@@ -74,26 +70,26 @@ pub fn form_size(form: &EncodingSchemeForm) -> u8 {
 }
 
 /// Validates encoding scheme. Returned value in case of error describes the problem.
-pub fn validate(forms: &[EncodingSchemeForm]) -> Result<(), Error> {
+pub fn validate(forms: &[EncodingSchemeForm]) -> Result<()> {
     if forms.len() == 0 {
-        return Err(Error::ArgumentVectorIsEmpty);
+        return Err(EncodingSchemeError::ArgumentVectorIsEmpty);
     }
 
     if forms.len() > 31 {
         // each form must have a different prefix_len and bit_count;
         // can only be expressed in 5 bits limiting it to 31 bits max and a form
         // using zero bits is not allowed so there are only 31 max possibilities.
-        return Err(Error::ArgumentVectorSizeTooBig);
+        return Err(EncodingSchemeError::ArgumentVectorSizeTooBig);
     }
 
     if forms.len() == 1 {
         // if single form - prefix must be empty
         let form = forms[0];
         if form.prefix_len != 0 || form.prefix != 0 {
-            return Err(Error::SchemeNotValidNonEmptyPrefixSingleForm);
+            return Err(EncodingSchemeError::SchemeNotValidNonEmptyPrefixSingleForm);
         }
         if form.bit_count == 0 || form.bit_count > 31 {
-            return Err(Error::SchemeNotValidBitCountOutOfBounds);
+            return Err(EncodingSchemeError::SchemeNotValidBitCountOutOfBounds);
         }
         return Ok(());
     }
@@ -104,27 +100,27 @@ pub fn validate(forms: &[EncodingSchemeForm]) -> Result<(), Error> {
     for form in forms {
         // when multiple forms - prefixes must be non-empty
         if form.prefix_len == 0 || form.prefix_len > 31 {
-            return Err(Error::SchemeNotValidPrefixLenOutOfBounds);
+            return Err(EncodingSchemeError::SchemeNotValidPrefixLenOutOfBounds);
         }
 
         if form.bit_count == 0 || form.bit_count > 31 {
-            return Err(Error::SchemeNotValidBitCountOutOfBounds);
+            return Err(EncodingSchemeError::SchemeNotValidBitCountOutOfBounds);
         }
 
         // forms must have bit_count in ascending order
         if last_bit_count > form.bit_count {
-            return Err(Error::SchemeNotValidBitCountNotInAscendingOrder);
+            return Err(EncodingSchemeError::SchemeNotValidBitCountNotInAscendingOrder);
         }
         last_bit_count = form.bit_count;
 
         // bit_count + prefix_len must be < 59 bits
         if form_size(form) > 59 {
-            return Err(Error::SchemeNotValidFormSizeTooBig);
+            return Err(EncodingSchemeError::SchemeNotValidFormSizeTooBig);
         }
 
         // forms must be distinguishable by their prefix
         if used_prefixes.contains(&form.prefix) {
-            return Err(Error::SchemeNotValidPrefixNonUnique);
+            return Err(EncodingSchemeError::SchemeNotValidPrefixNonUnique);
         }
         used_prefixes.insert(form.prefix);
     }
@@ -135,7 +131,7 @@ pub fn validate(forms: &[EncodingSchemeForm]) -> Result<(), Error> {
 ///
 /// Accepts vector of `EncodingSchemeForm`s, encodes them as bits sequence
 /// and returns the result as bytes vector.
-pub fn serialize_forms(encforms: &[EncodingSchemeForm]) -> Result<Vec<u8>, Error> {
+pub fn serialize_forms(encforms: &[EncodingSchemeForm]) -> Result<Vec<u8>> {
     let mut result_vec: Vec<u8> = [].to_vec();
     let mut pos = 0u32;
     let mut cur_byte_num = 0;
@@ -147,11 +143,11 @@ pub fn serialize_forms(encforms: &[EncodingSchemeForm]) -> Result<Vec<u8>, Error
 
         // [TODO] fix err handling
         if encform.prefix_len > 31 {
-            return Err(Error::ArgumentOutOfBounds);
+            return Err(EncodingSchemeError::ArgumentOutOfBounds);
         }
 
         if encform.bit_count < 1 || encform.bit_count > 31 {
-            return Err(Error::ArgumentOutOfBounds);
+            return Err(EncodingSchemeError::ArgumentOutOfBounds);
         }
 
         if encform.prefix_len > 0 {
@@ -189,14 +185,14 @@ pub fn serialize_forms(encforms: &[EncodingSchemeForm]) -> Result<Vec<u8>, Error
     Ok(result_vec)
 }
 
-fn read_n_bits_from_position_into_u32(data: &[u8], position: u32, bits_amount: u8) -> Result<u32, Error> {
+fn read_n_bits_from_position_into_u32(data: &[u8], position: u32, bits_amount: u8) -> Result<u32> {
     // TODO check errors handling
     if bits_amount > 32 {
-        return Err(Error::ArgumentOutOfBounds);
+        return Err(EncodingSchemeError::ArgumentOutOfBounds);
     }
 
     if (position + (bits_amount as u32)) > ((data.len() as u32) * 8) {
-        return Err(Error::ArgumentOutOfBounds);
+        return Err(EncodingSchemeError::ArgumentOutOfBounds);
     }
     let mut accum = 0u32; // maximum that can be parsed is prefix itself (max - 32 bits)
     if bits_amount == 0 {
@@ -234,13 +230,13 @@ fn read_n_bits_from_position_into_u32(data: &[u8], position: u32, bits_amount: u
 /// Parse byte vector array (bits sequence) and transform it to encoding scheme.
 ///
 /// Accepts bytes array, parses it and returns vector of `EncodingSchemeForm`s.
-pub fn deserialize_forms(form_bytes: &[u8]) -> Result<Vec<EncodingSchemeForm>, Error> {
+pub fn deserialize_forms(form_bytes: &[u8]) -> Result<Vec<EncodingSchemeForm>> {
     // TODO handle errors
     if form_bytes.len() < 2 {
-        return Err(Error::ArgumentVectorTooSmall);
+        return Err(EncodingSchemeError::ArgumentVectorTooSmall);
     }
     if form_bytes.len() == 0 {
-        return Err(Error::ArgumentVectorIsEmpty);
+        return Err(EncodingSchemeError::ArgumentVectorIsEmpty);
     }
 
     let mut result = Vec::new();
@@ -289,27 +285,27 @@ mod tests {
         input = [
             EncodingSchemeForm { bit_count: 4, prefix_len: 1, prefix: 1 },
         ].to_vec();
-        assert_eq!(validate(&input), Err(Error::SchemeNotValidNonEmptyPrefixSingleForm));
+        assert_eq!(validate(&input), Err(EncodingSchemeError::SchemeNotValidNonEmptyPrefixSingleForm));
 
         // test non-valid bit_count single form
         input = [
             EncodingSchemeForm { bit_count: 34, prefix_len: 0, prefix: 0 },
         ].to_vec();
-        assert_eq!(validate(&input), Err(Error::SchemeNotValidBitCountOutOfBounds));
+        assert_eq!(validate(&input), Err(EncodingSchemeError::SchemeNotValidBitCountOutOfBounds));
 
         // test non-valid bit_count multiple forms
         input = [
             EncodingSchemeForm { bit_count: 30, prefix_len: 1, prefix: 1 },
             EncodingSchemeForm { bit_count: 34, prefix_len: 2, prefix: 2 },
         ].to_vec();
-        assert_eq!(validate(&input), Err(Error::SchemeNotValidBitCountOutOfBounds));
+        assert_eq!(validate(&input), Err(EncodingSchemeError::SchemeNotValidBitCountOutOfBounds));
 
         // test non valid prefix_len
         input = [
             EncodingSchemeForm { bit_count: 3, prefix_len: 32, prefix: 111 },
             EncodingSchemeForm { bit_count: 4, prefix_len: 4, prefix: 2 },
         ].to_vec();
-        assert_eq!(validate(&input), Err(Error::SchemeNotValidPrefixLenOutOfBounds));
+        assert_eq!(validate(&input), Err(EncodingSchemeError::SchemeNotValidPrefixLenOutOfBounds));
 
         // test bit_count not in ascending order
         input = [
@@ -319,14 +315,14 @@ mod tests {
             EncodingSchemeForm { bit_count: 4, prefix_len: 6, prefix: 4 },
             EncodingSchemeForm { bit_count: 8, prefix_len: 7, prefix: 5 },
         ].to_vec();
-        assert_eq!(validate(&input), Err(Error::SchemeNotValidBitCountNotInAscendingOrder));
+        assert_eq!(validate(&input), Err(EncodingSchemeError::SchemeNotValidBitCountNotInAscendingOrder));
 
         // test too big form size (bit_count + prefix_len > 59)
         input = [
             EncodingSchemeForm { bit_count: 3, prefix_len: 3, prefix: 1 },
             EncodingSchemeForm { bit_count: 31, prefix_len: 29, prefix: 5 },
         ].to_vec();
-        assert_eq!(validate(&input), Err(Error::SchemeNotValidFormSizeTooBig));
+        assert_eq!(validate(&input), Err(EncodingSchemeError::SchemeNotValidFormSizeTooBig));
 
         // test non-unique prefix in multiple forms
         input = [
@@ -335,7 +331,7 @@ mod tests {
             EncodingSchemeForm { bit_count: 5, prefix_len: 5, prefix: 6 },
             EncodingSchemeForm { bit_count: 8, prefix_len: 9, prefix: 2 },
         ].to_vec();
-        assert_eq!(validate(&input), Err(Error::SchemeNotValidPrefixNonUnique));
+        assert_eq!(validate(&input), Err(EncodingSchemeError::SchemeNotValidPrefixNonUnique));
     }
 
     #[test]

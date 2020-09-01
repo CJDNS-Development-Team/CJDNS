@@ -7,12 +7,15 @@ use std::convert::TryFrom;
 use std::fmt;
 
 use regex::Regex;
+use thiserror::Error;
 
 use super::RoutingLabel;
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub enum Error {
+#[derive(Error, Copy, Clone, PartialEq, Eq, Debug)]
+pub enum LabelError {
+    #[error("Malformed routing label string")]
     MalformedRoutingLabelStringValue,
+    #[error("Routing label is all-zeroes")]
     ZeroRoutingLabel,
 }
 
@@ -125,7 +128,7 @@ impl fmt::Binary for RoutingLabel<u128> {
 }
 
 impl TryFrom<&str> for RoutingLabel<u64> {
-    type Error = Error;
+    type Error = LabelError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         lazy_static! {
@@ -145,15 +148,15 @@ impl TryFrom<&str> for RoutingLabel<u64> {
                     | (capture2u64(&c, 2) << 32)
                     | (capture2u64(&c, 3) << 16)
                     | capture2u64(&c, 4),
-            ).ok_or(Error::ZeroRoutingLabel)
+            ).ok_or(LabelError::ZeroRoutingLabel)
         } else {
-            Err(Error::MalformedRoutingLabelStringValue)
+            Err(LabelError::MalformedRoutingLabelStringValue)
         }
     }
 }
 
 impl TryFrom<&str> for RoutingLabel<u128> {
-    type Error = Error;
+    type Error = LabelError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         lazy_static! {
@@ -186,9 +189,9 @@ impl TryFrom<&str> for RoutingLabel<u128> {
                     | (capture2u128(&c, 6) << 32)
                     | (capture2u128(&c, 7) << 16)
                     | capture2u128(&c, 8),
-            ).ok_or(Error::ZeroRoutingLabel)
+            ).ok_or(LabelError::ZeroRoutingLabel)
         } else {
-            Err(Error::MalformedRoutingLabelStringValue)
+            Err(LabelError::MalformedRoutingLabelStringValue)
         }
     }
 }
@@ -204,7 +207,7 @@ mod tests {
 
     use crate::RoutingLabel;
 
-    use super::Error;
+    use super::LabelError;
 
     fn l64(v: u64) -> RoutingLabel<u64> {
         RoutingLabel::try_new(v).expect("bad test data")
@@ -240,9 +243,9 @@ mod tests {
 
     #[test]
     fn label_from_string() {
-        assert_eq!(RoutingLabel::<u64>::try_from("0000.0000.0000.0000"), Err(Error::ZeroRoutingLabel));
+        assert_eq!(RoutingLabel::<u64>::try_from("0000.0000.0000.0000"), Err(LabelError::ZeroRoutingLabel));
         assert_eq!(RoutingLabel::<u64>::try_from("0000.0000.0000.0001"), Ok(l64(1)));
-        assert_eq!(RoutingLabel::<u128>::try_from("0000.0000.0000.0000.0000.0000.0000.0000"), Err(Error::ZeroRoutingLabel));
+        assert_eq!(RoutingLabel::<u128>::try_from("0000.0000.0000.0000.0000.0000.0000.0000"), Err(LabelError::ZeroRoutingLabel));
         assert_eq!(RoutingLabel::<u128>::try_from("0000.0000.0000.0000.0000.0000.0000.0001"), Ok(l128(1)));
         assert_eq!(RoutingLabel::<u64>::try_from("0000.0003.64b5.10e5"), Ok(l64(14574489829)));
         assert_eq!(RoutingLabel::<u64>::try_from("0002.0003.64b5.10e5"), Ok(l64(562964527911141u64)));

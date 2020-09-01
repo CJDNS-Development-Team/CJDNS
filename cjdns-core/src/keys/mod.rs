@@ -6,14 +6,14 @@ use std::sync::{
     Once,
 };
 
+use data_encoding::BASE32_DNSCURVE;
 use regex::Regex;
 use sodiumoxide::crypto::hash::sha512::hash;
 use sodiumoxide::crypto::scalarmult;
 use sodiumoxide::init;
 use sodiumoxide::randombytes::randombytes;
-use data_encoding::BASE32_DNSCURVE;
 
-use errors::Error;
+use errors::{KeyError, Result};
 
 mod errors;
 pub mod node;
@@ -64,7 +64,7 @@ pub struct CJDNSKeys {
 }
 
 impl CJDNSKeysApi {
-    pub fn new() -> Result<Self, ()> {
+    pub fn new() -> std::result::Result<Self, ()> {
         if Self::init_sodiumoxide() {
             return Ok(Self);
         }
@@ -105,13 +105,13 @@ impl CJDNSKeysApi {
 }
 
 impl TryFrom<String> for CJDNSPrivateKey {
-    type Error = Error;
+    type Error = KeyError;
 
-    fn try_from(value: String) -> Result<Self, Self::Error> {
+    fn try_from(value: String) -> Result<Self> {
         if PRIVATE_KEY_RE.is_match(&value) {
             return Ok(CJDNSPrivateKey { k: value });
         }
-        Err(Error::CannotCreateFromString)
+        Err(KeyError::CannotCreateFromString)
     }
 }
 
@@ -147,13 +147,13 @@ impl CJDNSPrivateKey {
 }
 
 impl TryFrom<String> for CJDNSPublicKey {
-    type Error = Error;
+    type Error = KeyError;
 
-    fn try_from(value: String) -> Result<Self, Self::Error> {
+    fn try_from(value: String) -> Result<Self> {
         if PUBLIC_KEY_RE.is_match(&value) && BASE32_DNSCURVE.decode(&value[..BASE32_ENCODED_STRING_LEN].as_bytes()).is_ok() {
             return Ok(CJDNSPublicKey { k: value });
         }
-        Err(Error::CannotCreateFromString)
+        Err(KeyError::CannotCreateFromString)
     }
 }
 
@@ -178,22 +178,22 @@ impl BytesRepr for CJDNSPublicKey {
 }
 
 impl TryFrom<&CJDNSPublicKey> for CJDNS_IP6 {
-    type Error = Error;
+    type Error = KeyError;
 
-    fn try_from(value: &CJDNSPublicKey) -> Result<Self, Self::Error> {
+    fn try_from(value: &CJDNSPublicKey) -> Result<Self> {
         let pub_key_double_hash = hash(&hash(&value.bytes()).0);
         let ip6_candidate = Self::try_from(pub_key_double_hash.0.to_vec());
         if ip6_candidate.is_ok() {
             return ip6_candidate;
         }
-        Err(Error::CannotCreateFromPublicKey)
+        Err(KeyError::CannotCreateFromPublicKey)
     }
 }
 
 impl TryFrom<Vec<u8>> for CJDNS_IP6 {
-    type Error = Error;
+    type Error = KeyError;
 
-    fn try_from(bytes: Vec<u8>) -> Result<Self, Self::Error> {
+    fn try_from(bytes: Vec<u8>) -> Result<Self> {
         let mut ip6_template = hex::encode(bytes)[..32].to_string();
         ip6_template = ip6_template
             .chars()
@@ -207,18 +207,18 @@ impl TryFrom<Vec<u8>> for CJDNS_IP6 {
             return Ok(CJDNS_IP6 { k: ip6_template });
         }
 
-        Err(Error::CannotCreateFromBytes)
+        Err(KeyError::CannotCreateFromBytes)
     }
 }
 
 impl TryFrom<String> for CJDNS_IP6 {
-    type Error = Error;
+    type Error = KeyError;
 
-    fn try_from(value: String) -> Result<Self, Self::Error> {
+    fn try_from(value: String) -> Result<Self> {
         if IP6_RE.is_match(&value) {
             return Ok(CJDNS_IP6 { k: value });
         }
-        Err(Error::CannotCreateFromString)
+        Err(KeyError::CannotCreateFromString)
     }
 }
 
@@ -233,15 +233,15 @@ impl BytesRepr for CJDNS_IP6 {
 mod tests {
     use super::*;
 
-    fn priv_key_r(s: &'static str) -> Result<CJDNSPrivateKey, Error> {
+    fn priv_key_r(s: &'static str) -> Result<CJDNSPrivateKey> {
         CJDNSPrivateKey::try_from(s.to_string())
     }
 
-    fn pub_key_r(s: &'static str) -> Result<CJDNSPublicKey, Error> {
+    fn pub_key_r(s: &'static str) -> Result<CJDNSPublicKey> {
         CJDNSPublicKey::try_from(s.to_string())
     }
 
-    fn ipv6_r(s: &'static str) -> Result<CJDNS_IP6, Error> {
+    fn ipv6_r(s: &'static str) -> Result<CJDNS_IP6> {
         CJDNS_IP6::try_from(s.to_string())
     }
 
