@@ -9,5 +9,6 @@ license = "GPL-3.0"
 description = "cjdns supernode"
 
 [dependencies]
+anyhow = "1.0"
 clap = { version = "3.0.0-beta.1", default-features = false, features = [ "std", "derive" ] }
 tokio = { version = "0.2", features = ["fs", "net", "macros"] }
