@@ -13,12 +13,11 @@ use super::errors::*;
 
 const ANNOUNCEMENT_MIN_SIZE: usize = HEADER_SIZE;
 const HEADER_SIZE: usize = SIGN_SIZE + SIGN_KEY_SIZE + IP_SIZE + 8;
-const SIGN_SIZE: usize = 64_usize;
-const SIGN_KEY_SIZE: usize = 32_usize;
-const IP_SIZE: usize = 16_usize;
+const SIGN_SIZE: usize = 64;
+const SIGN_KEY_SIZE: usize = 32;
+const IP_SIZE: usize = 16;
 
 pub mod serialized_data {
-
     use super::*;
 
     type Result<T> = std::result::Result<T, PacketError>;
@@ -37,8 +36,8 @@ pub mod serialized_data {
 
         /// Checks announcement message signature validity
         pub fn check(&self) -> Result<()> {
-            let signature = Signature::from_slice(self.get_signature_bytes()).expect("input slice size ne to 64");
-            let public_sign_key = PublicKey::from_slice(self.get_pub_key_bytes()).expect("input slice size ne to 32");
+            let signature = Signature::from_slice(self.get_signature_bytes()).expect("signature size != 64");
+            let public_sign_key = PublicKey::from_slice(self.get_pub_key_bytes()).expect("public key size != 32");
             let signed_data = self.get_signed_data();
             if verify_detached(&signature, signed_data, &public_sign_key) {
                 return Ok(());
@@ -83,7 +82,7 @@ pub mod serialized_data {
         use crate::EncodingSchemeForm;
         use sodiumoxide::*;
 
-        fn collect_slices_to_vec(slice1: &[u8], slice2: &[u8]) -> Vec<u8> {
+        fn join(slice1: &[u8], slice2: &[u8]) -> Vec<u8> {
             slice1.iter().chain(slice2.iter()).map(|&x| x).collect()
         }
 
@@ -95,13 +94,12 @@ pub mod serialized_data {
         fn test_packet_creation() {
             init().expect("sodium init failed");
 
-            // actually, lengths could be greater than 144
-            let packet_lengths = 0_usize..144;
-            for len in packet_lengths {
-                let packet_data = randombytes::randombytes(len);
+            // actually, length could be greater than 144
+            for packet_length in 0..144 {
+                let packet_data = randombytes::randombytes(packet_length);
                 let packet = AnnouncementPacket::try_new(packet_data);
 
-                let valid_case = len >= ANNOUNCEMENT_MIN_SIZE;
+                let valid_case = packet_length >= ANNOUNCEMENT_MIN_SIZE;
                 if valid_case {
                     assert!(packet.is_ok());
                 } else {
@@ -115,9 +113,9 @@ pub mod serialized_data {
             init().expect("sodium init failed");
 
             let header_data = randombytes::randombytes(HEADER_SIZE);
-            for entities_len in 0_usize..100 {
+            for entities_len in 0..100 {
                 let entities_data = randombytes::randombytes(entities_len);
-                let announcement_data = collect_slices_to_vec(header_data.as_slice(), entities_data.as_slice());
+                let announcement_data = join(&header_data, &entities_data);
                 let packet = AnnouncementPacket::try_new(announcement_data.to_vec()).expect("invalid data len");
 
                 assert_eq!(packet.get_signed_data(), &announcement_data[SIGN_SIZE..]);
@@ -136,10 +134,10 @@ pub mod serialized_data {
                 let (sodium_pk, sodium_sk) = crypto::sign::gen_keypair();
                 let header_data_to_sign = {
                     let rest_header_data = randombytes::randombytes(HEADER_SIZE - SIGN_SIZE - SIGN_KEY_SIZE);
-                    collect_slices_to_vec(sodium_pk.as_ref(), rest_header_data.as_slice())
+                    join(sodium_pk.as_ref(), &rest_header_data)
                 };
-                let sign = crypto::sign::sign_detached(header_data_to_sign.as_slice(), &sodium_sk);
-                collect_slices_to_vec(sign.as_ref(), header_data_to_sign.as_slice())
+                let sign = crypto::sign::sign_detached(&header_data_to_sign, &sodium_sk);
+                join(sign.as_ref(), &header_data_to_sign)
             };
 
             for _ in 0..100 {
@@ -150,7 +148,7 @@ pub mod serialized_data {
 
         #[test]
         fn test_parse() {
-            let test_data_hexed = {
+            let test_data_bytes = {
                 // header hex data
                 let sign = "3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09";
                 let pub_key = "f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2";
@@ -163,13 +161,14 @@ pub mod serialized_data {
                 let encoding_scheme_entity = "07006114458100";
                 let peer_entity = "200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000015";
 
-                format!(
+                let s = format!(
                     "{}{}{}{}{}{}{}{}",
                     sign, pub_key, super_node_ip, rest_header_data, version_entity, pad, encoding_scheme_entity, peer_entity
-                )
+                );
+
+                hex_to_bytes(s)
             };
-            let test_data_bytes = hex_to_bytes(test_data_hexed);
-            let test_bytes_hash = hash(test_data_bytes.as_slice());
+            let test_bytes_hash = hash(&test_data_bytes);
 
             let ann_packet = AnnouncementPacket::try_new(test_data_bytes.clone()).expect("wrong packet size");
             assert!(ann_packet.check().is_ok());
@@ -212,7 +211,7 @@ pub mod serialized_data {
                         },
                         Entity::Peer {
                             ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("failed ip6 creation"),
-                            label: Some(RoutingLabel::<u32>::try_new(21_u32).expect("zero routing label bits")),
+                            label: Some(RoutingLabel::<u32>::try_new(21).expect("zero routing label bits")),
                             mtu: 0,
                             peer_num: 65535,
                             unused: 4294967295,
@@ -232,7 +231,6 @@ pub mod serialized_data {
 }
 
 mod parser {
-
     use std::slice::Iter;
 
     use libsodium_sys::crypto_sign_ed25519_pk_to_curve25519;
@@ -241,19 +239,19 @@ mod parser {
 
     type Result<T> = std::result::Result<T, ParserError>;
 
-    const PEER_TYPE: u8 = 1_u8;
-    const VERSION_TYPE: u8 = 2_u8;
-    const LINK_STATE_TYPE: u8 = 3_u8;
-    const ENCODING_SCHEME_TYPE: u8 = 0_u8;
+    const PEER_TYPE: u8 = 1;
+    const VERSION_TYPE: u8 = 2;
+    const LINK_STATE_TYPE: u8 = 3;
+    const ENCODING_SCHEME_TYPE: u8 = 0;
 
-    const ENTITY_MAX_SIZE: usize = 255_usize;
+    const ENTITY_MAX_SIZE: usize = 255;
 
-    const PEER_ENTITY_SIZE: usize = 32_usize;
-    const VERSION_ENTITY_SIZE: usize = 4_usize;
-    const LINK_STATE_ENTITY_MIN_SIZE: usize = 2_usize;
+    const PEER_ENTITY_SIZE: usize = 32;
+    const VERSION_ENTITY_SIZE: usize = 4;
+    const LINK_STATE_ENTITY_MIN_SIZE: usize = 2;
     // it's actually `2` in cjdnsann doc, but it's too little, because min size for encoding scheme bytes to be deserialized is `2`.
     // So we have 2 bytes for encoded type and length and minimum 2 bytes for encoding scheme deserialization.
-    const ENCODING_SCHEME_ENTITY_MIN_SIZE: usize = 4_usize;
+    const ENCODING_SCHEME_ENTITY_MIN_SIZE: usize = 4;
 
     // Dividing logic from DS (`AnnouncementPacket`)
     pub fn parse(packet: serialized_data::AnnouncementPacket) -> Result<Announcement> {
@@ -284,7 +282,7 @@ mod parser {
         let (super_node_data, rest_header) = header_without_sign_n_key.split_at(IP_SIZE);
         let super_node_ip = CJDNS_IP6::try_from(super_node_data.to_vec()).or(Err(ParserError::CannotParseHeader("failed ip6 creation from bytes data")))?;
 
-        assert_eq!(rest_header.len(), 8, "Header size is ne to 120 bytes");
+        assert_eq!(rest_header.len(), 8, "Header size != 120 bytes");
         let last_byte = rest_header[7];
         let version = {
             // version is encoded as a number from last 3 bits
@@ -301,7 +299,7 @@ mod parser {
             (last_byte >> 3) & 1 == 1
         };
 
-        let mut timestamp = u64::from_be_bytes(<[u8; 8]>::try_from(rest_header).expect("slice array size is ne to 8"));
+        let mut timestamp = u64::from_be_bytes(<[u8; 8]>::try_from(rest_header).expect("slice size != 8"));
         // removing `version` and `is_reset` bits form timestamp bytes
         timestamp >>= 4;
 
@@ -335,7 +333,7 @@ mod parser {
 
     fn parse_entities(entities_data: &[u8]) -> Result<AnnouncementEntities> {
         let mut parsed_entities = Vec::new();
-        let mut idx = 0_usize;
+        let mut idx = 0;
         while idx < entities_data.len() {
             let encoded_entity_len = entities_data[idx] as usize;
             let entity_data = entities_data
@@ -350,7 +348,7 @@ mod parser {
                 continue;
             }
 
-            let &entity_type = entities_data.get(idx + 1).expect("entity data length is ne to encoded length in it");
+            let &entity_type = entities_data.get(idx + 1).expect("entity data length != encoded length in it");
             let parsed_entity = parse_entity(entity_type, entity_data)?;
             if let Some(entity) = parsed_entity {
                 parsed_entities.push(entity)
@@ -363,8 +361,8 @@ mod parser {
     }
 
     fn parse_entity(entity_type: u8, entity_data: &[u8]) -> Result<Option<Entity>> {
-        // First byte of each entity data is its length. The second byte is its type. So "non meta" data of each entity starts from index 2 (3d byte).
-        let parsing_data = &entity_data[2_usize..];
+        // First byte of each entity data is its length. The second byte is its type. So "non meta" data of each entity starts from index 2 (3rd byte).
+        let parsing_data = &entity_data[2..];
         match entity_type {
             ENCODING_SCHEME_TYPE => {
                 if entity_data.len() < ENCODING_SCHEME_ENTITY_MIN_SIZE || entity_data.len() > ENTITY_MAX_SIZE {
@@ -407,7 +405,7 @@ mod parser {
 
     fn parse_version(version_data: &[u8]) -> Result<Entity> {
         assert_eq!(version_data.len(), 2);
-        let version = u16::from_be_bytes(<[u8; 2]>::try_from(version_data).expect("version slice is ne to 2"));
+        let version = u16::from_be_bytes(<[u8; 2]>::try_from(version_data).expect("version slice length != 2"));
         Ok(Entity::NodeProtocolVersion(version))
     }
 
@@ -422,14 +420,14 @@ mod parser {
             (encoding_form_number, flags)
         };
         let mtu = {
-            let mtu8 = u16::from_be_bytes(<[u8; 2]>::try_from(take_peer_bytes(2).as_slice()).expect("mtu bytes slice size is ne to 2"));
+            let mtu8 = u16::from_be_bytes(<[u8; 2]>::try_from(take_peer_bytes(2).as_slice()).expect("mtu slice size != 2"));
             mtu8 as u32 * 8
         };
-        let peer_num = u16::from_be_bytes(<[u8; 2]>::try_from(take_peer_bytes(2).as_slice()).expect("peer_num slice size is ne to 2"));
-        let unused = u32::from_be_bytes(<[u8; 4]>::try_from(take_peer_bytes(4).as_slice()).expect("unused slice size is ne to 4"));
+        let peer_num = u16::from_be_bytes(<[u8; 2]>::try_from(take_peer_bytes(2).as_slice()).expect("peer_num slice size != 2"));
+        let unused = u32::from_be_bytes(<[u8; 4]>::try_from(take_peer_bytes(4).as_slice()).expect("unused slice size != 4"));
         let ip6 = CJDNS_IP6::try_from(take_peer_bytes(16)).or(Err(ParserError::CannotParseEntity("failed ip6 creation from entity bytes")))?;
         let label = {
-            let label_bits = u32::from_be_bytes(<[u8; 4]>::try_from(take_peer_bytes(4).as_slice()).expect("label bytes slice size is ne to 4"));
+            let label_bits = u32::from_be_bytes(<[u8; 4]>::try_from(take_peer_bytes(4).as_slice()).expect("label slice size != 4"));
             // A label of 0 indicates that the route is being withdrawn and it is no longer usable. Handling of zero label is not a job for parser
             // So we return an Option
             RoutingLabel::<u32>::try_new(label_bits)
@@ -477,7 +475,7 @@ mod parser {
 
     // todo refactor
     fn var_int_pop(link_state_iter: &mut Iter<u8>) -> Result<u8> {
-        let mut output = 0_u8;
+        let mut output = 0;
         let len = link_state_iter.as_slice().len();
         let &byte = link_state_iter.as_slice().first().ok_or(ParserError::CannotParseLinkState("wrong iter len"))?;
         let runt_err = Err(ParserError::CannotParseLinkState("runt"));
@@ -532,7 +530,6 @@ mod parser {
 
     #[cfg(test)]
     mod tests {
-
         use sodiumoxide::*;
 
         use super::*;
@@ -547,7 +544,7 @@ mod parser {
             let keys = keys_api.key_pair();
 
             let ann_timestamp = {
-                let mut timestamp = u64::from_be_bytes(<[u8; 8]>::try_from(random_timestamp).expect("slice array size is ne to 8"));
+                let mut timestamp = u64::from_be_bytes(<[u8; 8]>::try_from(random_timestamp).expect("slice array size != 8"));
                 timestamp >>= 4;
                 timestamp
             };
@@ -557,13 +554,13 @@ mod parser {
             let header_bytes = {
                 let mut header_bytes = Vec::with_capacity(120);
                 header_bytes.extend_from_slice(random_signature);
-                header_bytes.extend_from_slice(keys.public_key.bytes().as_slice());
-                header_bytes.extend_from_slice(keys.ip6.bytes().as_slice());
+                header_bytes.extend_from_slice(&keys.public_key.bytes());
+                header_bytes.extend_from_slice(&keys.ip6.bytes());
                 header_bytes.extend_from_slice(random_timestamp);
                 header_bytes
             };
 
-            let parsed_header = parse_header(header_bytes.as_slice()).expect("parse failed");
+            let parsed_header = parse_header(&header_bytes).expect("parse failed");
             assert_eq!(
                 parsed_header,
                 AnnouncementHeader {
@@ -581,8 +578,7 @@ mod parser {
         fn test_parse_header_invalid_len() {
             init().expect("sodium init failed");
 
-            // invalid len
-            let invalid_header_lengths = (0_usize..256).filter(|&x| x != HEADER_SIZE);
+            let invalid_header_lengths = (0..=255).filter(|&x| x != HEADER_SIZE);
             for len in invalid_header_lengths {
                 let random_header_bytes = randombytes::randombytes(len);
                 assert!(parse_header(&random_header_bytes).is_err())
@@ -627,7 +623,7 @@ mod parser {
             ];
             for &invalid_entity_data in invalid_entities_data_hexed.iter() {
                 let data_bytes = hex::decode(invalid_entity_data).expect("invalid hex string");
-                assert!(parse_entities(data_bytes.as_slice()).is_err());
+                assert!(parse_entities(&data_bytes).is_err());
             }
 
             let valid_tests = vec![
@@ -637,7 +633,7 @@ mod parser {
                     "200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000003",
                     vec![Entity::Peer {
                         ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("failed ip6 creation"),
-                        label: Some(RoutingLabel::<u32>::try_new(3_u32).expect("zero label bits")),
+                        label: Some(RoutingLabel::<u32>::try_new(3).expect("zero label bits")),
                         mtu: 0,
                         peer_num: 65535,
                         unused: 4294967295,
@@ -651,7 +647,7 @@ mod parser {
                         Entity::NodeProtocolVersion(2),
                         Entity::Peer {
                             ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("failed ip6 creation"),
-                            label: Some(RoutingLabel::<u32>::try_new(32_u32).expect("zero label bits")),
+                            label: Some(RoutingLabel::<u32>::try_new(32).expect("zero label bits")),
                             mtu: 0,
                             peer_num: 65535,
                             unused: 4294967295,
@@ -667,7 +663,7 @@ mod parser {
                         Entity::NodeProtocolVersion(2),
                         Entity::Peer {
                             ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("failed ip6 creation"),
-                            label: Some(RoutingLabel::<u32>::try_new(19_u32).expect("zero label bits")),
+                            label: Some(RoutingLabel::<u32>::try_new(19).expect("zero label bits")),
                             mtu: 0,
                             peer_num: 65535,
                             unused: 4294967295,
@@ -681,7 +677,7 @@ mod parser {
                     "020701200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000003030510",
                     vec![Entity::Peer {
                         ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("failed ip6 creation"),
-                        label: Some(RoutingLabel::<u32>::try_new(3_u32).expect("zero label bits")),
+                        label: Some(RoutingLabel::<u32>::try_new(3).expect("zero label bits")),
                         mtu: 0,
                         peer_num: 65535,
                         unused: 4294967295,
@@ -697,7 +693,7 @@ mod parser {
             ];
             for (test_data_hexed, res) in valid_tests.into_iter() {
                 let test_bytes = hex::decode(test_data_hexed).expect("invalid hex string");
-                let parsed_entity = parse_entities(test_bytes.as_slice()).expect("invalid entity passed");
+                let parsed_entity = parse_entities(&test_bytes).expect("invalid entity passed");
                 assert_eq!(parsed_entity, res);
             }
         }
@@ -712,14 +708,14 @@ mod parser {
 
             let parsed_peer = Entity::Peer {
                 ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("failed ip6 creation"),
-                label: Some(RoutingLabel::<u32>::try_new(21_u32).expect("zero label bits")),
+                label: Some(RoutingLabel::<u32>::try_new(21).expect("zero label bits")),
                 mtu: 0,
                 peer_num: 65535,
                 unused: 4294967295,
                 encoding_form_number: 0,
                 flags: 0,
             };
-            let parsed_entities = parse_entities(entities_data_vec.as_slice()).expect("parsing entities failed");
+            let parsed_entities = parse_entities(&entities_data_vec).expect("parsing entities failed");
 
             assert_eq!(parsed_entities, vec![parsed_peer; 3]);
         }
@@ -728,7 +724,7 @@ mod parser {
         fn test_parse_link_state() {
             let hexed_data = "2003060000000000000410130001120002130002130000140003120001130001";
             let test_bytes = hex::decode(hexed_data).expect("invalid hex string");
-            let res = parse_entities(test_bytes.as_slice()).expect("invalid entity");
+            let res = parse_entities(&test_bytes).expect("invalid entity");
             assert_eq!(
                 res,
                 vec![Entity::LinkState {
