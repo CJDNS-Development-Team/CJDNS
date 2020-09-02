@@ -6,7 +6,7 @@ use sodiumoxide::crypto::sign::ed25519::{verify_detached, PublicKey, Signature};
 use crate::{
     deserialize_forms,
     keys::{CJDNSPublicKey, CJDNS_IP6},
-    Announcement, AnnouncementEntities, AnnouncementHeader, EncodingScheme, Entity, RoutingLabel,
+    Announcement, AnnouncementEntities, AnnouncementHeader, EncodingScheme, Entity, RoutingLabel, SlotsArray,
 };
 
 use super::errors::*;
@@ -233,6 +233,8 @@ pub mod serialized_data {
 
 mod parser {
 
+    use std::slice::Iter;
+
     use libsodium_sys::crypto_sign_ed25519_pk_to_curve25519;
 
     use super::*;
@@ -241,11 +243,17 @@ mod parser {
 
     const PEER_TYPE: u8 = 1_u8;
     const VERSION_TYPE: u8 = 2_u8;
+    const LINK_STATE_TYPE: u8 = 3_u8;
     const ENCODING_SCHEME_TYPE: u8 = 0_u8;
+
     const ENTITY_MAX_SIZE: usize = 255_usize;
+
     const PEER_ENTITY_SIZE: usize = 32_usize;
     const VERSION_ENTITY_SIZE: usize = 4_usize;
-    const ENCODING_SCHEME_ENTITY_MIN_SIZE: usize = 2_usize; // TODO may be 4?
+    const LINK_STATE_ENTITY_MIN_SIZE: usize = 2_usize;
+    // it's actually `2` in cjdnsann doc, but it's too little, because min size for encoding scheme bytes to be deserialized is `2`.
+    // So we have 2 bytes for encoded type and length and minimum 2 bytes for encoding scheme deserialization.
+    const ENCODING_SCHEME_ENTITY_MIN_SIZE: usize = 4_usize;
 
     // Dividing logic from DS (`AnnouncementPacket`)
     pub fn parse(packet: serialized_data::AnnouncementPacket) -> Result<Announcement> {
@@ -379,6 +387,13 @@ mod parser {
                 let version_entity = parse_version(parsing_data)?;
                 Ok(Some(version_entity))
             }
+            LINK_STATE_TYPE => {
+                if entity_data.len() < LINK_STATE_ENTITY_MIN_SIZE || entity_data.len() > ENTITY_MAX_SIZE {
+                    return Err(ParserError::CannotParseEntity("invalid link state data size"));
+                }
+                let link_state_entity = parse_link_state(parsing_data)?;
+                Ok(Some(link_state_entity))
+            }
             _ => Ok(None),
         }
     }
@@ -428,6 +443,91 @@ mod parser {
             encoding_form_number,
             flags,
         })
+    }
+
+    // todo refactor
+    fn parse_link_state(link_state_data: &[u8]) -> Result<Entity> {
+        assert!(link_state_data.len() >= 1);
+        let mut link_state_iter = link_state_data.iter();
+        let &pads_amount = link_state_iter.next().expect("wrong link state data len");
+        let zero_pads = link_state_iter.by_ref().take(pads_amount as usize).filter(|&&x| x == 0).count();
+        if zero_pads != pads_amount as usize {
+            return Err(ParserError::CannotParseLinkState("non zero pad found in pad range"));
+        }
+        let node_id = var_int_pop(&mut link_state_iter)?;
+        let starting_point = var_int_pop(&mut link_state_iter)?;
+        let mut lag_slots = SlotsArray::default();
+        let mut drop_slots = SlotsArray::default();
+        let mut kb_recv_slots = SlotsArray::default();
+        let mut i = starting_point;
+        while link_state_iter.as_slice().len() != 0 {
+            lag_slots[i as usize] = var_int_pop(&mut link_state_iter)?;
+            drop_slots[i as usize] = var_int_pop(&mut link_state_iter)?;
+            kb_recv_slots[i as usize] = var_int_pop(&mut link_state_iter)?;
+            i = (i + 1) % 18;
+        }
+        Ok(Entity::LinkState {
+            node_id,
+            starting_point,
+            lag_slots,
+            drop_slots,
+            kb_recv_slots,
+        })
+    }
+
+    // todo refactor
+    fn var_int_pop(link_state_iter: &mut Iter<u8>) -> Result<u8> {
+        let mut output = 0_u8;
+        let len = link_state_iter.as_slice().len();
+        let &byte = link_state_iter.as_slice().first().ok_or(ParserError::CannotParseLinkState("wrong iter len"))?;
+        let runt_err = Err(ParserError::CannotParseLinkState("runt"));
+        if len < 9 {
+            if len < 5 {
+                if len < 3 {
+                    if len < 1 {
+                        return runt_err;
+                    }
+                    if byte >= 0xfd {
+                        return runt_err;
+                    }
+                } else if byte >= 0xfe {
+                    return runt_err;
+                }
+            } else if byte >= 0xff {
+                return runt_err;
+            }
+        }
+        output = check_current_byte_fall_through(byte, output, link_state_iter);
+        Ok(output)
+    }
+
+    // todo refactor
+    fn check_current_byte_fall_through(current_byte: u8, mut current_output: u8, link_state_iter: &mut Iter<u8>) -> u8 {
+        match current_byte {
+            0xff => {
+                for _ in 0..4 {
+                    current_output |= link_state_iter.by_ref().skip(1).next().expect("link state data len is too small");
+                    current_output <<= 8;
+                }
+                check_current_byte_fall_through(0xfe, current_output, link_state_iter)
+            }
+            0xfe => {
+                for _ in 0..2 {
+                    current_output |= link_state_iter.by_ref().skip(1).next().expect("link state data len is too small");
+                    current_output <<= 8;
+                }
+                check_current_byte_fall_through(0xfe, current_output, link_state_iter)
+            }
+            0xfd => {
+                current_output |= link_state_iter.by_ref().skip(1).next().expect("link state data len is too small");
+                current_output <<= 8;
+                check_current_byte_fall_through(u8::default(), current_output, link_state_iter)
+            }
+            _ => {
+                current_output |= link_state_iter.next().expect("link state data len is too small");
+                current_output
+            }
+        }
     }
 
     #[cfg(test)]
@@ -622,6 +722,23 @@ mod parser {
             let parsed_entities = parse_entities(entities_data_vec.as_slice()).expect("parsing entities failed");
 
             assert_eq!(parsed_entities, vec![parsed_peer; 3]);
+        }
+
+        #[test]
+        fn test_parse_link_state() {
+            let hexed_data = "2003060000000000000410130001120002130002130000140003120001130001";
+            let test_bytes = hex::decode(hexed_data).expect("invalid hex string");
+            let res = parse_entities(test_bytes.as_slice()).expect("invalid entity");
+            assert_eq!(
+                res,
+                vec![Entity::LinkState {
+                    node_id: 4,
+                    starting_point: 16,
+                    lag_slots: [19, 19, 20, 18, 19, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 19, 18],
+                    drop_slots: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+                    kb_recv_slots: [2, 0, 3, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2]
+                }]
+            )
         }
     }
 }

@@ -22,6 +22,7 @@ pub enum ParserError {
     CannotParseHeader(&'static str),
     CannotParseAuthData(&'static str),
     CannotParseEntity(&'static str),
+    CannotParseLinkState(&'static str),
 }
 
 impl std::fmt::Display for ParserError {
@@ -30,6 +31,7 @@ impl std::fmt::Display for ParserError {
             ParserError::CannotParseHeader(fail_reason) => write!(f, "Can't parse header: {}", fail_reason),
             ParserError::CannotParseAuthData(fail_reason) => write!(f, "Can't parse sender auth data: {}", fail_reason),
             ParserError::CannotParseEntity(fail_reason) => write!(f, "Can't parse entity: {}", fail_reason),
+            ParserError::CannotParseLinkState(fail_reason) => write!(f, "Can't parse link state: {}", fail_reason),
         }
     }
 }
