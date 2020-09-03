@@ -85,8 +85,8 @@
 //! 4. `LinkState` with type number `3`.
 //!
 //! Entity messages all begin with the length of the entity such that future entities can be added and skipped over by older versions of the parser.
-//! Entities longer than 255 or shorter than 1 byte are invalid. If the entity length field is exactly 1 byte, it is a pad entity and that byte should be skipped over.
-//! Pad entities can be useful to byte-align messages with oddly sized entities.
+//! Entities longer than 255 or shorter than 1 byte are invalid. If the entity length field is exactly 1 byte, it is a pad and that byte should be skipped over.
+//! Pads can be useful to byte-align messages with oddly sized entities.
 //!
 //! # Example
 //! ```rust
@@ -96,8 +96,10 @@
 //! # use cjdns_core::{RoutingLabel, EncodingScheme, EncodingSchemeForm, announcement::{Announcement, AnnouncementHeader, AnnouncementEntities, Entity}, keys::{CJDNS_IP6, CJDNSPublicKey}};
 //! use cjdns_core::announcement::AnnouncementPacket;
 //!
-//! # let hexed_announcement = "3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2fc928136dc1fe6e04ef6a6dd7187b85f00001576462f6f69040200120107006114458100200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000015";
-//! # let announcement_bytes = hex::decode(hexed_announcement).expect("invalid hex string");
+//! # let announcement_bytes = {
+//! #    let hexed_announcement = "3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2fc928136dc1fe6e04ef6a6dd7187b85f00001576462f6f69040200120107006114458100200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000015";
+//! #   hex::decode(hexed_announcement).expect("invalid hex string")
+//! # };
 //! # let returning_packet = AnnouncementPacket::try_new(announcement_bytes.clone()).expect("invalid packet length");
 //! # let announcement_bytes_hash = sha512::hash(&announcement_bytes);
 //!

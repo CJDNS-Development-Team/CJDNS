@@ -119,8 +119,7 @@ pub enum Entity {
     },
 
     /// As `EncodingScheme` serialization does not have a fixed width in bytes, `EncodingScheme` entities are
-    /// prefixed with a number of *pad* entities in order that their length will be a multiple of four
-    /// bytes.
+    /// prefixed with a number of pads in order that their length will be a multiple of four bytes.
     ///
     /// `hex` stands for hexed representation of serialized encoding `scheme`.
     EncodingScheme { hex: String, scheme: EncodingScheme },
