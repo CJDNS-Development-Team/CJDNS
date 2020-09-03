@@ -1,0 +1,13 @@
+[package]
+name = "cjdns-hdr"
+version = "0.1.0"
+authors = [
+    "Sabaun Taraki <taraki.sabaun.rl@gmail.com>"
+]
+edition = "2018"
+license = "GPL-3.0"
+description = "Library for parsing and serializing cjdns route and data headers"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]

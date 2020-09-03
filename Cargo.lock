@@ -146,6 +146,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "cjdns-hdr"
+version = "0.1.0"
+
+[[package]]
 name = "cjdns-snode"
 version = "0.1.0"
 dependencies = [
