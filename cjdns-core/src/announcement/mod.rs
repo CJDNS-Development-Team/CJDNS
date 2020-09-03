@@ -166,7 +166,7 @@
 //!
 //! ```
 
-pub use models::{Announcement, AnnouncementEntities, AnnouncementHeader, Entity, SlotsArray};
+pub use models::{Announcement, AnnouncementEntities, AnnouncementHeader, Entity, LinkStateSlots};
 pub use serialized_ann::serialized_data::AnnouncementPacket;
 
 mod errors;

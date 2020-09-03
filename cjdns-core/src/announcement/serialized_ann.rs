@@ -10,7 +10,7 @@ use crate::{
 };
 
 use super::errors::*;
-use super::models::{Announcement, AnnouncementEntities, AnnouncementHeader, Entity, SlotsArray};
+use super::models::{Announcement, AnnouncementEntities, AnnouncementHeader, Entity, LinkStateSlots};
 
 const ANNOUNCEMENT_MIN_SIZE: usize = HEADER_SIZE;
 const HEADER_SIZE: usize = SIGN_SIZE + SIGN_KEY_SIZE + IP_SIZE + 8;
@@ -96,24 +96,6 @@ pub mod serialized_data {
 
         fn hex_to_bytes(hex_string: String) -> Vec<u8> {
             hex::decode(hex_string).expect("invalid hex string")
-        }
-
-        #[test]
-        fn test_packet_creation() {
-            init().expect("sodium init failed");
-
-            // actually, length could be greater than 144
-            for packet_length in 0..144 {
-                let packet_data = randombytes::randombytes(packet_length);
-                let packet = AnnouncementPacket::try_new(packet_data);
-
-                let valid_case = packet_length >= ANNOUNCEMENT_MIN_SIZE;
-                if valid_case {
-                    assert!(packet.is_ok());
-                } else {
-                    assert!(packet.is_err());
-                }
-            }
         }
 
         #[test]
@@ -465,9 +447,9 @@ mod parser {
         }
         let node_id = var_int_pop(&mut link_state_iter)?;
         let starting_point = var_int_pop(&mut link_state_iter)?;
-        let mut lag_slots = SlotsArray::default();
-        let mut drop_slots = SlotsArray::default();
-        let mut kb_recv_slots = SlotsArray::default();
+        let mut lag_slots = LinkStateSlots::default();
+        let mut drop_slots = LinkStateSlots::default();
+        let mut kb_recv_slots = LinkStateSlots::default();
         let mut i = starting_point;
         while link_state_iter.as_slice().len() != 0 {
             lag_slots[i as usize] = var_int_pop(&mut link_state_iter)?;

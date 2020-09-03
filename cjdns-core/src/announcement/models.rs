@@ -44,8 +44,13 @@ pub struct AnnouncementHeader {
 /// A sequence of entities in the announcement message.
 pub type AnnouncementEntities = Vec<Entity>;
 
-// todo
-pub type SlotsArray = [u32; 18];
+/// An array of slots, storing network link samples.
+///
+/// Link states are normally submitted to the route server every minute. In this duration 6 samples are being collected (one sample in 10 seconds).
+/// But if some problems with submitting link state occurred, we should have more space for the samples being collected in the period of their
+/// submittal failure. So `LinkStateSlots` allows having samples from the last three minutes.
+// todo consider pub struct LinkStateSlots<T>([T; 18]) and implementing `push` logic for it
+pub type LinkStateSlots = [u32; 18];
 
 /// Announcement message entity types.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -124,12 +129,14 @@ pub enum Entity {
     /// `hex` stands for hexed representation of serialized encoding `scheme`.
     EncodingScheme { hex: String, scheme: EncodingScheme },
 
-    // todo
+    /// `LinkState` stores data, which is used by route server/super node to
+    /// to plot good paths through the network and avoid links, which have long or unreliable delay. So the data
+    /// under `LinkState` represents the quality of network link.
     LinkState {
         node_id: u32,
         starting_point: u32,
-        lag_slots: SlotsArray,
-        drop_slots: SlotsArray,
-        kb_recv_slots: SlotsArray,
+        lag_slots: LinkStateSlots,
+        drop_slots: LinkStateSlots,
+        kb_recv_slots: LinkStateSlots,
     },
 }
