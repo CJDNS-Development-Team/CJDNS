@@ -6,10 +6,11 @@ use sodiumoxide::crypto::sign::ed25519::{verify_detached, PublicKey, Signature};
 use crate::{
     deserialize_forms,
     keys::{CJDNSPublicKey, CJDNS_IP6},
-    Announcement, AnnouncementEntities, AnnouncementHeader, EncodingScheme, Entity, RoutingLabel, SlotsArray,
+    EncodingScheme, RoutingLabel,
 };
 
 use super::errors::*;
+use super::models::{Announcement, AnnouncementEntities, AnnouncementHeader, Entity, SlotsArray,};
 
 const ANNOUNCEMENT_MIN_SIZE: usize = HEADER_SIZE;
 const HEADER_SIZE: usize = SIGN_SIZE + SIGN_KEY_SIZE + IP_SIZE + 8;
@@ -254,7 +255,7 @@ mod parser {
     const ENCODING_SCHEME_ENTITY_MIN_SIZE: usize = 4;
 
     // Dividing logic from DS (`AnnouncementPacket`)
-    pub fn parse(packet: serialized_data::AnnouncementPacket) -> Result<Announcement> {
+    pub(super) fn parse(packet: serialized_data::AnnouncementPacket) -> Result<Announcement> {
         let header = parse_header(packet.get_header_bytes())?;
         let (node_encryption_key, node_ip6) = parse_sender_auth_data(packet.get_pub_key_bytes())?;
         let entities = parse_entities(packet.get_entities_bytes())?;
@@ -534,7 +535,6 @@ mod parser {
 
         use super::*;
         use crate::keys::{BytesRepr, CJDNSKeysApi};
-        use crate::AnnouncementPacket;
 
         #[test]
         fn test_parse_header() {
@@ -597,7 +597,7 @@ mod parser {
                 // timestamp-version-is_reset
                 "0000157354c540c1";
             let header_bytes = hex::decode(valid_hexed_header).expect("invalid hex string");
-            let parsed_announcement = parser::parse(AnnouncementPacket::try_new(header_bytes).expect("invalid bytes len")).expect("invalid ann data");
+            let parsed_announcement = parser::parse(serialized_data::AnnouncementPacket::try_new(header_bytes).expect("invalid bytes len")).expect("invalid ann data");
             assert_eq!(parsed_announcement.entities, vec![]);
         }
 

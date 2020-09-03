@@ -2,9 +2,8 @@
 //!
 //! TODO rest of the README
 
-pub use models::*;
-pub use serialized_ann::serialized_data::*;
+pub use serialized_ann::serialized_data::AnnouncementPacket;
 
+pub mod models;
 mod serialized_ann;
-mod models;
 mod errors;

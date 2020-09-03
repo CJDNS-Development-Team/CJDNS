@@ -2,8 +2,10 @@ use sodiumoxide::crypto::hash::sha512::Digest;
 
 use crate::{
     keys::{CJDNSPublicKey, CJDNS_IP6},
-    AnnouncementPacket, EncodingScheme, RoutingLabel,
+    EncodingScheme, RoutingLabel,
 };
+
+use super::AnnouncementPacket;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Announcement {

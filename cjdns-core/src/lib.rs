@@ -10,9 +10,7 @@ pub use self::encoding_scheme::schemes;
 pub use self::pathhop::*;
 pub use self::routinglabel::*;
 pub use self::strconv::*;
-pub use self::announcement::*;
 
-mod announcement;
 mod encoding;
 mod encoding_scheme;
 mod pathhop;
@@ -21,3 +19,4 @@ mod strconv;
 
 pub mod splice;
 pub mod keys;
+pub mod announcement;
