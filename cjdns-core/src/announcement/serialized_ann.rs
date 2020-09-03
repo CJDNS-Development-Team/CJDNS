@@ -475,7 +475,7 @@ mod parser {
     }
 
     // todo refactor
-    fn var_int_pop(link_state_iter: &mut Iter<u8>) -> Result<u8> {
+    fn var_int_pop(link_state_iter: &mut Iter<u8>) -> Result<u32> {
         let mut output = 0;
         let len = link_state_iter.as_slice().len();
         let &byte = link_state_iter.as_slice().first().ok_or(ParserError::CannotParseLinkState("wrong iter len"))?;
@@ -501,29 +501,29 @@ mod parser {
     }
 
     // todo refactor
-    fn check_current_byte_fall_through(current_byte: u8, mut current_output: u8, link_state_iter: &mut Iter<u8>) -> u8 {
+    fn check_current_byte_fall_through(current_byte: u8, mut current_output: u32, link_state_iter: &mut Iter<u8>) -> u32 {
         match current_byte {
             0xff => {
                 for _ in 0..4 {
-                    current_output |= link_state_iter.by_ref().skip(1).next().expect("link state data len is too small");
+                    current_output |= *link_state_iter.by_ref().skip(1).next().expect("link state data len is too small") as u32;
                     current_output <<= 8;
                 }
                 check_current_byte_fall_through(0xfe, current_output, link_state_iter)
             }
             0xfe => {
                 for _ in 0..2 {
-                    current_output |= link_state_iter.by_ref().skip(1).next().expect("link state data len is too small");
+                    current_output |= *link_state_iter.by_ref().skip(1).next().expect("link state data len is too small") as u32;
                     current_output <<= 8;
                 }
                 check_current_byte_fall_through(0xfe, current_output, link_state_iter)
             }
             0xfd => {
-                current_output |= link_state_iter.by_ref().skip(1).next().expect("link state data len is too small");
+                current_output |= *link_state_iter.by_ref().skip(1).next().expect("link state data len is too small") as u32;
                 current_output <<= 8;
                 check_current_byte_fall_through(u8::default(), current_output, link_state_iter)
             }
             _ => {
-                current_output |= link_state_iter.next().expect("link state data len is too small");
+                current_output |= *link_state_iter.next().expect("link state data len is too small") as u32;
                 current_output
             }
         }

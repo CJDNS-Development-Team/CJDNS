@@ -28,7 +28,7 @@ pub struct AnnouncementHeader {
 }
 
 pub type AnnouncementEntities = Vec<Entity>;
-pub type SlotsArray = [u8; 18];
+pub type SlotsArray = [u32; 18];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Entity {
@@ -47,8 +47,8 @@ pub enum Entity {
         flags: u8,
     },
     LinkState {
-        node_id: u8,
-        starting_point: u8,
+        node_id: u32,
+        starting_point: u32,
         lag_slots: SlotsArray,
         drop_slots: SlotsArray,
         kb_recv_slots: SlotsArray,
