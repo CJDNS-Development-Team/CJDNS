@@ -10,7 +10,7 @@ use crate::{
 };
 
 use super::errors::*;
-use super::models::{Announcement, AnnouncementEntities, AnnouncementHeader, Entity, SlotsArray,};
+use super::models::{Announcement, AnnouncementEntities, AnnouncementHeader, Entity, SlotsArray};
 
 const ANNOUNCEMENT_MIN_SIZE: usize = HEADER_SIZE;
 const HEADER_SIZE: usize = SIGN_SIZE + SIGN_KEY_SIZE + IP_SIZE + 8;
@@ -19,15 +19,20 @@ const SIGN_KEY_SIZE: usize = 32;
 const IP_SIZE: usize = 16;
 
 pub mod serialized_data {
+    //! This module exports logic on serialized announcement message.
+
     use super::*;
 
     type Result<T> = std::result::Result<T, PacketError>;
 
+    /// Serialized announcement message. A thin wrapper over announcement packet bytes.
     #[derive(Debug, Clone, PartialEq, Eq)]
     pub struct AnnouncementPacket(Vec<u8>);
 
     impl AnnouncementPacket {
-        /// Instantiates wrapper on announcement message
+        /// Instantiates wrapper over announcement message.
+        /// Results in error if `ann_data` packet length is less than 120 bytes, which is an actual size of announcement header.
+        /// That is because we can't have announcement without header, but we actually can have announcement without the rest of data.
         pub fn try_new(ann_data: Vec<u8>) -> Result<Self> {
             if ann_data.len() < ANNOUNCEMENT_MIN_SIZE {
                 return Err(PacketError::CannotInstantiatePacket);
@@ -35,7 +40,9 @@ pub mod serialized_data {
             Ok(Self(ann_data))
         }
 
-        /// Checks announcement message signature validity
+        /// Checks announcement message signature validity.
+        /// Gets signature, public signing key and signed data bytes from announcement packet and performs signature check using
+        /// [crypto_sign_verify_detached](https://libsodium.gitbook.io/doc/public-key_cryptography/public-key_signatures).
         pub fn check(&self) -> Result<()> {
             let signature = Signature::from_slice(self.get_signature_bytes()).expect("signature size != 64");
             let public_sign_key = PublicKey::from_slice(self.get_pub_key_bytes()).expect("public key size != 32");
@@ -46,21 +53,21 @@ pub mod serialized_data {
             Err(PacketError::InvalidPacketSignature)
         }
 
-        /// Parses announcement packet and creates `Announcement` struct
+        /// Parses announcement packet and creates deserialized [announcement](struct.Announcement.html) message. Note that method "consumes" packet, creating
+        /// another type from it.
         pub fn parse(self) -> Result<Announcement> {
             parser::parse(self).map_err(|e| PacketError::CannotParsePacket(e))
         }
 
-        /// Gets packet hash
-        pub fn get_hash(&self) -> Digest {
+        pub(super) fn get_hash(&self) -> Digest {
             hash(&self.0)
         }
 
-        pub fn get_entities_bytes(&self) -> &[u8] {
+        pub(super) fn get_entities_bytes(&self) -> &[u8] {
             &self.0[HEADER_SIZE..]
         }
 
-        pub fn get_header_bytes(&self) -> &[u8] {
+        pub(super) fn get_header_bytes(&self) -> &[u8] {
             &self.0[..HEADER_SIZE]
         }
 
@@ -232,6 +239,8 @@ pub mod serialized_data {
 }
 
 mod parser {
+    //! Parser module encapsulating logic for announcement data parsing
+
     use std::slice::Iter;
 
     use libsodium_sys::crypto_sign_ed25519_pk_to_curve25519;
@@ -254,7 +263,6 @@ mod parser {
     // So we have 2 bytes for encoded type and length and minimum 2 bytes for encoding scheme deserialization.
     const ENCODING_SCHEME_ENTITY_MIN_SIZE: usize = 4;
 
-    // Dividing logic from DS (`AnnouncementPacket`)
     pub(super) fn parse(packet: serialized_data::AnnouncementPacket) -> Result<Announcement> {
         let header = parse_header(packet.get_header_bytes())?;
         let (node_encryption_key, node_ip6) = parse_sender_auth_data(packet.get_pub_key_bytes())?;
@@ -405,12 +413,14 @@ mod parser {
     }
 
     fn parse_version(version_data: &[u8]) -> Result<Entity> {
+        // Version data is always 4 bytes. First 2 bytes are encoded length and type.
         assert_eq!(version_data.len(), 2);
         let version = u16::from_be_bytes(<[u8; 2]>::try_from(version_data).expect("version slice length != 2"));
         Ok(Entity::NodeProtocolVersion(version))
     }
 
     fn parse_peer(peer_data: &[u8]) -> Result<Entity> {
+        // Peer data is always 32 bytes. First 2 bytes are encoded length and type.
         assert_eq!(peer_data.len(), 30);
         let mut peer_data_iter = peer_data.iter();
         let mut take_peer_bytes = |n: usize| peer_data_iter.by_ref().take(n).map(|&byte| byte).collect::<Vec<u8>>();
@@ -597,7 +607,8 @@ mod parser {
                 // timestamp-version-is_reset
                 "0000157354c540c1";
             let header_bytes = hex::decode(valid_hexed_header).expect("invalid hex string");
-            let parsed_announcement = parser::parse(serialized_data::AnnouncementPacket::try_new(header_bytes).expect("invalid bytes len")).expect("invalid ann data");
+            let parsed_announcement =
+                parser::parse(serialized_data::AnnouncementPacket::try_new(header_bytes).expect("invalid bytes len")).expect("invalid ann data");
             assert_eq!(parsed_announcement.entities, vec![]);
         }
 
