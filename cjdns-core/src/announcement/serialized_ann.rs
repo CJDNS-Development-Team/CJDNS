@@ -459,13 +459,13 @@ mod parser {
         }
         let node_id = var_int_pop(&mut link_state_iter)?;
         let starting_point = var_int_pop(&mut link_state_iter)?;
-        let mut lag_slots = LinkStateSlots::default();
-        let mut drop_slots = LinkStateSlots::default();
-        let mut kb_recv_slots = LinkStateSlots::default();
+        let mut lag_slots = LinkStateSlots::<u16>::default();
+        let mut drop_slots = LinkStateSlots::<u16>::default();
+        let mut kb_recv_slots = LinkStateSlots::<u32>::default();
         let mut i = starting_point;
         while link_state_iter.as_slice().len() != 0 {
-            lag_slots[i as usize] = var_int_pop(&mut link_state_iter)?;
-            drop_slots[i as usize] = var_int_pop(&mut link_state_iter)?;
+            lag_slots[i as usize] = var_int_pop(&mut link_state_iter)? as u16; //todo need checked conversion here
+            drop_slots[i as usize] = var_int_pop(&mut link_state_iter)? as u16; //todo need checked conversion here
             kb_recv_slots[i as usize] = var_int_pop(&mut link_state_iter)?;
             i = (i + 1) % 18;
         }

@@ -49,8 +49,7 @@ pub type AnnouncementEntities = Vec<Entity>;
 /// Samples are collected every 10 seconds, normally messages are submitted to the Route Server every minute,
 /// resulting in 6 samples. But we would store 3 times more samples so that if there is some reason it is unable
 /// to submit a message to the route server for up to 3 minutes, still no link state samples will be lost.
-// todo consider pub struct LinkStateSlots<T>([T; 18]) and implementing `push` logic for it
-pub type LinkStateSlots = [u32; 18];
+pub type LinkStateSlots<T> = [T; 18];
 
 /// Announcement message entity types.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -135,8 +134,8 @@ pub enum Entity {
     LinkState {
         node_id: u32,
         starting_point: u32,
-        lag_slots: LinkStateSlots,
-        drop_slots: LinkStateSlots,
-        kb_recv_slots: LinkStateSlots,
+        lag_slots: LinkStateSlots<u16>,
+        drop_slots: LinkStateSlots<u16>,
+        kb_recv_slots: LinkStateSlots<u32>,
     },
 }
