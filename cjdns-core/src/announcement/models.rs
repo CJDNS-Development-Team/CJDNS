@@ -46,9 +46,9 @@ pub type AnnouncementEntities = Vec<Entity>;
 
 /// An array of slots, storing network link samples.
 ///
-/// Link states are normally submitted to the route server every minute. In this duration 6 samples are being collected (one sample in 10 seconds).
-/// But if some problems with submitting link state occurred, we should have more space for the samples being collected in the period of their
-/// submittal failure. So `LinkStateSlots` allows having samples from the last three minutes.
+/// Samples are collected every 10 seconds, normally messages are submitted to the Route Server every minute,
+/// resulting in 6 samples. But we would store 3 times more samples so that if there is some reason it is unable
+/// to submit a message to the route server for up to 3 minutes, still no link state samples will be lost.
 // todo consider pub struct LinkStateSlots<T>([T; 18]) and implementing `push` logic for it
 pub type LinkStateSlots = [u32; 18];
 
@@ -103,16 +103,16 @@ pub enum Entity {
     /// information. Currently there are no flags.
     /// * **MTU8**: The maximum message size for messages going to the announcer from the peer. If this
     /// is set to zero it indicates the announcer is not aware of the MTU.
-    /// * **peer number**: number of the peer in the network switch which corresponds to that peer. Used for referencing in [LinkState](enum.Entity.html#variant.LinkState)
+    /// * **peer number**: number of the peer in the network switch which corresponds to that peer.
+    /// Used for referencing in [LinkState](enum.Entity.html#variant.LinkState)
     /// * **unused**: alignment padding.
     /// * **Peer IPv6**: The cjdns IPv6 address of the peer from which this node can be reached.
     /// * **label**: The label fragment (Director) which should be used for constructing a label for
     /// reaching the announcer from the peer. A label of 0 indicates that the route is being withdrawn and it is no longer usable.
     /// This is limited to 32 bits because 32 bits is the largest Director that can be represented in an encoding scheme.
     ///
-    /// Note that type of **label** field is an `Option`: zero label actually indicates something beneficial here, but we can't
-    /// instantiate zero label in current rust implementation. We wrap `Option` over **label**, so `None` case for zero label will be
-    /// handled by the user of the `Peer` entity.
+    /// **Note:** The `label` field is an `Option`: zero label parsed as `None` (the route is being withdrawn and it is no longer usable),
+    /// nonzero label is `Some(label)`.
     Peer {
         ip6: CJDNS_IP6,
         label: Option<RoutingLabel<u32>>,
@@ -126,12 +126,12 @@ pub enum Entity {
     /// As `EncodingScheme` serialization does not have a fixed width in bytes, `EncodingScheme` entities are
     /// prefixed with a number of pads in order that their length will be a multiple of four bytes.
     ///
-    /// `hex` stands for hexed representation of serialized encoding `scheme`.
+    /// `hex` stands for hex string representation of serialized encoding `scheme`.
     EncodingScheme { hex: String, scheme: EncodingScheme },
 
-    /// `LinkState` stores data, which is used by route server/super node to
-    /// to plot good paths through the network and avoid links, which have long or unreliable delay. So the data
-    /// under `LinkState` represents the quality of network link.
+    /// `LinkState` stores data, which is used by route server/super node to plot good paths
+    /// through the network and avoid links which have long or unreliable delay.
+    /// So the data under `LinkState` represents the quality of network link.
     LinkState {
         node_id: u32,
         starting_point: u32,

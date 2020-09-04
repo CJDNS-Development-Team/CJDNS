@@ -30,9 +30,11 @@ pub mod serialized_data {
     pub struct AnnouncementPacket(Vec<u8>);
 
     impl AnnouncementPacket {
-        /// Instantiates wrapper over announcement message.
-        /// Results in error if `ann_data` packet length is less than 120 bytes, which is an actual size of announcement header.
-        /// That is because we can't have announcement without header, but we actually can have announcement without the rest of data.
+        /// Wrap raw announcement message bytes.
+        ///
+        /// Results in error if `ann_data` packet length is less than 120 bytes (incomplete message header).
+        ///
+        /// **Note:** Announcement can have only header without any data, this is a valid case.
         pub fn try_new(ann_data: Vec<u8>) -> Result<Self> {
             if ann_data.len() < ANNOUNCEMENT_MIN_SIZE {
                 return Err(PacketError::CannotInstantiatePacket);
@@ -40,7 +42,7 @@ pub mod serialized_data {
             Ok(Self(ann_data))
         }
 
-        /// Checks announcement message signature validity.
+        /// Checks announcement message digital signature validity.
         /// Gets signature, public signing key and signed data bytes from announcement packet and performs signature check using
         /// [crypto_sign_verify_detached](https://libsodium.gitbook.io/doc/public-key_cryptography/public-key_signatures).
         pub fn check(&self) -> Result<()> {
@@ -53,8 +55,7 @@ pub mod serialized_data {
             Err(PacketError::InvalidPacketSignature)
         }
 
-        /// Parses announcement packet and creates deserialized [announcement](struct.Announcement.html) message. Note that method "consumes" packet, creating
-        /// another type from it.
+        /// Parses announcement packet and creates deserialized announcement message, consuming this packet.
         pub fn parse(self) -> Result<Announcement> {
             parser::parse(self).map_err(|e| PacketError::CannotParsePacket(e))
         }
@@ -99,12 +100,25 @@ pub mod serialized_data {
         }
 
         #[test]
-        fn test_packet_pure_fns() {
-            init().expect("sodium init failed");
+        fn test_packet_creation() {
+            for packet_length in 0..144 {
+                let packet_data = vec![0; packet_length];
+                let packet = AnnouncementPacket::try_new(packet_data);
 
-            let header_data = randombytes::randombytes(HEADER_SIZE);
+                let valid_case = packet_length >= ANNOUNCEMENT_MIN_SIZE;
+                if valid_case {
+                    assert!(packet.is_ok());
+                } else {
+                    assert!(packet.is_err());
+                }
+            }
+        }
+
+        #[test]
+        fn test_packet_pure_fns() {
+            let header_data = vec![0; HEADER_SIZE];
             for entities_len in 0..100 {
-                let entities_data = randombytes::randombytes(entities_len);
+                let entities_data = vec![0; entities_len];
                 let announcement_data = join(&header_data, &entities_data);
                 let packet = AnnouncementPacket::try_new(announcement_data.to_vec()).expect("invalid data len");
 
@@ -118,12 +132,10 @@ pub mod serialized_data {
 
         #[test]
         fn test_sign_check() {
-            init().expect("sodium init failed");
-
             fn create_signed_header() -> Vec<u8> {
                 let (sodium_pk, sodium_sk) = crypto::sign::gen_keypair();
                 let header_data_to_sign = {
-                    let rest_header_data = randombytes::randombytes(HEADER_SIZE - SIGN_SIZE - SIGN_KEY_SIZE);
+                    let rest_header_data = vec![0; HEADER_SIZE - SIGN_SIZE - SIGN_KEY_SIZE];
                     join(sodium_pk.as_ref(), &rest_header_data)
                 };
                 let sign = crypto::sign::sign_detached(&header_data_to_sign, &sodium_sk);
@@ -523,15 +535,13 @@ mod parser {
 
     #[cfg(test)]
     mod tests {
-        use sodiumoxide::*;
-
         use super::*;
         use crate::keys::{BytesRepr, CJDNSKeysApi};
 
         #[test]
         fn test_parse_header() {
-            let keys_api = CJDNSKeysApi::new().expect("sodium init failed");
-            let rand_data = randombytes::randombytes(72);
+            let keys_api = CJDNSKeysApi::new().expect("keys API init failed");
+            let rand_data = vec![0; 72];
             let (random_signature, random_timestamp) = rand_data.split_at(64);
             let keys = keys_api.key_pair();
 
@@ -568,11 +578,9 @@ mod parser {
 
         #[test]
         fn test_parse_header_invalid_len() {
-            init().expect("sodium init failed");
-
             let invalid_header_lengths = (0..=255).filter(|&x| x != HEADER_SIZE);
             for len in invalid_header_lengths {
-                let random_header_bytes = randombytes::randombytes(len);
+                let random_header_bytes = vec![0; len];
                 assert!(parse_header(&random_header_bytes).is_err())
             }
         }
