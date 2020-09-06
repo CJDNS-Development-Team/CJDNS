@@ -35,7 +35,7 @@ async fn run() -> Result<(), Error> {
         let func = cjdns.functions.find(&fn_name).ok_or_else(|| Error::msg("unknown function name"))?;
         let fn_args = make_args(func, fn_args);
 
-        let res = cjdns.call_func::<_, GenericResponsePayload>(&fn_name, fn_args, false).await?;
+        let res = cjdns.invoke::<_, GenericResponsePayload>(&fn_name, fn_args).await?;
         println!("{:?}", res);
     };
 

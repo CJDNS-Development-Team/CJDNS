@@ -1,5 +1,7 @@
 //! Errors.
 
+use std::time::Duration;
+
 use thiserror::Error;
 use tokio::io;
 
@@ -67,4 +69,8 @@ pub enum Error {
     #[allow(missing_docs)]
     #[error("Broken txid: sent {sent_txid} but received {received_txid}")]
     BrokenTx { sent_txid: String, received_txid: String },
+
+    /// Network timeout error.
+    #[error("Timeout occured: {0:?}")]
+    TimeOut(Duration),
 }

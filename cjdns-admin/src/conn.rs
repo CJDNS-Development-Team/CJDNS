@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use sodiumoxide::crypto::hash::sha256::hash;
 use tokio::net::UdpSocket;
+use tokio::time;
 
 use crate::ConnectionOptions;
 use crate::errors::{ConnOptions, Error};
@@ -41,18 +42,11 @@ impl Connection {
         Ok(conn)
     }
 
-    fn set_timeout(&self, _timeout: Duration) -> Result<(), Error> {
-        // TODO implement proper timeout policy
-        Ok(())
-    }
-
     async fn probe_connection(&mut self, opts: ConnectionOptions) -> Result<(), Error> {
-        self.set_timeout(PING_TIMEOUT)?;
-        self.call_func::<(), Empty>("ping", (), true).await.map_err(|_| Error::ConnectError(ConnOptions::wrap(&opts)))?;
+        self.call_func::<(), Empty>("ping", (), true, PING_TIMEOUT).await.map_err(|_| Error::ConnectError(ConnOptions::wrap(&opts)))?;
 
-        self.set_timeout(DEFAULT_TIMEOUT)?;
         if !self.password.is_empty() {
-            self.call_func::<(), Empty>("AuthorizedPasswords_list", (), false).await.map_err(|_| Error::AuthError(ConnOptions::wrap(&opts)))?;
+            self.call_func::<(), Empty>("AuthorizedPasswords_list", (), false, DEFAULT_TIMEOUT).await.map_err(|_| Error::AuthError(ConnOptions::wrap(&opts)))?;
         }
 
         Ok(())
@@ -62,7 +56,7 @@ impl Connection {
         let mut res = Funcs::new();
 
         for i in 0.. {
-            let ret: msgs::AvailableFnsResponsePayload = self.call_func("Admin_availableFunctions", msgs::AvailableFnsQueryArg { page: i }, false).await?;
+            let ret: msgs::AvailableFnsResponsePayload = self.call_func("Admin_availableFunctions", msgs::AvailableFnsQueryArg { page: i }, false, DEFAULT_TIMEOUT).await?;
             let funcs = ret.available_fns;
 
             if funcs.is_empty() {
@@ -76,14 +70,19 @@ impl Connection {
     }
 
     /// Call remote function.
-    pub async fn call_func<A: msgs::Args, P: msgs::Payload>(&mut self, remote_fn_name: &str, args: A, disable_auth: bool) -> Result<P, Error> {
-        //dbg!(remote_fn_name);
+    pub async fn invoke<A: msgs::Args, P: msgs::Payload>(&mut self, remote_fn_name: &str, args: A) -> Result<P, Error> {
+        self.call_func(remote_fn_name, args, false, DEFAULT_TIMEOUT).await
+    }
 
-        if disable_auth || self.password.is_empty() {
-            self.call_func_no_auth(remote_fn_name, args).await
-        } else {
-            self.call_func_auth(remote_fn_name, args).await
-        }
+    async fn call_func<A: msgs::Args, P: msgs::Payload>(&mut self, remote_fn_name: &str, args: A, disable_auth: bool, timeout: Duration) -> Result<P, Error> {
+        let call = async {
+            if disable_auth || self.password.is_empty() {
+                self.call_func_no_auth(remote_fn_name, args).await
+            } else {
+                self.call_func_auth(remote_fn_name, args).await
+            }
+        };
+        time::timeout(timeout, call).await.map_err(|_| Error::TimeOut(timeout))?
     }
 
     async fn call_func_no_auth<A: msgs::Args, P: msgs::Payload>(&mut self, remote_fn_name: &str, args: A) -> Result<P, Error> {
