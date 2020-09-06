@@ -72,6 +72,21 @@ impl<L: LabelBits> RoutingLabel<L> {
     }
 }
 
+impl LabelBits for u32 {
+    const ZERO: Self = 0;
+    const ONE: Self = 1;
+    const BIT_SIZE: u32 = size_of::<Self>() as u32 * 8;
+    const MAX_PAYLOAD_BITS: u32 = Self::BIT_SIZE - 4;
+
+    fn highest_set_bit(&self) -> Option<u32> {
+        if Self::ZERO == *self {
+            None
+        } else {
+            Some(Self::BIT_SIZE - 1 - self.leading_zeros() as u32)
+        }
+    }
+}
+
 impl LabelBits for u64 {
     const ZERO: Self = 0;
     const ONE: Self = 1;

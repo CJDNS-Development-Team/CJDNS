@@ -19,3 +19,4 @@ mod strconv;
 
 pub mod splice;
 pub mod keys;
+pub mod announcement;
