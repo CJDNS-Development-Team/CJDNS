@@ -11,4 +11,8 @@ description = "cjdns supernode"
 [dependencies]
 anyhow = "1.0"
 clap = { version = "3.0.0-beta.1", default-features = false, features = [ "std", "derive" ] }
-tokio = { version = "0.2", features = ["fs", "net", "macros"] }
+env_logger = "0.7"
+log = { version = "0.4", features = ["max_level_trace", "release_max_level_info"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "0.2", features = ["fs", "net", "macros", "time"] }
