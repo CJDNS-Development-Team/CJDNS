@@ -1,7 +1,8 @@
 //! CJDNS Admin tool
 
-use std::{env, error::Error, path};
+use std::{env, path};
 
+use anyhow::Error;
 use regex::Regex;
 
 use cjdns_admin::{ArgValue, ArgValues, Func, msgs::GenericResponsePayload};
@@ -13,9 +14,7 @@ async fn main() {
     }
 }
 
-type Err = Box<dyn Error>;
-
-async fn run() -> Result<(), Err> {
+async fn run() -> Result<(), Error> {
     let mut cjdns = cjdns_admin::connect(None).await?;
 
     let args = env::args().skip(1).collect::<Vec<_>>();
@@ -27,13 +26,13 @@ async fn run() -> Result<(), Err> {
         eprintln!("List of available RPC requests with parameters is as follows:");
         eprintln!("{}", cjdns.functions)
     } else {
-        let fn_call_str = args.last().cloned().ok_or_else(|| Err::from("empty program args"))?;
+        let fn_call_str = args.last().cloned().ok_or_else(|| Error::msg("empty program args"))?;
 
-        let (fn_name, fn_args) = split_fn_invocation_str(&fn_call_str).map_err(|_| Err::from("bad function invocation expression"))?;
+        let (fn_name, fn_args) = split_fn_invocation_str(&fn_call_str).map_err(|_| Error::msg("bad function invocation expression"))?;
 
-        let fn_args = parse_remote_fn_args(&fn_args).map_err(|_| Err::from("bad function arguments"))?;
+        let fn_args = parse_remote_fn_args(&fn_args).map_err(|_| Error::msg("bad function arguments"))?;
 
-        let func = cjdns.functions.find(&fn_name).ok_or_else(|| Err::from("unknown function name"))?;
+        let func = cjdns.functions.find(&fn_name).ok_or_else(|| Error::msg("unknown function name"))?;
         let fn_args = make_args(func, fn_args);
 
         let res = cjdns.call_func::<_, GenericResponsePayload>(&fn_name, fn_args, false).await?;

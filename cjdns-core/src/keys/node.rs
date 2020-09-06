@@ -5,7 +5,7 @@ use regex::Regex;
 use crate::RoutingLabel;
 
 use super::CJDNSPublicKey;
-use super::errors::Error;
+use super::errors::{KeyError, Result};
 
 lazy_static! {
     static ref NODE_NAME_RE: Regex = Regex::new(
@@ -16,7 +16,7 @@ lazy_static! {
 }
 
 /// Gets version, label and public key all together in tuple from `name` argument, if it has valid structure. Otherwise returns error.
-pub fn parse_node_name(name: String) -> Result<(u32, RoutingLabel<u64>, CJDNSPublicKey), Error> {
+pub fn parse_node_name(name: String) -> Result<(u32, RoutingLabel<u64>, CJDNSPublicKey)> {
     if let Some(c) = NODE_NAME_RE.captures(&name) {
         let str_from_captured_group = |group_num: usize| -> &str { c.get(group_num).expect("bad group index").as_str() };
         let version = str_from_captured_group(1).parse::<u32>().expect("bad regexp - version");
@@ -24,7 +24,7 @@ pub fn parse_node_name(name: String) -> Result<(u32, RoutingLabel<u64>, CJDNSPub
         let public_key = CJDNSPublicKey::try_from(str_from_captured_group(3).to_string())?;
         Ok((version, label, public_key))
     } else {
-        Err(Error::CannotParseNodeName)
+        Err(KeyError::CannotParseNodeName)
     }
 }
 

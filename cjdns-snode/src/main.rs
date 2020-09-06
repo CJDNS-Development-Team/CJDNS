@@ -1,8 +1,8 @@
 //! CJDNS supernode
 
-use std::error::Error;
 use std::path::{Path, PathBuf};
 
+use anyhow::Error;
 use clap::Clap;
 
 #[tokio::main]
@@ -12,9 +12,7 @@ async fn main() {
     }
 }
 
-type Err = Box<dyn Error>;
-
-async fn run() -> Result<(), Err> {
+async fn run() -> Result<(), Error> {
     let opts: Opts = Opts::parse();
     let _ = opts.config_file_path();
 

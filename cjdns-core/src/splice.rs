@@ -2,42 +2,28 @@
 //!
 //! Below in the examples labels are written in the hex form for brevity.
 
-use std::error;
-use std::fmt;
+use thiserror::Error;
 
 use crate::{EncodingScheme, EncodingSchemeForm, LabelBits, PathHop, RoutingLabel, schemes};
 
 /// Result type alias.
-pub type Result<T> = std::result::Result<T, Error>;
+pub type Result<T> = std::result::Result<T, SpliceError>;
 
 /// Error type.
-#[derive(Debug, PartialEq, Eq)]
-pub enum Error {
+#[derive(Error, Debug, PartialEq, Eq)]
+pub enum SpliceError {
+    #[error("Label is too long")]
     LabelTooLong,
+    #[error("Not enough arguments")]
     NotEnoughArguments,
+    #[error("Bad argument")]
     BadArgument,
+    #[error("Can't unsplice")]
     CannotUnsplice,
+    #[error("Can't detect form")]
     CannotFindForm,
+    #[error("Can't re-encode")]
     CannotReencode,
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            Error::LabelTooLong => write!(f, "Label is too long"),
-            Error::NotEnoughArguments => write!(f, "Not enough arguments"),
-            Error::BadArgument => write!(f, "Bad argument"),
-            Error::CannotUnsplice => write!(f, "Can't unsplice"),
-            Error::CannotFindForm => write!(f, "Can't detect form"),
-            Error::CannotReencode => write!(f, "Can't re-encode"),
-        }
-    }
-}
-
-impl error::Error for Error {
-    fn source(&self) -> Option<&(dyn error::Error + 'static)> {
-        None
-    }
 }
 
 /// This function takes one or more `RoutingLabel`s and splices them to create a resulting label.
@@ -65,7 +51,7 @@ impl error::Error for Error {
 /// See: [LabelSplicer_splice()](https://github.com/cjdelisle/cjdns/blob/cjdns-v20.2/switch/LabelSplicer.h#L36)
 pub fn splice<L: LabelBits>(labels: &[RoutingLabel<L>]) -> Result<RoutingLabel<L>> {
     if labels.len() < 2 {
-        return Err(Error::NotEnoughArguments);
+        return Err(SpliceError::NotEnoughArguments);
     }
 
     let mut result_bits = labels[0].bits();
@@ -73,7 +59,7 @@ pub fn splice<L: LabelBits>(labels: &[RoutingLabel<L>]) -> Result<RoutingLabel<L
         let addon_bitlen = label_highest_set_bit(addon);
         let result_hsb = result_bits.highest_set_bit().expect("zero"); // All labels are always non-zero, so highest_set_bit() always available
         if result_hsb + addon_bitlen > L::MAX_PAYLOAD_BITS - 1 {
-            return Err(Error::LabelTooLong);
+            return Err(SpliceError::LabelTooLong);
         }
 
         result_bits = ((result_bits ^ L::ONE) << addon_bitlen) ^ addon.bits();
@@ -120,7 +106,7 @@ pub fn get_encoding_form<L: LabelBits>(label: RoutingLabel<L>, scheme: &Encoding
         }
     }
 
-    Err(Error::CannotFindForm)
+    Err(SpliceError::CannotFindForm)
 }
 
 /// Extracts a director stripping the encoding.
@@ -177,7 +163,7 @@ fn find_shortest_form<L: LabelBits>(dir: L, scheme: &EncodingScheme) -> Result<E
         .filter(|&form| (form.bit_count as u32) >= dir_bits)
         .min_by_key(|&form| form.bit_count)
         .map(|&form| form)
-        .ok_or(Error::CannotFindForm)
+        .ok_or(SpliceError::CannotFindForm)
 }
 
 /// Re-encode a `label` to the encoding form specified by `desired_form_num`
@@ -215,7 +201,7 @@ pub fn re_encode<L: LabelBits>(label: RoutingLabel<L>, scheme: &EncodingScheme, 
 
     let mut desired_form = if let Some(num) = desired_form_num {
         if num >= scheme.forms().len() {
-            return Err(Error::BadArgument);
+            return Err(SpliceError::BadArgument);
         }
         scheme.forms()[num]
     } else {
@@ -234,7 +220,7 @@ pub fn re_encode<L: LabelBits>(label: RoutingLabel<L>, scheme: &EncodingScheme, 
 
         if is_358_zero_form(form) {
             if dir == L::ZERO {
-                return Err(Error::CannotReencode);
+                return Err(SpliceError::CannotReencode);
             }
             dir = dir - L::ONE;
         }
@@ -253,7 +239,7 @@ pub fn re_encode<L: LabelBits>(label: RoutingLabel<L>, scheme: &EncodingScheme, 
     };
     let used_bits = rest_bitlen + desired_form.bit_count as u32 + desired_form.prefix_len as u32;
     if used_bits > L::MAX_PAYLOAD_BITS {
-        return Err(Error::LabelTooLong);
+        return Err(SpliceError::LabelTooLong);
     }
 
     result_bits = (result_bits << (desired_form.bit_count as u32)) | dir;
@@ -322,7 +308,7 @@ pub fn is_one_hop<L: LabelBits>(label: RoutingLabel<L>, encoding_scheme: &Encodi
 /// Notice the second to last hop in the `path` has been changed from 001b to 0092. This is a re-encoding to ensure that the `label` remains the right length as the reverse path for this hop is 00ee which is longer than 001b.
 pub fn build_label<L: LabelBits>(path_hops: &[PathHop<L>]) -> Result<(RoutingLabel<L>, Vec<RoutingLabel<L>>)> {
     if path_hops.len() < 2 {
-        return Err(Error::NotEnoughArguments);
+        return Err(SpliceError::NotEnoughArguments);
     }
 
     if let (Some(first_hop), Some(last_hop)) = (path_hops.first(), path_hops.last()) {
@@ -335,10 +321,10 @@ pub fn build_label<L: LabelBits>(path_hops: &[PathHop<L>]) -> Result<(RoutingLab
 }
 
 fn build_label_impl<L: LabelBits>(first_hop: &PathHop<L>, mid_hops: &[PathHop<L>], last_hop: &PathHop<L>) -> Result<(RoutingLabel<L>, Vec<RoutingLabel<L>>)> {
-    let first_hop_label_n = first_hop.label_n.ok_or(Error::BadArgument)?; // must be Some
-    let _last_hop_label_p = last_hop.label_p.ok_or(Error::BadArgument)?; // must be Some
-    first_hop.label_p.map_or(Ok(()), |_| Err(Error::BadArgument))?; // must be None
-    last_hop.label_n.map_or(Ok(()), |_| Err(Error::BadArgument))?; // must be None
+    let first_hop_label_n = first_hop.label_n.ok_or(SpliceError::BadArgument)?; // must be Some
+    let _last_hop_label_p = last_hop.label_p.ok_or(SpliceError::BadArgument)?; // must be Some
+    first_hop.label_p.map_or(Ok(()), |_| Err(SpliceError::BadArgument))?; // must be None
+    last_hop.label_n.map_or(Ok(()), |_| Err(SpliceError::BadArgument))?; // must be None
 
     let mut ret_path = Vec::with_capacity(mid_hops.len() + 1);
     ret_path.push(first_hop_label_n);
@@ -354,7 +340,7 @@ fn build_label_impl<L: LabelBits>(first_hop: &PathHop<L>, mid_hops: &[PathHop<L>
 
             ret_path.push(label_n);
         } else {
-            return Err(Error::BadArgument);
+            return Err(SpliceError::BadArgument);
         }
     }
 
@@ -407,7 +393,7 @@ pub fn routes_through<L: LabelBits>(destination: RoutingLabel<L>, mid_path: Rout
 /// See: [LabelSplicer_unsplice()](https://github.com/cjdelisle/cjdns/blob/77259a49e5bc7ca7bc6dca5bd423e02be563bdc5/switch/LabelSplicer.h#L31)
 pub fn unsplice<L: LabelBits>(destination: RoutingLabel<L>, mid_path: RoutingLabel<L>) -> Result<RoutingLabel<L>> {
     if !(routes_through(destination, mid_path)) {
-        return Err(Error::CannotUnsplice);
+        return Err(SpliceError::CannotUnsplice);
     }
 
     RoutingLabel::try_new(destination.bits() >> label_highest_set_bit(&mid_path)).ok_or(()).map_err(|_| unreachable!("highest_set_bit() is broken"))
@@ -439,10 +425,10 @@ mod tests {
 
     #[test]
     fn test_splice() {
-        assert_eq!(splice::<u64>(&[]), Err(Error::NotEnoughArguments));
+        assert_eq!(splice::<u64>(&[]), Err(SpliceError::NotEnoughArguments));
         assert_eq!(
             splice(&[l("0000.0000.0000.0015")]),
-            Err(Error::NotEnoughArguments)
+            Err(SpliceError::NotEnoughArguments)
         );
 
         assert_eq!(
@@ -500,14 +486,14 @@ mod tests {
 
         assert_eq!(
             splice(&[l("0400.0000.0000.1111"), l("0000.0000.0000.0005")]),
-            Err(Error::LabelTooLong)
+            Err(SpliceError::LabelTooLong)
         );
         assert_eq!(
             splice(&[
                 l128("0400.0000.0000.0000.0000.0000.0000.1111"),
                 l128("0000.0000.0000.0000.0000.0000.0000.0005")
             ]),
-            Err(Error::LabelTooLong)
+            Err(SpliceError::LabelTooLong)
         );
     }
 
@@ -900,43 +886,43 @@ mod tests {
         );
         assert_eq!(
             unsplice(l("0000.000b.0535.10e5"), l("0000.001b.0535.10e5")),
-            Err(Error::CannotUnsplice)
+            Err(SpliceError::CannotUnsplice)
         );
         assert_eq!(
             unsplice(
                 l128("0000.0000.0000.0000.0000.000b.0535.10e5"),
                 l128("0000.0000.0000.0000.0000.001b.0535.10e5")
             ),
-            Err(Error::CannotUnsplice)
+            Err(SpliceError::CannotUnsplice)
         );
         assert_eq!(
             unsplice(
                 l128("0000.0000.0000.0000.0000.0000.0000.0013"),
                 l128("0000.0000.0000.0000.0000.0000.0000.0153")
             ),
-            Err(Error::CannotUnsplice)
+            Err(SpliceError::CannotUnsplice)
         );
         assert_eq!(
             unsplice(l("ffff.ffff.ffff.ffff"), l("0000.0000.0000.0002")),
-            Err(Error::CannotUnsplice)
+            Err(SpliceError::CannotUnsplice)
         );
         assert_eq!(
             unsplice(
                 l128("ffff.ffff.ffff.ffff.ffff.ffff.ffff.ffff"),
                 l128("0000.0000.0000.0000.0000.0000.0000.0002")
             ),
-            Err(Error::CannotUnsplice)
+            Err(SpliceError::CannotUnsplice)
         );
         assert_eq!(
             unsplice(l("0000.0000.0000.0101"), l("0000.0000.0000.0110")),
-            Err(Error::CannotUnsplice)
+            Err(SpliceError::CannotUnsplice)
         );
         assert_eq!(
             unsplice(
                 l128("0000.0000.0000.0000.0000.0000.0000.0101"),
                 l128("0000.0000.0000.0000.0000.0000.0000.0110")
             ),
-            Err(Error::CannotUnsplice)
+            Err(SpliceError::CannotUnsplice)
         );
         let label64_array = vec![
             l("0000.0000.0000.0015"),
@@ -1025,7 +1011,7 @@ mod tests {
                 lopt("0000.0000.0000.0000"),
                 &schemes::V358,
             )]),
-            Err(Error::NotEnoughArguments)
+            Err(SpliceError::NotEnoughArguments)
         );
         assert_eq!(
             build_label(&[
@@ -1055,7 +1041,7 @@ mod tests {
                     &schemes::V358,
                 ),
             ]),
-            Err(Error::BadArgument)
+            Err(SpliceError::BadArgument)
         );
         assert_eq!(
             build_label(&[
@@ -1070,7 +1056,7 @@ mod tests {
                     &schemes::V358,
                 ),
             ]),
-            Err(Error::BadArgument)
+            Err(SpliceError::BadArgument)
         );
         assert_eq!(
             build_label(&[
@@ -1085,7 +1071,7 @@ mod tests {
                     &schemes::V358,
                 ),
             ]),
-            Err(Error::BadArgument)
+            Err(SpliceError::BadArgument)
         );
         assert_eq!(
             build_label(&[
@@ -1100,7 +1086,7 @@ mod tests {
                     &schemes::V358,
                 ),
             ]),
-            Err(Error::BadArgument)
+            Err(SpliceError::BadArgument)
         );
         assert_eq!(
             build_label(&[
@@ -1120,7 +1106,7 @@ mod tests {
                     &schemes::V358,
                 ),
             ]),
-            Err(Error::BadArgument)
+            Err(SpliceError::BadArgument)
         );
         assert_eq!(
             build_label(&[
@@ -1140,7 +1126,7 @@ mod tests {
                     &schemes::V358,
                 ),
             ]),
-            Err(Error::BadArgument)
+            Err(SpliceError::BadArgument)
         );
         assert_eq!(
             build_label(&[
@@ -1303,7 +1289,7 @@ mod tests {
                     },
                 ])
             ),
-            Err(Error::CannotFindForm)
+            Err(SpliceError::CannotFindForm)
         );
         assert_eq!(
             is_one_hop(
@@ -1314,7 +1300,7 @@ mod tests {
                     prefix: 0b01,
                 },])
             ),
-            Err(Error::CannotFindForm)
+            Err(SpliceError::CannotFindForm)
         );
     }
 }

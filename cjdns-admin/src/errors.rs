@@ -1,7 +1,6 @@
 //! Errors.
 
-use std::fmt;
-
+use thiserror::Error;
 use tokio::io;
 
 use crate::ConnectionOptions;
@@ -15,88 +14,57 @@ impl ConnOptions {
     pub(crate) fn wrap(opts: &ConnectionOptions) -> Self {
         ConnOptions(opts.clone())
     }
+
+    fn descr(&self) -> String {
+        let ConnOptions(opts) = self;
+
+        let mut msg = format!("({}:{})", opts.addr, opts.port);
+
+        if let Some(ref config_file) = opts.used_config_file {
+            msg += &format!(" using cjdnsadmin file at [{}]", config_file);
+        }
+
+        msg
+    }
 }
 
 /// Error type for all cjdns admin operations.
-#[derive(Debug)]
+#[derive(Error, Debug)]
 pub enum Error {
     /// Connection error - check the remote IP address and port.
+    #[error("Could not find cjdns {}, see: https://github.com/cjdelisle/cjdnsadmin#connecting", .0.descr())]
     ConnectError(ConnOptions),
 
     /// Authentication error - check the password.
+    #[error("Could not authenticate with CJDNS {}, see: https://github.com/cjdelisle/cjdnsadmin#authentication-issues", .0.descr())]
     AuthError(ConnOptions),
 
     /// Failed to read cjdnsadmin config file (`~/.cjdnsadmin` by default).
-    ConfigFileRead(io::Error),
+    #[error("Error reading config file: {0}")]
+    ConfigFileRead(#[source] io::Error),
 
     /// Error parsing cjdnsadmin config file (`~/.cjdnsadmin` by default) - must be a valid JSON file.
-    BadConfigFile(serde_json::Error),
+    #[error("Bad config file: JSON parse error: {0}")]
+    BadConfigFile(#[source] serde_json::Error),
 
     /// Failed to parse IPv4/IPv6 address.
-    BadNetworkAddress(std::net::AddrParseError),
+    #[error("Address parse error: {0}")]
+    BadNetworkAddress(#[source] std::net::AddrParseError),
 
     /// Network I/O error.
-    NetworkOperation(io::Error),
+    #[error("UDP error: {0}")]
+    NetworkOperation(#[source] io::Error),
 
     /// Failed to serialize/deserialize protocol message (using *bencode*).
-    Protocol(bendy::serde::Error),
+    #[error("Encoding error: {0}")]
+    Protocol(#[source] bendy::serde::Error),
 
     /// Remote invocation failed and returned `error` message.
+    #[error("Remote call error: {0}")]
     RemoteError(String),
 
     /// Unexpected transaction id during message exchange. Supposed to be internal error.
     #[allow(missing_docs)]
+    #[error("Broken txid: sent {sent_txid} but received {received_txid}")]
     BrokenTx { sent_txid: String, received_txid: String },
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let used_config_str = |config: &Option<String>| {
-            if let Some(config_file) = config {
-                format!(" using cjdnsadmin file at [{}]", config_file)
-            } else {
-                "".to_string()
-            }
-        };
-
-        match self {
-            Error::ConnectError(ConnOptions(opts)) => {
-                write!(
-                    f,
-                    "Could not find cjdns ({}:{}){} see: https://github.com/cjdelisle/cjdnsadmin#connecting",
-                    opts.addr, opts.port, used_config_str(&opts.used_config_file)
-                )
-            }
-            Error::AuthError(ConnOptions(opts)) => {
-                write!(
-                    f,
-                    "Could not authenticate with CJDNS ({}:{}){} see: https://github.com/cjdelisle/cjdnsadmin#authentication-issues",
-                    opts.addr, opts.port, used_config_str(&opts.used_config_file)
-                )
-            }
-            Error::ConfigFileRead(e) => write!(f, "File error: {}", e),
-            Error::BadConfigFile(e) => write!(f, "JSON parse error: {}", e),
-            Error::BadNetworkAddress(e) => write!(f, "Address parse error: {}", e),
-            Error::NetworkOperation(e) => write!(f, "UDP error: {}", e),
-            Error::Protocol(e) => write!(f, "Encoding error: {}", e),
-            Error::RemoteError(msg) => write!(f, "Remote call error: {}", msg),
-            Error::BrokenTx { sent_txid, received_txid } => write!(f, "Broken txid: sent {} but received {}", sent_txid, received_txid),
-        }
-    }
-}
-
-impl std::error::Error for Error {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Error::ConnectError { .. } => None,
-            Error::AuthError { .. } => None,
-            Error::ConfigFileRead(e) => Some(e),
-            Error::BadConfigFile(e) => Some(e),
-            Error::BadNetworkAddress(e) => Some(e),
-            Error::NetworkOperation(e) => Some(e),
-            Error::Protocol(e) => Some(e),
-            Error::RemoteError(_) => None,
-            Error::BrokenTx { .. } => None,
-        }
-    }
 }
