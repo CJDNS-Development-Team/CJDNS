@@ -1,48 +1,46 @@
-use std::convert::TryFrom;
-use std::slice::Iter;
+// TODO consider на std::io::Cursor
+// TODO tests
 
-// todo 2 use slice
-// не использовать итератор
-// проверяешь остаток длины
-// отрезаешь как это делал в parse header
-// просто Reader
-// посмотри на std::io::Cursor
-// TODO тестируй
-pub struct Reader<'a>(Iter<'a, u8>);
+use std::convert::TryFrom;
+
+use thiserror::Error;
+
+type ResultReader<T> = Result<T, ReaderError>;
+
+#[derive(Error, Copy, Clone, PartialEq, Eq, Debug)]
+pub enum ReaderError {
+    #[error("Can't read bytes")]
+    CannotReadBytes,
+}
+
+pub struct Reader<'a>(&'a[u8]);
 
 impl<'a> Reader<'a> {
+    pub fn new(data: &'a [u8]) -> Self {
+        Reader(data)
+    }
+
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
-    pub fn read_u8(&mut self) -> Option<u8> {
-        if let Some(mut one_byte_vec) = self.read_bytes(1) {
-            return one_byte_vec.pop();
-        }
-        None
+    pub fn read_u8(&mut self) -> ResultReader<u8> {
+        let bytes = self.read_bytes(1)?;
+        Ok(bytes[0])
     }
 
-    pub fn read_u16_be(&mut self) -> Option<u16> {
-        if let Some(two_bytes_vec) = self.read_bytes(2) {
-            let two_bytes_array = <[u8; 2]>::try_from(two_bytes_vec.as_slice()).expect("wrong slice size");
-            return Some(u16::from_be_bytes(two_bytes_array));
-        }
-        None
+    pub fn read_u16_be(&mut self) -> ResultReader<u16> {
+        let bytes = self.read_bytes(2)?;
+        let bytes_array = <[u8; 2]>::try_from(bytes).expect("wrong slice size");
+        Ok(u16::from_be_bytes(bytes_array))
     }
 
-    //TODO it is ineffective to construct Vec on each read - should return slice if possible
-    fn read_bytes(&mut self, count: usize) -> Option<Vec<u8>> {
-        let ret_bytes = self.0.by_ref().take(count).map(|&x| x).collect::<Vec<_>>();
-        if ret_bytes.len() == count {
-            return Some(ret_bytes);
+    fn read_bytes(&mut self, count: usize) -> ResultReader<&[u8]> {
+        if self.len() < count {
+            return Err(ReaderError::CannotReadBytes);
         }
-        None
-    }
-}
-
-//TODO strange way to construct this reader - better use `new()` function
-impl<'a> From<Iter<'a, u8>> for Reader<'a> {
-    fn from(bytes_iter: Iter<'a, u8>) -> Self {
-        Reader(bytes_iter)
+        let (ret_bytes, rest_bytes) = self.0.split_at(count);
+        self.0 = rest_bytes;
+        Ok(ret_bytes)
     }
 }

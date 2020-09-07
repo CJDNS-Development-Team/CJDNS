@@ -1,7 +1,5 @@
 //! Logic for a simple data header, providing type of content
 
-use std::convert::TryFrom;
-
 use super::{errors::HeaderError, utils::Reader};
 
 type Result<T> = std::result::Result<T, HeaderError>;
@@ -19,19 +17,19 @@ impl DataHeader {
     /// Parses bytes into `DataHeader` struct.
     ///
     /// Results in error if bytes length doesn't equal to 4
-    //TODO pass &[u8] here, because Reader should be a private (implementation detail) type, not public API
-    pub fn parse(mut header_bytes_iter: Reader) -> Result<Self> {
-        if header_bytes_iter.len() != DATA_HEADER_SIZE {
+    pub fn parse(data: &[u8]) -> Result<Self> {
+        if data.len() != DATA_HEADER_SIZE {
             return Err(HeaderError::CannotParse("invalid header data size"));
         }
+        let mut data_reader = Reader::new(data);
         let version = {
-            let version_with_flags = header_bytes_iter.read_u8().expect("wrong header bytes size");
+            let version_with_flags = data_reader.read_u8().expect("wrong header bytes size");
             version_with_flags >> 4
         };
         // unused
-        let _pad = header_bytes_iter.read_u8().expect("wrong header bytes size");
+        let _pad = data_reader.read_u8().expect("wrong header bytes size");
         let content_type = {
-            let content_number = header_bytes_iter.read_u16_be().expect("wrong header bytes size");
+            let content_number = data_reader.read_u16_be().expect("wrong header bytes size");
             header_content::ContentType::from(content_number as u32)
         };
         Ok(DataHeader { version, content_type })
@@ -134,13 +132,12 @@ mod tests {
     use hex;
 
     use crate::data_header::header_content::ContentType;
-    use crate::data_header::{DataHeader, Reader};
+    use crate::data_header::DataHeader;
 
     #[test]
     fn test_data_header_parse() {
         let test_data = hex::decode("10000100").expect("invalid hex string");
-        let header_bytes_reader = Reader::from(test_data.iter());
-        let parsed_header = DataHeader::parse(header_bytes_reader).expect("invalid header data length");
+        let parsed_header = DataHeader::parse(&test_data).expect("invalid header data length");
         assert_eq!(parsed_header.version, 1);
         assert_eq!(parsed_header.content_type, ContentType::Cjdht)
     }
