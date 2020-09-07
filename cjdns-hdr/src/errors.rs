@@ -1,16 +1,10 @@
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+use thiserror::Error;
+
+#[derive(Error, Copy, Clone, PartialEq, Eq, Debug)]
 pub enum HeaderError {
+    #[error("Can't serialize header: {0}")]
     CannotParse(&'static str),
+
+    #[error("Can't parse header bytes: {0}")]
     CannotSerialize(&'static str),
 }
-
-impl std::fmt::Display for HeaderError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            HeaderError::CannotSerialize(reason) => write!(f, "Can't serialize header: {}", reason),
-            HeaderError::CannotParse(reason) => write!(f, "Can't parse header bytes: {}", reason),
-        }
-    }
-}
-
-impl std::error::Error for HeaderError {}
