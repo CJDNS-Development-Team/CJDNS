@@ -1,10 +1,10 @@
 //! Logic for a simple data header, providing type of content
 
-use super::{header_bytes_reader::HeaderBytesReader, errors::HeaderError};
+use super::{errors::HeaderError, header_bytes_reader::HeaderBytesReader};
 
 type Result<T> = std::result::Result<T, HeaderError>;
 
-const DATA_HEADER_SIZE: usize = 4usize;
+const DATA_HEADER_SIZE: usize = 4;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataHeader {
@@ -13,16 +13,16 @@ pub struct DataHeader {
 }
 
 impl DataHeader {
-
     /// Parses bytes into `DataHeader` struct.
     ///
     /// Results in error if bytes length doesn't equal to 4
+    //TODO pass &[u8] here, because Reader should be a private (implementation detail) type, not public API
     pub fn parse(mut header_bytes_iter: HeaderBytesReader) -> Result<Self> {
         if header_bytes_iter.len() != DATA_HEADER_SIZE {
             return Err(HeaderError::CannotParse("invalid header data size"));
         }
         let version = {
-            let version_with_flags = header_bytes_iter.read_be_u8().expect("wrong header bytes size");
+            let version_with_flags = header_bytes_iter.read_u8().expect("wrong header bytes size");
             let version = version_with_flags >> 4;
             if version > 15 {
                 return Err(HeaderError::CannotParse("invalid version number"));
@@ -30,10 +30,10 @@ impl DataHeader {
             version
         };
         // unused
-        let _pad = header_bytes_iter.read_be_u8().expect("wrong header bytes size");
+        let _pad = header_bytes_iter.read_u8().expect("wrong header bytes size");
 
         let content_type = {
-            let content_number = header_bytes_iter.read_be_u16().expect("wrong header bytes size");
+            let content_number = header_bytes_iter.read_u16_be().expect("wrong header bytes size");
             content_type::as_string(content_number)
         };
         Ok(DataHeader{
@@ -55,7 +55,7 @@ impl DataHeader {
             version_with_flags.to_be_bytes()
         };
         // unused
-        let pad = 0u8.to_be_bytes();
+        let pad = 0u8.to_be_bytes(); //TODO u8 is 1 byte, no need to "encode" it as big-endian
         let content_type_number_bytes = {
             let content_type = self.content_type.expect("content type not found");
             let &content_type_num = content_type::to_num(content_type).expect("content num not found");
@@ -69,8 +69,6 @@ impl DataHeader {
         Ok(serialized_header)
     }
 }
-
-
 
 mod content_type {
     use std::collections::HashMap;
@@ -139,6 +137,7 @@ mod content_type {
 #[cfg(test)]
 mod tests {
     use hex;
+
     use crate::data_header::{DataHeader, HeaderBytesReader};
 
     #[test]
