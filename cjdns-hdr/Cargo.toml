@@ -11,6 +11,7 @@ description = "Library for parsing and serializing cjdns route and data headers"
 [dependencies]
 thiserror = "1.0"
 num_enum = "0.5.1"
+cjdns-core = { path = "../cjdns-core", version = "0.1.0" }
 
 [dev-dependencies]
 hex = "0.4"

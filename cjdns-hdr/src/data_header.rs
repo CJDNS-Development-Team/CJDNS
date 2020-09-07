@@ -114,6 +114,7 @@ mod header_content {
         /// This content type will never appear in the wild, it represents unencrypted control frames.
         Ctrl = 0xffff + 1,
 
+        // TODO normally, as a default we should return Unknown(u16)
         #[num_enum(default)]
         Max = 0xffff + 2,
     }
