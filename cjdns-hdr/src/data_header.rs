@@ -7,12 +7,12 @@ use super::{errors::HeaderError, utils::Reader};
 type Result<T> = std::result::Result<T, HeaderError>;
 
 const DATA_HEADER_SIZE: usize = 4;
+const HEADER_CURRENT_VERSION: u8 = 1;
 
-// todo are fields private
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataHeader {
-    version: u8,
-    content_type: header_content::ContentType,
+    pub version: u8,
+    pub content_type: header_content::ContentType,
 }
 
 impl DataHeader {
@@ -26,13 +26,10 @@ impl DataHeader {
         }
         let version = {
             let version_with_flags = header_bytes_iter.read_u8().expect("wrong header bytes size");
-            let version = version_with_flags >> 4;
-            debug_assert!(version <= 15); // todo только если поля приватные. если публичные, то можно создать DataHeader с неправильным version
-            version
+            version_with_flags >> 4
         };
         // unused
         let _pad = header_bytes_iter.read_u8().expect("wrong header bytes size");
-
         let content_type = {
             let content_number = header_bytes_iter.read_u16_be().expect("wrong header bytes size");
             header_content::ContentType::from(content_number as u32)
@@ -43,45 +40,40 @@ impl DataHeader {
     /// Serializes `DataHeader` instance.
     // TODO сделай Writer на подобии Reader, который пишет в себя байт и т.п Владеет Vec<u8>
     pub fn serialize(&self) -> Result<Vec<u8>> {
-        // todo No need for content type validity check if we have private fields
-        // if self.content_type.is_none() {
-        //     return Err(HeaderError::CannotSerialize("content type not found"));
-        // }
         let mut serialized_header = Vec::with_capacity(4);
-        let version_with_flags_bytes = {
-            // `parse` fails `DataHeader` initialization if `self.version`
-            let version_with_flags = self.version << 4;
-            version_with_flags.to_be_bytes()
+        if self.version > 15 {
+            return Err(HeaderError::CannotSerialize("invalid header version"));
+        }
+        let version_with_flags = if self.version == 0 {
+            HEADER_CURRENT_VERSION << 4
+        } else {
+            self.version << 4
         };
         // unused
         let pad = [0u8];
-        let content_type_number_bytes = {
-            let content_type_num= header_content::to_u16(self.content_type).map_err(|_| HeaderError::CannotSerialize("invalid content type"))?;
-            content_type_num.to_be_bytes()
-        };
+        let content_type_number = header_content::to_u16(self.content_type).map_err(|_| HeaderError::CannotSerialize("invalid content type"))?;
 
-        serialized_header.extend_from_slice(version_with_flags_bytes.as_ref());
-        serialized_header.extend_from_slice(pad.as_ref());
-        serialized_header.extend_from_slice(content_type_number_bytes.as_ref());
+        serialized_header.extend_from_slice(&version_with_flags.to_be_bytes());
+        serialized_header.extend_from_slice(&pad);
+        serialized_header.extend_from_slice(&content_type_number.to_be_bytes());
 
         Ok(serialized_header)
     }
 }
 
 mod header_content {
-
     use std::convert::TryFrom;
     use std::num::TryFromIntError;
 
     use num_enum::{FromPrimitive, IntoPrimitive};
 
+    /// The lowest 255 message types are reserved for cjdns/IPv6 packets.
+    /// AKA: packets where the IP address is within the FC00::/8 block.
+    /// Any packet sent in this way will have the IPv6 header deconstructed and this
+    /// field will come from the nextHeader field in the IPv6 header.
     #[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
     #[repr(u32)]
     pub enum ContentType {
-        /// The lowest 255 message types are reserved for cjdns/IPv6 packets.
-        /// AKA: packets where the IP address is within the FC00::/8 block.
-        /// Any packet sent in this way will have the IPv6 header deconstructed and this
-        /// field will come from the nextHeader field in the IPv6 header.
         Ip6Hop = 0,
         Ip6Icmp = 1,
         Ip6Igmp = 2,
