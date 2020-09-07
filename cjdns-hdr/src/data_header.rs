@@ -1,5 +1,7 @@
 //! Logic for a simple data header, providing type of content
 
+use std::convert::TryFrom;
+
 use super::{errors::HeaderError, utils::Reader};
 
 type Result<T> = std::result::Result<T, HeaderError>;
@@ -25,7 +27,7 @@ impl DataHeader {
         let version = {
             let version_with_flags = header_bytes_iter.read_u8().expect("wrong header bytes size");
             let version = version_with_flags >> 4;
-            debug_assert!(version <= 15); // только если поля приватные. если публичные, то можно создать DataHeader с неправильным version
+            debug_assert!(version <= 15); // todo только если поля приватные. если публичные, то можно создать DataHeader с неправильным version
             version
         };
         // unused
@@ -33,7 +35,7 @@ impl DataHeader {
 
         let content_type = {
             let content_number = header_bytes_iter.read_u16_be().expect("wrong header bytes size");
-            header_content::content_number_to_type(content_number)
+            header_content::ContentType::from(content_number as u32)
         };
         Ok(DataHeader { version, content_type })
     }
@@ -54,7 +56,7 @@ impl DataHeader {
         // unused
         let pad = [0u8];
         let content_type_number_bytes = {
-            let content_type_num = header_content::content_type_to_number(self.content_type);
+            let content_type_num= header_content::to_u16(self.content_type).map_err(|_| HeaderError::CannotSerialize("invalid content type"))?;
             content_type_num.to_be_bytes()
         };
 
@@ -68,9 +70,13 @@ impl DataHeader {
 
 mod header_content {
 
-    extern crate num;
+    use std::convert::TryFrom;
+    use std::num::TryFromIntError;
 
-    #[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, ToPrimitive)]
+    use num_enum::{FromPrimitive, IntoPrimitive};
+
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
+    #[repr(u32)]
     pub enum ContentType {
         /// The lowest 255 message types are reserved for cjdns/IPv6 packets.
         /// AKA: packets where the IP address is within the FC00::/8 block.
@@ -116,20 +122,15 @@ mod header_content {
         /// CTRL messages
         Available = 0x8000,
 
-        /// This contentType will never appear in the wild, it represents unencrypted control frames.
+        /// This content type will never appear in the wild, it represents unencrypted control frames.
         Ctrl = 0xffff + 1,
 
+        #[num_enum(default)]
         Max = 0xffff + 2,
     }
-
-    pub(super) fn content_number_to_type(content_number: u16) -> ContentType {
-        <ContentType as num::FromPrimitive>::from_u16(content_number)
-            .or(Some(ContentType::Max)) // here is the problem
-            .expect("variant is none")
-    }
-
-    pub(super) fn content_type_to_number(content_type: ContentType) -> u16 {
-        num::ToPrimitive::to_u16(&content_type).expect("unrecognized content type")
+    
+    pub(super) fn to_u16(content_type: ContentType) -> Result<u16, TryFromIntError> {
+        u16::try_from(u32::from(content_type))
     }
 
     #[cfg(test)]

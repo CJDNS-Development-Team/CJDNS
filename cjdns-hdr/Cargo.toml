@@ -10,9 +10,7 @@ description = "Library for parsing and serializing cjdns route and data headers"
 
 [dependencies]
 thiserror = "1.0"
-num = "0.3.0"
-num-derive = "0.3"
-num-traits = "0.2"
+num_enum = "0.5.1"
 
 [dev-dependencies]
 hex = "0.4"
