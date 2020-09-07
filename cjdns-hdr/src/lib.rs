@@ -1,6 +1,6 @@
 #[macro_use]
-extern crate lazy_static;
+extern crate num_derive;
 
 mod data_header;
 mod errors;
-mod header_bytes_reader;
+mod utils;

@@ -1,10 +1,16 @@
-use std::slice::Iter;
 use std::convert::TryFrom;
+use std::slice::Iter;
 
 // todo 2 use slice
-pub struct HeaderBytesReader<'a>(Iter<'a, u8>);
+// не использовать итератор
+// проверяешь остаток длины
+// отрезаешь как это делал в parse header
+// просто Reader
+// посмотри на std::io::Cursor
+// TODO тестируй
+pub struct Reader<'a>(Iter<'a, u8>);
 
-impl<'a> HeaderBytesReader<'a> {
+impl<'a> Reader<'a> {
     pub fn len(&self) -> usize {
         self.0.len()
     }
@@ -28,15 +34,15 @@ impl<'a> HeaderBytesReader<'a> {
     fn read_bytes(&mut self, count: usize) -> Option<Vec<u8>> {
         let ret_bytes = self.0.by_ref().take(count).map(|&x| x).collect::<Vec<_>>();
         if ret_bytes.len() == count {
-            return Some(ret_bytes)
+            return Some(ret_bytes);
         }
         None
     }
 }
 
 //TODO strange way to construct this reader - better use `new()` function
-impl<'a> From<Iter<'a, u8>> for HeaderBytesReader<'a> {
+impl<'a> From<Iter<'a, u8>> for Reader<'a> {
     fn from(bytes_iter: Iter<'a, u8>) -> Self {
-        HeaderBytesReader(bytes_iter)
+        Reader(bytes_iter)
     }
 }

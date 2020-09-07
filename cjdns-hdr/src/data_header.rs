@@ -1,15 +1,16 @@
 //! Logic for a simple data header, providing type of content
 
-use super::{errors::HeaderError, header_bytes_reader::HeaderBytesReader};
+use super::{errors::HeaderError, utils::Reader};
 
 type Result<T> = std::result::Result<T, HeaderError>;
 
 const DATA_HEADER_SIZE: usize = 4;
 
+// todo are fields private
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataHeader {
     version: u8,
-    content_type: Option<&'static str> // todo 1 - waiting for Alex comment on C impl of content type get
+    content_type: header_content::ContentType,
 }
 
 impl DataHeader {
@@ -17,16 +18,14 @@ impl DataHeader {
     ///
     /// Results in error if bytes length doesn't equal to 4
     //TODO pass &[u8] here, because Reader should be a private (implementation detail) type, not public API
-    pub fn parse(mut header_bytes_iter: HeaderBytesReader) -> Result<Self> {
+    pub fn parse(mut header_bytes_iter: Reader) -> Result<Self> {
         if header_bytes_iter.len() != DATA_HEADER_SIZE {
             return Err(HeaderError::CannotParse("invalid header data size"));
         }
         let version = {
             let version_with_flags = header_bytes_iter.read_u8().expect("wrong header bytes size");
             let version = version_with_flags >> 4;
-            if version > 15 {
-                return Err(HeaderError::CannotParse("invalid version number"));
-            }
+            debug_assert!(version <= 15); // только если поля приватные. если публичные, то можно создать DataHeader с неправильным version
             version
         };
         // unused
@@ -34,31 +33,28 @@ impl DataHeader {
 
         let content_type = {
             let content_number = header_bytes_iter.read_u16_be().expect("wrong header bytes size");
-            content_type::as_string(content_number)
+            header_content::content_number_to_type(content_number)
         };
-        Ok(DataHeader{
-            version,
-            content_type
-        })
+        Ok(DataHeader { version, content_type })
     }
 
     /// Serializes `DataHeader` instance.
+    // TODO сделай Writer на подобии Reader, который пишет в себя байт и т.п Владеет Vec<u8>
     pub fn serialize(&self) -> Result<Vec<u8>> {
-        // todo 1 No need for content type validity check if we have parsed &str content type, but not an Option
-        if self.content_type.is_none() {
-            return Err(HeaderError::CannotSerialize("content type not found"));
-        }
+        // todo No need for content type validity check if we have private fields
+        // if self.content_type.is_none() {
+        //     return Err(HeaderError::CannotSerialize("content type not found"));
+        // }
         let mut serialized_header = Vec::with_capacity(4);
         let version_with_flags_bytes = {
             // `parse` fails `DataHeader` initialization if `self.version`
-            let version_with_flags = self.version << 4; // todo 4 & 0xff? https://github.com/cjdelisle/cjdnshdr/blob/a2c4cda8234ec5d635f8a60d37992ead4cdbc689/DataHeader.js#L56
+            let version_with_flags = self.version << 4;
             version_with_flags.to_be_bytes()
         };
         // unused
-        let pad = 0u8.to_be_bytes(); //TODO u8 is 1 byte, no need to "encode" it as big-endian
+        let pad = [0u8];
         let content_type_number_bytes = {
-            let content_type = self.content_type.expect("content type not found");
-            let &content_type_num = content_type::to_num(content_type).expect("content num not found");
+            let content_type_num = header_content::content_type_to_number(self.content_type);
             content_type_num.to_be_bytes()
         };
 
@@ -70,89 +66,99 @@ impl DataHeader {
     }
 }
 
-mod content_type {
-    use std::collections::HashMap;
+mod header_content {
 
-    lazy_static! {
-        static ref CONTENT_TYPE: HashMap<&'static str, u16> = {
-            let mut m = HashMap::new();
+    extern crate num;
 
-            let type_num_array = [
-                ("IP6_HOP", 0u16),
-                ("IP6_ICMP", 1),
-                ("IP6_IGMP", 2),
-                ("IP6_IPV4", 4),
-                ("IP6_TCP", 6),
-                ("IP6_EGP", 8),
-                ("IP6_PUP", 12),
-                ("IP6_UDP", 17),
-                ("IP6_IDP", 22),
-                ("IP6_TP", 29),
-                ("IP6_DCCP", 33),
-                ("IP6_IPV6", 41),
-                ("IP6_RSVP", 46),
-                ("IP6_GRE", 47),
-                ("IP6_ESP", 50),
-                ("IP6_AH", 51),
-                ("IP6_ICMPV6", 58),
-                ("IP6_MTP", 92),
-                ("IP6_BEETPH", 94),
-                ("IP6_ENCAP", 98),
-                ("IP6_PIM", 103),
-                ("IP6_COMP", 108),
-                ("IP6_SCTP", 132),
-                ("IP6_UDPLITE", 136),
-                ("IP6_MAX", 255),
-                ("CJDHT", 256),
-                ("IPTUN", 257)
-                // todo 3 discuss with Alex
-            ];
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, ToPrimitive)]
+    pub enum ContentType {
+        /// The lowest 255 message types are reserved for cjdns/IPv6 packets.
+        /// AKA: packets where the IP address is within the FC00::/8 block.
+        /// Any packet sent in this way will have the IPv6 header deconstructed and this
+        /// field will come from the nextHeader field in the IPv6 header.
+        Ip6Hop = 0,
+        Ip6Icmp = 1,
+        Ip6Igmp = 2,
+        Ip6Ipv4 = 4,
+        Ip6Tcp = 6,
+        Ip6Egp = 8,
+        Ip6Pup = 12,
+        Ip6Udp = 17,
+        Ip6Idp = 22,
+        Ip6Tp = 29,
+        Ip6Dccp = 33,
+        Ip6Ipv6 = 41,
+        Ip6Rsvp = 46,
+        Ip6Gre = 47,
+        Ip6Esp = 50,
+        Ip6Ah = 51,
+        Ip6Icmpv6 = 58,
+        Ip6Mtp = 92,
+        Ip6Beetph = 94,
+        Ip6Encap = 98,
+        Ip6Pim = 103,
+        Ip6Comp = 108,
+        Ip6Sctp = 132,
+        Ip6Udplite = 136,
+        Ip6Max = 255,
 
-            for &(content_type, content_type_num) in type_num_array.iter() {
-                m.insert(content_type, content_type_num);
-            }
-            m
-        };
+        /// Bencoded inter-router DHT messages
+        Cjdht = 256,
+        Iptun = 257,
+
+        /// Reserved for future allocation
+        Reserved = 258,
+        ReservedMax = 0x7fff,
+
+        /// Content types in the AVAILABLE range are not defined and can be used
+        /// like port numbers for subsystems of cjdns to communicate with subsystems within
+        /// cjdns on other machines, providing they first agree on which numbers to use via
+        /// CTRL messages
+        Available = 0x8000,
+
+        /// This contentType will never appear in the wild, it represents unencrypted control frames.
+        Ctrl = 0xffff + 1,
+
+        Max = 0xffff + 2,
     }
 
-    pub(super) fn as_string(content_number: u16) -> Option<&'static str> {
-        CONTENT_TYPE.iter().find_map(|(&content_type, &val)| {
-            if content_number == val {
-                return Some(content_type);
-            }
-            None
-        })
+    pub(super) fn content_number_to_type(content_number: u16) -> ContentType {
+        <ContentType as num::FromPrimitive>::from_u16(content_number)
+            .or(Some(ContentType::Max)) // here is the problem
+            .expect("variant is none")
     }
 
-    pub(super) fn to_num(content_type: &str) -> Option<&u16> {
-        CONTENT_TYPE.get(content_type)
+    pub(super) fn content_type_to_number(content_type: ContentType) -> u16 {
+        num::ToPrimitive::to_u16(&content_type).expect("unrecognized content type")
     }
 
     #[cfg(test)]
-    mod tests {
-
-    }
+    mod tests {}
 }
 
 #[cfg(test)]
 mod tests {
     use hex;
 
-    use crate::data_header::{DataHeader, HeaderBytesReader};
+    use crate::data_header::header_content::ContentType;
+    use crate::data_header::{DataHeader, Reader};
 
     #[test]
     fn test_data_header_parse() {
         let test_data = hex::decode("10000100").expect("invalid hex string");
-        let header_bytes_reader = HeaderBytesReader::from(test_data.iter());
+        let header_bytes_reader = Reader::from(test_data.iter());
         let parsed_header = DataHeader::parse(header_bytes_reader).expect("invalid header data length");
         assert_eq!(parsed_header.version, 1);
-        assert_eq!(parsed_header.content_type, Some("CJDHT"))
+        assert_eq!(parsed_header.content_type, ContentType::Cjdht)
     }
 
     #[test]
     fn test_data_header_serialize() {
         let header_bytes = hex::decode("10000100").expect("invalid hex string");
-        let data_header = DataHeader { version: 1, content_type: Some("CJDHT") };
+        let data_header = DataHeader {
+            version: 1,
+            content_type: ContentType::Cjdht,
+        };
         let serialized_header = data_header.serialize().expect("invalid content type");
         assert_eq!(header_bytes, serialized_header);
     }
