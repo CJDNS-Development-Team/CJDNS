@@ -1,6 +1,6 @@
 //! Logic for a simple data header, providing type of content
 
-use super::{errors::HeaderError, utils::Reader};
+use super::{errors::HeaderError, utils::{Reader, Writer}};
 
 type Result<T> = std::result::Result<T, HeaderError>;
 
@@ -38,7 +38,7 @@ impl DataHeader {
     /// Serializes `DataHeader` instance.
     // TODO сделай Writer на подобии Reader, который пишет в себя байт и т.п Владеет Vec<u8>
     pub fn serialize(&self) -> Result<Vec<u8>> {
-        let mut serialized_header = Vec::with_capacity(4);
+        let mut data_writer = Writer::with_capacity(4);
         if self.version > 15 {
             return Err(HeaderError::CannotSerialize("invalid header version"));
         }
@@ -47,15 +47,14 @@ impl DataHeader {
         } else {
             self.version << 4
         };
-        // unused
-        let pad = [0u8];
         let content_type_number = header_content::to_u16(self.content_type).map_err(|_| HeaderError::CannotSerialize("invalid content type"))?;
 
-        serialized_header.extend_from_slice(&version_with_flags.to_be_bytes());
-        serialized_header.extend_from_slice(&pad);
-        serialized_header.extend_from_slice(&content_type_number.to_be_bytes());
+        data_writer.write_u8(version_with_flags);
+        // writing pad to returning bytes vec
+        data_writer.write_u8(0);
+        data_writer.write_u16(content_type_number);
 
-        Ok(serialized_header)
+        Ok(data_writer.into_vec())
     }
 }
 
