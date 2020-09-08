@@ -34,3 +34,20 @@ pub async fn connect(opts: Option<Opts>) -> Result<Connection, Error> {
     let opts = opts.unwrap_or_default().into_connection_options().await?;
     conn::Connection::new(opts).await
 }
+
+/// Helper macro to easily invoke remote function with arguments.
+///
+/// Examples:
+/// ```norun
+/// let res = cjdns_invoke!(conn, "FuncName").await?;
+/// let res = cjdns_invoke!(conn, "FuncName", "arg1" = 42, "arg2" = "foobar").await?;
+/// ```
+#[macro_export]
+macro_rules! cjdns_invoke {
+    ($cjdns:expr, $fn_name:literal) => {
+        $cjdns.invoke::<_, GenericResponsePayload>($fn_name, ArgValues::new())
+    };
+    ($cjdns:expr, $fn_name:literal, $( $arg_name:literal = $arg_value:expr ),*) => {
+        $cjdns.invoke::<_, GenericResponsePayload>($fn_name, ArgValues::new() $( .add($arg_name, $arg_value) )*)
+    };
+}
