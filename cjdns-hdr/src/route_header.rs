@@ -2,7 +2,7 @@
 
 use std::convert::TryFrom;
 
-use cjdns_core::keys::{CJDNSPublicKey, CJDNS_IP6};
+use cjdns_core::keys::{BytesRepr, CJDNSPublicKey, CJDNS_IP6};
 
 use crate::{
     errors::{HeaderError, Result},
@@ -52,7 +52,7 @@ impl RouteHeader {
         };
         // pad
         let _unused = data_reader.take_bytes(3).expect("invalid header data size");
-        let mut ip6_from_bytes = {
+        let ip6_from_bytes = {
             let ip6_bytes_slice = data_reader.take_bytes(16).expect("invalid header data size");
             let ip6 = if ip6_bytes_slice == &ZERO_IP6_BYTES {
                 None
@@ -92,8 +92,45 @@ impl RouteHeader {
         })
     }
 
-    // pub fn serialize(&self) -> Result<Vec<u8>> {
-    // }
+    pub fn serialize(&self) -> Result<Vec<u8>> {
+        // checking invariants, because `RouteHeader` can be instantiated without calling constructor
+        if !self.is_ctrl && self.ip6.is_none() {
+            return Err(HeaderError::CannotSerialize("ip6 is is not defined"));
+        }
+        if self.is_ctrl && self.ip6.is_some() {
+            return Err(HeaderError::CannotSerialize("ip6 is defined for control frame"));
+        }
+        if self.is_ctrl && self.public_key.is_some() {
+            return Err(HeaderError::CannotSerialize("public key can not be defined in control frame"));
+        }
+        let public_key_bytes = if self.public_key.is_some() {
+            self.public_key.as_ref().expect("public key is none").bytes()
+        } else {
+            ZERO_PUBLIC_KEY_BYTES.into()
+        };
+        let switch_header_bytes = self.switch_header.serialize()?;
+        let flags = if self.is_ctrl { CONTROL_FRAME } else { INCOMING_FRAME };
+        let pad_bytes = &[0u8; 3];
+        let ip6_bytes = if self.ip6.is_some() {
+            self.ip6.as_ref().expect("ip6 is none").bytes()
+        } else {
+            ZERO_IP6_BYTES.into()
+        };
+
+        let mut data_writer = Writer::with_capacity(ROUTE_HEADER_SIZE);
+        // TODO ask Alex if to follow wrote style in switch and data headers
+        let data = &[
+            public_key_bytes.as_slice(),
+            switch_header_bytes.as_slice(),
+            &self.version.to_be_bytes(),
+            &[flags],
+            pad_bytes,
+            ip6_bytes.as_slice(),
+        ]
+        .concat();
+        data_writer.write_slice(data);
+        Ok(data_writer.into_vec())
+    }
 }
 
 #[cfg(test)]
@@ -133,5 +170,30 @@ mod tests {
                 is_ctrl: false,
             }
         );
+    }
+
+    #[test]
+    fn test_route_header_serialize() {
+        let route_header = RouteHeader {
+            public_key: CJDNSPublicKey::try_from("3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k".to_string()).ok(),
+            ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).ok(),
+            version: 0,
+            switch_header: SwitchHeader {
+                label: RoutingLabel::try_from("0000.0000.0000.0013").expect("invalid label string"),
+                congestion: 0,
+                suppress_errors: false,
+                version: 1,
+                label_shift: 8,
+                penalty: 0,
+            },
+            is_incoming: true,
+            is_ctrl: false,
+        };
+        let header_bytes = hex::decode(
+            "a331ebbed8d92ac03b10efed3e389cd0c6ec7331a72dbde198476c5eb4d14a1f0000000000000013004800000000000001000000fc928136dc1fe6e04ef6a6dd7187b85f",
+        )
+        .expect("invalid hex string");
+        let serialized_header = route_header.serialize().expect("invalid header");
+        assert_eq!(header_bytes, serialized_header);
     }
 }

@@ -65,14 +65,22 @@ impl Writer {
     }
 
     pub fn write_u8(&mut self, data: u8) {
-        self.0.extend_from_slice(&[data]);
+        self.write_slice(&[data]);
     }
 
     pub fn write_u16_be(&mut self, data: u16) {
-        self.0.extend_from_slice(&data.to_be_bytes())
+        self.write_slice(&data.to_be_bytes());
+    }
+
+    pub fn write_u32_be(&mut self, data: u32) {
+        self.write_slice(&data.to_be_bytes())
     }
 
     pub fn write_u64_be(&mut self, data: u64) {
-        self.0.extend_from_slice(&data.to_be_bytes())
+        self.write_slice(&data.to_be_bytes());
+    }
+
+    pub fn write_slice(&mut self, data: &[u8]) {
+        self.0.extend_from_slice(data);
     }
 }
