@@ -15,6 +15,53 @@ pub enum ReturnValue {
     Map(BTreeMap<String, ReturnValue>),
 }
 
+impl ReturnValue {
+    /// Access stored Int value.
+    pub fn as_int(&self) -> Result<i64, ()> {
+        match *self {
+            ReturnValue::Int(value) => Ok(value),
+            _ => Err(()),
+        }
+    }
+
+    /// Access stored String value.
+    pub fn as_str(&self) -> Result<&str, ()> {
+        match self {
+            ReturnValue::String(value) => Ok(value.as_str()),
+            _ => Err(()),
+        }
+    }
+
+    /// Access stored List value, converting each list element.
+    pub fn as_list<'rv, T, F>(&'rv self, mut item_convert: F) -> Result<Vec<T>, ()>
+        where F: FnMut(&'rv ReturnValue) -> Result<T, ()>
+    {
+        match self {
+            ReturnValue::List(list) => {
+                list.iter().map(|v| item_convert(v)).collect()
+            },
+            _ => Err(()),
+        }
+    }
+}
+
+#[test]
+fn test_return_value_convert() {
+    assert_eq!(ReturnValue::Int(42).as_int(), Ok(42));
+    assert_eq!(ReturnValue::String("".to_string()).as_int(), Err(()));
+
+    assert_eq!(ReturnValue::String("foo".to_string()).as_str(), Ok("foo"));
+    assert_eq!(ReturnValue::Int(42).as_str(), Err(()));
+
+    let list_rv = ReturnValue::List(vec![ReturnValue::Int(42), ReturnValue::Int(43)]);
+    assert_eq!(list_rv.as_list(ReturnValue::as_int), Ok(vec![42, 43]));
+    assert_eq!(list_rv.as_list(ReturnValue::as_str), Err(()));
+
+    let list_rv = ReturnValue::List(vec![ReturnValue::Int(42), ReturnValue::String("foo".to_string())]);
+    assert_eq!(list_rv.as_list(ReturnValue::as_int), Err(()));
+    assert_eq!(list_rv.as_list(ReturnValue::as_str), Err(()));
+}
+
 /// Deserialization using `serde`.
 mod deserialize {
     use std::collections::BTreeMap;
