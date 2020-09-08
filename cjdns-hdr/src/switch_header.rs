@@ -1,14 +1,12 @@
 //! Logic for cjdns switch header parsing and serialization
-// todo design question to CJ: it is possible to have a type with different field during parse and serialization
+// todo design question to CJ: it is possible to have a type with different field values during parse and serialization
 
 use cjdns_core::RoutingLabel;
 
-use super::{
-    errors::HeaderError,
+use crate::{
+    errors::{Result, HeaderError},
     utils::{Reader, Writer},
 };
-
-type Result<T> = std::result::Result<T, HeaderError>;
 
 const SWITCH_HEADER_SIZE: usize = 12;
 const HEADER_CURRENT_VERSION: u8 = 1;
@@ -65,11 +63,11 @@ impl SwitchHeader {
             return Err(HeaderError::CannotSerialize("invalid header version"));
         }
         if self.label_shift > 63 {
-            return Err(HeaderError::CannotParse("label shift value takes more than 6 bits"));
+            return Err(HeaderError::CannotSerialize("label shift value takes more than 6 bits"));
         }
         // todo no penalty check. right?
         if self.congestion > 127 {
-            return Err(HeaderError::CannotParse("congestion value takes more than 7 bits"));
+            return Err(HeaderError::CannotSerialize("congestion value takes more than 7 bits"));
         }
         let congestion_and_suppress_errors = self.congestion << 1 | self.suppress_errors as u8;
         // during serialization version could only ve equal to `HEADER_CURRENT_VERSION`

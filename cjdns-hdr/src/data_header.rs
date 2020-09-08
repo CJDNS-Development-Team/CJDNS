@@ -1,11 +1,9 @@
 //! Logic for a simple data header, providing type of content
 
-use super::{
-    errors::HeaderError,
+use crate::{
+    errors::{HeaderError, Result},
     utils::{Reader, Writer},
 };
-
-type Result<T> = std::result::Result<T, HeaderError>;
 
 const DATA_HEADER_SIZE: usize = 4;
 const HEADER_CURRENT_VERSION: u8 = 1;
@@ -39,7 +37,6 @@ impl DataHeader {
     }
 
     /// Serializes `DataHeader` instance.
-    // TODO сделай Writer на подобии Reader, который пишет в себя байт и т.п Владеет Vec<u8>
     pub fn serialize(&self) -> Result<Vec<u8>> {
         if self.version > 15 {
             return Err(HeaderError::CannotSerialize("invalid header version"));

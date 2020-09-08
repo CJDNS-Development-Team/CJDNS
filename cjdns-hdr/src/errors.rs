@@ -8,3 +8,6 @@ pub enum HeaderError {
     #[error("Can't parse header bytes: {0}")]
     CannotSerialize(&'static str),
 }
+
+// todo right?
+pub(crate) type Result<T> = std::result::Result<T, HeaderError>;
