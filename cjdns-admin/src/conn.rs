@@ -72,12 +72,21 @@ impl Connection {
     /// Call remote function on CJDNS router.
     ///
     /// Example:
-    /// ```norun
+    /// ```no_run
+    /// # use cjdns_admin::cjdns_invoke;
+    /// # use cjdns_admin::{ArgValues, msgs::GenericResponsePayload};
+    /// # async fn test() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let mut conn = cjdns_admin::connect(None).await?;
     /// let res: GenericResponsePayload = conn.invoke("MyFunc", ArgValues::new().add("arg1", 42).add("arg2", "foobar")).await?;
+    /// # Ok(())}
     /// ```
     /// or use macro `cjdns_invoke` to make it even more concise:
-    /// ```norun
+    /// ```no_run
+    /// # use cjdns_admin::cjdns_invoke;
+    /// # async fn test() -> Result<(), Box<dyn std::error::Error>> {
+    /// # let mut conn = cjdns_admin::connect(None).await?;
     /// let res = cjdns_invoke!(conn, "FuncName", "arg1" = 42, "arg2" = "foobar").await?;
+    /// # Ok(())}
     /// ```
     pub async fn invoke<A: msgs::Args, P: msgs::Payload>(&mut self, remote_fn_name: &str, args: A) -> Result<P, Error> {
         self.call_func(remote_fn_name, args, false, DEFAULT_TIMEOUT).await
