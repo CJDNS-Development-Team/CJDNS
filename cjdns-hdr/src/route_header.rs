@@ -6,8 +6,8 @@ use cjdns_core::keys::{CJDNSPublicKey, CJDNS_IP6};
 
 use crate::{
     errors::{HeaderError, Result},
+    switch_header::SwitchHeader,
     utils::{Reader, Writer},
-    switch_header::SwitchHeader
 };
 
 const ROUTE_HEADER_SIZE: usize = 68;
@@ -41,7 +41,7 @@ impl RouteHeader {
             };
             public_key
         };
-        let switch_header =  {
+        let switch_header = {
             let header_bytes = data_reader.take_bytes(12).expect("invalid header data size");
             SwitchHeader::parse(header_bytes).map_err(|_| HeaderError::CannotParse("can't parse switch header"))?
         };
@@ -71,42 +71,46 @@ impl RouteHeader {
         // TODO [log warn] ask CJ what is this?!
         if public_key.is_some() {
             let ip6_from_key = {
-                let ip6_from_key = CJDNS_IP6::try_from(public_key.as_ref().expect("zero key bytes")).or(Err(HeaderError::CannotParse("can't create ip6 from public key")))?;
+                let ip6_from_key =
+                    CJDNS_IP6::try_from(public_key.as_ref().expect("zero key bytes")).or(Err(HeaderError::CannotParse("can't create ip6 from public key")))?;
                 Some(ip6_from_key)
             };
             if ip6_from_key != ip6_from_bytes {
                 ip6_from_bytes = ip6_from_key;
             }
         }
-        Ok(RouteHeader{
+        Ok(RouteHeader {
             public_key,
             ip6: ip6_from_bytes,
             version,
             switch_header,
             is_incoming,
-            is_ctrl
+            is_ctrl,
         })
-
     }
 
     // pub fn serialize(&self) -> Result<Vec<u8>> {
     // }
 }
 
-
-
 #[cfg(test)]
 mod tests {
     use std::convert::TryFrom;
 
-    use cjdns_core::{RoutingLabel, keys::{CJDNSPublicKey, CJDNS_IP6}};
+    use cjdns_core::{
+        keys::{CJDNSPublicKey, CJDNS_IP6},
+        RoutingLabel,
+    };
 
-    use crate::switch_header::SwitchHeader;
     use super::RouteHeader;
+    use crate::switch_header::SwitchHeader;
 
     #[test]
     fn test_route_header_parse() {
-        let test_data = hex::decode("a331ebbed8d92ac03b10efed3e389cd0c6ec7331a72dbde198476c5eb4d14a1f0000000000000013004800000000000001000000fc928136dc1fe6e04ef6a6dd7187b85f").expect("invalid hex string");
+        let test_data = hex::decode(
+            "a331ebbed8d92ac03b10efed3e389cd0c6ec7331a72dbde198476c5eb4d14a1f0000000000000013004800000000000001000000fc928136dc1fe6e04ef6a6dd7187b85f",
+        )
+        .expect("invalid hex string");
         let parsed_header = RouteHeader::parse(&test_data).expect("invalid header bytes");
         assert_eq!(
             parsed_header,

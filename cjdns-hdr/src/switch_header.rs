@@ -4,7 +4,7 @@
 use cjdns_core::RoutingLabel;
 
 use crate::{
-    errors::{Result, HeaderError},
+    errors::{HeaderError, Result},
     utils::{Reader, Writer},
 };
 
