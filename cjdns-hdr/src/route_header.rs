@@ -43,7 +43,7 @@ impl RouteHeader {
         };
         let switch_header = {
             let header_bytes = data_reader.take_bytes(12).expect("invalid header data size");
-            SwitchHeader::parse(header_bytes).map_err(|_| HeaderError::CannotParse("can't parse switch header"))?
+            SwitchHeader::parse(header_bytes).or(Err(HeaderError::CannotParse("can't parse switch header")))?
         };
         let version = data_reader.read_u32_be().expect("invalid header data size");
         let (is_ctrl, is_incoming) = {
@@ -63,7 +63,7 @@ impl RouteHeader {
             let ip6 = if is_ctrl {
                 None
             } else {
-                let from_key = CJDNS_IP6::try_from(ip6_bytes_slice.to_vec()).map_err(|_| HeaderError::CannotParse("can't create ip6 from bytes"))?;
+                let from_key = CJDNS_IP6::try_from(ip6_bytes_slice.to_vec()).or(Err(HeaderError::CannotParse("can't create ip6 from bytes")))?;
                 Some(from_key)
             };
             ip6
