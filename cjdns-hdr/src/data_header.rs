@@ -24,13 +24,13 @@ impl DataHeader {
         }
         let mut data_reader = Reader::new(data);
         let version = {
-            let version_with_flags = data_reader.read_u8().expect("wrong header bytes size");
+            let version_with_flags = data_reader.read_u8().expect("invalid header data size");
             version_with_flags >> 4
         };
         // unused
-        let _pad = data_reader.read_u8().expect("wrong header bytes size");
+        let _pad = data_reader.read_u8().expect("invalid header data size");
         let content_type = {
-            let content_number = data_reader.read_u16_be().expect("wrong header bytes size");
+            let content_number = data_reader.read_u16_be().expect("invalid header data size");
             header_content::ContentType::from(content_number as u32)
         };
         Ok(DataHeader { version, content_type })

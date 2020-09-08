@@ -9,5 +9,4 @@ pub enum HeaderError {
     CannotSerialize(&'static str),
 }
 
-// todo right?
 pub(crate) type Result<T> = std::result::Result<T, HeaderError>;

@@ -1,5 +1,5 @@
 //! Logic for cjdns switch header parsing and serialization
-// todo design question to CJ: it is possible to have a type with different field values during parse and serialization
+// todo design question to CJ: it is possible to have a type with different field values during parse and serialization?
 
 use cjdns_core::RoutingLabel;
 
@@ -16,7 +16,7 @@ pub struct SwitchHeader {
     pub label: RoutingLabel<u64>,
     pub congestion: u8,
     pub suppress_errors: bool,
-    pub version: u8, // todo could not be gt 3? shall we make strict check?
+    pub version: u8,
     pub label_shift: u8,
     pub penalty: u16,
 }
@@ -28,25 +28,20 @@ impl SwitchHeader {
         }
         let mut data_reader = Reader::new(data);
         let label = {
-            let label_bytes = data_reader.read_u64_be().expect("wrong header bytes size");
+            let label_bytes = data_reader.read_u64_be().expect("invalid header data size");
             RoutingLabel::<u64>::try_new(label_bytes).ok_or(HeaderError::CannotParse("invalid label bytes"))?
         };
         let (congestion, suppress_errors) = {
-            let congestion_and_suppress_errors = data_reader.read_u8().expect("wrong header bytes size");
-            // TODO ask Alex if check for shift op is needed
+            let congestion_and_suppress_errors = data_reader.read_u8().expect("invalid header data size");
             (congestion_and_suppress_errors >> 1, (congestion_and_suppress_errors & 1) == 1)
         };
         let (version, label_shift) = {
-            let version_and_label_shift = data_reader.read_u8().expect("wrong header bytes size");
+            let version_and_label_shift = data_reader.read_u8().expect("invalid header data size");
             // version in encoded in last 2 bits, label shift is encoded in first 6 bits
-            // TODO ask Alex if check for shift op is needed
             (version_and_label_shift >> 6, version_and_label_shift & 0x3f)
         };
-        // version is either `HEADER_CURRENT_VERSION` or 0
-        if version != HEADER_CURRENT_VERSION && version != 0 {
-            return Err(HeaderError::CannotParse("invalid header version"));
-        }
-        let penalty = data_reader.read_u16_be().expect("wrong header bytes size");
+        // todo [log warn] ask CJ why it is acceptable to parse any version, but serialize only proper ones and why warn is called here
+        let penalty = data_reader.read_u16_be().expect("invalid header data size");
         Ok(SwitchHeader {
             label,
             congestion,
@@ -65,12 +60,11 @@ impl SwitchHeader {
         if self.label_shift > 63 {
             return Err(HeaderError::CannotSerialize("label shift value takes more than 6 bits"));
         }
-        // todo no penalty check. right?
         if self.congestion > 127 {
             return Err(HeaderError::CannotSerialize("congestion value takes more than 7 bits"));
         }
         let congestion_and_suppress_errors = self.congestion << 1 | self.suppress_errors as u8;
-        // during serialization version could only ve equal to `HEADER_CURRENT_VERSION`
+        // during serialization version could only be equal to `HEADER_CURRENT_VERSION`
         let version_and_label_shift = if self.version == 0 {
             HEADER_CURRENT_VERSION << 6 | self.label_shift
         } else {
@@ -99,7 +93,7 @@ mod tests {
     #[test]
     fn test_switch_header_parse() {
         let test_data = hex::decode("000000000000001300480000").expect("invalid hex string");
-        let parsed_header = SwitchHeader::parse(&test_data).expect("invalid header data length");
+        let parsed_header = SwitchHeader::parse(&test_data).expect("invalid header bytes");
         assert_eq!(
             parsed_header,
             SwitchHeader {
