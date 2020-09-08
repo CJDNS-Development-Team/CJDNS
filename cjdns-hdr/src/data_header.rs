@@ -1,6 +1,9 @@
 //! Logic for a simple data header, providing type of content
 
-use super::{errors::HeaderError, utils::{Reader, Writer}};
+use super::{
+    errors::HeaderError,
+    utils::{Reader, Writer},
+};
 
 type Result<T> = std::result::Result<T, HeaderError>;
 
@@ -38,21 +41,17 @@ impl DataHeader {
     /// Serializes `DataHeader` instance.
     // TODO сделай Writer на подобии Reader, который пишет в себя байт и т.п Владеет Vec<u8>
     pub fn serialize(&self) -> Result<Vec<u8>> {
-        let mut data_writer = Writer::with_capacity(4);
         if self.version > 15 {
             return Err(HeaderError::CannotSerialize("invalid header version"));
         }
-        let version_with_flags = if self.version == 0 {
-            HEADER_CURRENT_VERSION << 4
-        } else {
-            self.version << 4
-        };
+        let mut data_writer = Writer::with_capacity(DATA_HEADER_SIZE);
+        let version_with_flags = if self.version == 0 { HEADER_CURRENT_VERSION << 4 } else { self.version << 4 };
         let content_type_number = header_content::to_u16(self.content_type).map_err(|_| HeaderError::CannotSerialize("invalid content type"))?;
 
         data_writer.write_u8(version_with_flags);
         // writing pad to returning bytes vec
         data_writer.write_u8(0);
-        data_writer.write_u16(content_type_number);
+        data_writer.write_u16_be(content_type_number);
 
         Ok(data_writer.into_vec())
     }
@@ -118,7 +117,7 @@ mod header_content {
         #[num_enum(default)]
         Max = 0xffff + 2,
     }
-    
+
     pub(super) fn to_u16(content_type: ContentType) -> Result<u16, TryFromIntError> {
         u16::try_from(u32::from(content_type))
     }
@@ -131,8 +130,7 @@ mod header_content {
 mod tests {
     use hex;
 
-    use crate::data_header::header_content::ContentType;
-    use crate::data_header::DataHeader;
+    use super::{header_content::ContentType, DataHeader};
 
     #[test]
     fn test_data_header_parse() {
@@ -144,11 +142,11 @@ mod tests {
 
     #[test]
     fn test_data_header_serialize() {
-        let header_bytes = hex::decode("10000100").expect("invalid hex string");
         let data_header = DataHeader {
             version: 1,
             content_type: ContentType::Cjdht,
         };
+        let header_bytes = hex::decode("10000100").expect("invalid hex string");
         let serialized_header = data_header.serialize().expect("invalid content type");
         assert_eq!(header_bytes, serialized_header);
     }

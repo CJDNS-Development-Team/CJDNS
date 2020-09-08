@@ -1,7 +1,7 @@
 mod data_header;
 mod errors;
-mod utils;
 mod switch_header;
+mod utils;
 
 // TODO
 // 1. Tests for utils reader and writer

@@ -5,7 +5,7 @@ use std::convert::TryFrom;
 
 type ResultReader<T> = Result<T, ()>;
 
-pub struct Reader<'a>(&'a[u8]);
+pub struct Reader<'a>(&'a [u8]);
 pub struct Writer(Vec<u8>);
 
 impl<'a> Reader<'a> {
@@ -57,7 +57,12 @@ impl Writer {
         self.0.extend_from_slice(&[data]);
     }
 
-    pub fn write_u16(&mut self, data: u16) {
+    // TODO maybe use num crate to make generic write?
+    pub fn write_u16_be(&mut self, data: u16) {
+        self.0.extend_from_slice(&data.to_be_bytes())
+    }
+
+    pub fn write_u64_be(&mut self, data: u64) {
         self.0.extend_from_slice(&data.to_be_bytes())
     }
 }
