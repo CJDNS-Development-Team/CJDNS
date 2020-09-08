@@ -54,13 +54,7 @@ impl RouteHeader {
         let _unused = data_reader.take_bytes(3).expect("invalid header data size");
         let mut ip6_from_bytes = {
             let ip6_bytes_slice = data_reader.take_bytes(16).expect("invalid header data size");
-            if !is_ctrl && ip6_bytes_slice == &ZERO_IP6_BYTES {
-                return Err(HeaderError::CannotParse("ip6 is not defined"));
-            }
-            if is_ctrl && ip6_bytes_slice != &ZERO_IP6_BYTES {
-                return Err(HeaderError::CannotParse("ip6 is defined for control frame"));
-            }
-            let ip6 = if is_ctrl {
+            let ip6 = if ip6_bytes_slice == &ZERO_IP6_BYTES {
                 None
             } else {
                 let from_key = CJDNS_IP6::try_from(ip6_bytes_slice.to_vec()).or(Err(HeaderError::CannotParse("can't create ip6 from bytes")))?;
@@ -68,7 +62,16 @@ impl RouteHeader {
             };
             ip6
         };
-        // TODO [log warn] ask CJ what is this?!
+        // checking invariants
+        if is_ctrl && public_key.is_some() {
+            return Err(HeaderError::CannotParse("public key can not be defined in control frame"));
+        }
+        if is_ctrl && ip6_from_bytes.is_some() {
+            return Err(HeaderError::CannotParse("ip6 is defined for control frame"));
+        }
+        if !is_ctrl && ip6_from_bytes.is_none() {
+            return Err(HeaderError::CannotParse("ip6 is not defined"));
+        }
         if public_key.is_some() {
             let ip6_from_key = {
                 let ip6_from_key =
@@ -76,7 +79,7 @@ impl RouteHeader {
                 Some(ip6_from_key)
             };
             if ip6_from_key != ip6_from_bytes {
-                ip6_from_bytes = ip6_from_key;
+                return Err(HeaderError::CannotParse("ip6 derived from public key is not equal to ip6 from header bytes"));
             }
         }
         Ok(RouteHeader {

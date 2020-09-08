@@ -1,5 +1,4 @@
 //! Logic for cjdns switch header parsing and serialization
-// todo design question to CJ: it is possible to have a type with different field values during parse and serialization?
 
 use cjdns_core::RoutingLabel;
 
@@ -40,7 +39,10 @@ impl SwitchHeader {
             // version in encoded in last 2 bits, label shift is encoded in first 6 bits
             (version_and_label_shift >> 6, version_and_label_shift & 0x3f)
         };
-        // todo [log warn] ask CJ why it is acceptable to parse any version, but serialize only proper ones and why warn is called here
+        // version parsed is either `HEADER_CURRENT_VERSION` or 0
+        if version != HEADER_CURRENT_VERSION && version != 0 {
+            return Err(HeaderError::CannotParse("parsing header with unrecognized version"));
+        }
         let penalty = data_reader.read_u16_be().expect("invalid header data size");
         Ok(SwitchHeader {
             label,
