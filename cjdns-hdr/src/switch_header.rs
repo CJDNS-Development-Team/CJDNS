@@ -21,13 +21,18 @@ pub struct SwitchHeader {
 }
 
 impl SwitchHeader {
+    /// Size of serialized `SwitchHeader`
     pub const SIZE: usize = 12;
+
+    /// Current version of `SwitchHeader` which is automatically set, if version is not specified (aka 0) during serialization.
     pub const CURRENT_VERSION: u8 = 1;
 
     /// Parses bytes into `SwitchHeader` struct. Used as a constructor.
     ///
-    /// Results in error if parsed [version]() value is not either 0, nor [current version](). This method also ends up with error
-    /// if parsed label number is 0.
+    /// Results in error in several situations:
+    /// * if parsed [version]() value is not either 0, nor [current version]();
+    /// * if parsed label number is 0;
+    /// * if data input size isn't equal to [SwitchHeader::SIZE]().
     ///
     /// `SwitchHeader` bytes have a following structure: 8 bytes for routing label, one byte for congestion value and suppress error flag, also a byte
     /// for version and label shift values and 2 bytes for penalty value. Congestion value always takes 7 bits. Last bit of congestion byte is suppress error flag.
@@ -71,7 +76,7 @@ impl SwitchHeader {
     /// That's why serialization can result in errors. If header [version]() isn't equal to 0 or to [current version](), then serialization fails.
     /// Also serialization fails if [label_shift]() value takes more than 6 bits (which is 63u8), or if congestion value takes more than 7 bits (127u8).
     ///
-    /// If `SwitchHeader` was instantiated with 0 `version`, header will be parsed with version equal to [current version](todo).
+    /// If `SwitchHeader` was instantiated with 0 `version`, header will be parsed with version equal to [current version]().
     pub fn serialize(&self) -> SerializeResult<Vec<u8>> {
         // All these checks are required, because it's possible to instantiate `SwitchHeader` without constructor function
         if self.version != Self::CURRENT_VERSION && self.version != 0 {

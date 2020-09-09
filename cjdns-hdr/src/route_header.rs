@@ -15,6 +15,11 @@ const ZERO_IP6_BYTES: [u8; 16] = [0; 16];
 const INCOMING_FRAME: u8 = 1;
 const CONTROL_FRAME: u8 = 2;
 
+/// Deserialized route header struct.
+///
+/// `public_key` and `ip6` are optional. That is because route header has same structure both for control and incoming frames.
+/// So if it is control frame, then `public_key` and `ip6` fields should have None value. Sometimes it `public_key` can be None for
+/// incoming frames, but in that case ip6 will always have some value.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RouteHeader {
     pub public_key: Option<CJDNSPublicKey>,
@@ -26,8 +31,17 @@ pub struct RouteHeader {
 }
 
 impl RouteHeader {
+    /// Size of serialized `RouteHeader`
     pub const SIZE: usize = 68;
 
+    /// Parses bytes into `RouteHeader` struct. Used as a constructor.
+    ///
+    /// Result in error in several situations:
+    /// * if input byte length isn't equal to [RouteHeader::SIZE]();
+    /// * if parsing provided switch header bytes ended up with an error;
+    /// * if ip6 bytes or public key bytes are invalid for ip6 initialization
+    /// * if derived ip6 from public key isn't equal to ip6, created from input bytes
+    /// * if "[is_ctrl]() - [public_key]() - [ip6]()" invariant is not met
     pub fn parse(data: &[u8]) -> ParseResult<Self> {
         if data.len() != Self::SIZE {
             return Err(ParseError::InvalidPacketSize);
@@ -93,6 +107,11 @@ impl RouteHeader {
         })
     }
 
+    /// Serialized `RouteHeader` instance.
+    ///
+    /// `RouteHeader` type can be instantiated roughly, without using [parse]() method as a constructor.
+    /// That's why serialization can result in errors. For example, if "[is_ctrl]() - [public_key]() - [ip6]()" invariant is not met or
+    /// switch header serialization failed, then route header serialization ends up with an error.
     pub fn serialize(&self) -> SerializeResult<Vec<u8>> {
         // checking invariants, because `RouteHeader` can be instantiated without calling constructor
         if !self.is_ctrl && self.ip6.is_none() {
@@ -142,13 +161,17 @@ mod tests {
     use super::RouteHeader;
     use crate::switch_header::SwitchHeader;
 
+    fn decode_hex(hex: &str) -> Vec<u8> {
+        hex::decode(hex).expect("invalid hex string")
+    }
+
     #[test]
     fn test_route_header_parse() {
-        let test_data = hex::decode(
+        let test_data = decode_hex(
             "a331ebbed8d92ac03b10efed3e389cd0c6ec7331a72dbde198476c5eb4d14a1f0000000000000013004800000000000001000000fc928136dc1fe6e04ef6a6dd7187b85f",
-        )
-        .expect("invalid hex string");
+        );
         let parsed_header = RouteHeader::parse(&test_data).expect("invalid header bytes");
+        let serialized_header = parsed_header.serialize().expect("invalid header");
         assert_eq!(
             parsed_header,
             RouteHeader {
@@ -167,30 +190,6 @@ mod tests {
                 is_ctrl: false,
             }
         );
-    }
-
-    #[test]
-    fn test_route_header_serialize() {
-        let route_header = RouteHeader {
-            public_key: CJDNSPublicKey::try_from("3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k".to_string()).ok(),
-            ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).ok(),
-            version: 0,
-            switch_header: SwitchHeader {
-                label: RoutingLabel::try_from("0000.0000.0000.0013").expect("invalid label string"),
-                congestion: 0,
-                suppress_errors: false,
-                version: 1,
-                label_shift: 8,
-                penalty: 0,
-            },
-            is_incoming: true,
-            is_ctrl: false,
-        };
-        let header_bytes = hex::decode(
-            "a331ebbed8d92ac03b10efed3e389cd0c6ec7331a72dbde198476c5eb4d14a1f0000000000000013004800000000000001000000fc928136dc1fe6e04ef6a6dd7187b85f",
-        )
-        .expect("invalid hex string");
-        let serialized_header = route_header.serialize().expect("invalid header");
-        assert_eq!(header_bytes, serialized_header);
+        assert_eq!(serialized_header, test_data);
     }
 }

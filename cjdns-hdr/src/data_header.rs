@@ -89,7 +89,7 @@ impl DataHeader {
 
     /// Parses bytes into `DataHeader` struct. Used as a constructor.
     ///
-    /// Results in error if bytes length doesn't equal to 4, which is current size of serialized header.
+    /// Results in error if input bytes length isn't equal to 4, which is current size of serialized header.
     ///
     /// `DataHeader` bytes have a following structure : one byte each for version and padding, two bytes for content number.
     /// Content number is a u16 number which is a numerical representation of [ContentType](todo) variant.
