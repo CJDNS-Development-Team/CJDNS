@@ -33,33 +33,86 @@ impl ReturnValue {
     }
 
     /// Access stored List value, converting each list element.
+    /// Returns a new `Vec` where each element is converted from another `ReturnValue` to the appropriate type.
     pub fn as_list<'rv, T, F>(&'rv self, mut item_convert: F) -> Result<Vec<T>, ()>
         where F: FnMut(&'rv ReturnValue) -> Result<T, ()>
     {
         match self {
             ReturnValue::List(list) => {
                 list.iter().map(|v| item_convert(v)).collect()
-            },
+            }
             _ => Err(()),
         }
     }
+
+    /// Access stored Map value, converting each entry value element.
+    /// Returns a new `BTreeMap` where each key is `String` and each value is converted from another `ReturnValue` to the appropriate type.
+    pub fn as_map<'rv, T, F>(&'rv self, mut value_convert: F) -> Result<BTreeMap<String, T>, ()>
+        where F: FnMut(&'rv ReturnValue) -> Result<T, ()>
+    {
+        match self {
+            ReturnValue::Map(map) => {
+                map.iter().map(|(k, v)| value_convert(v).map(|v| (k.clone(), v))).collect()
+            }
+            _ => Err(()),
+        }
+    }
+
+    /// Access stored List<Int> value.
+    /// Returns a new `Vec` where each element is converted to `i64`.
+    pub fn as_int_list(&self) -> Result<Vec<i64>, ()> {
+        self.as_list(Self::as_int)
+    }
+
+    /// Access stored Map<String, Int> value.
+    /// Returns a new `BTreeMap` where each key is `String` and each value is converted to `i64`.
+    pub fn as_int_map(&self) -> Result<BTreeMap<String, i64>, ()> {
+        self.as_map(Self::as_int)
+    }
 }
 
-#[test]
-fn test_return_value_convert() {
-    assert_eq!(ReturnValue::Int(42).as_int(), Ok(42));
-    assert_eq!(ReturnValue::String("".to_string()).as_int(), Err(()));
+#[cfg(test)]
+mod tests {
+    use super::ReturnValue;
 
-    assert_eq!(ReturnValue::String("foo".to_string()).as_str(), Ok("foo"));
-    assert_eq!(ReturnValue::Int(42).as_str(), Err(()));
+    macro_rules! map {
+        ( $( $key:literal => $value:expr ),+ ) => {{
+            let mut m = ::std::collections::BTreeMap::new();
+            $( m.insert($key.to_string(), $value); )+
+            m
+        }}
+    }
 
-    let list_rv = ReturnValue::List(vec![ReturnValue::Int(42), ReturnValue::Int(43)]);
-    assert_eq!(list_rv.as_list(ReturnValue::as_int), Ok(vec![42, 43]));
-    assert_eq!(list_rv.as_list(ReturnValue::as_str), Err(()));
+    #[test]
+    fn test_return_value_convert() {
+        assert_eq!(ReturnValue::Int(42).as_int(), Ok(42));
+        assert_eq!(ReturnValue::String("".to_string()).as_int(), Err(()));
 
-    let list_rv = ReturnValue::List(vec![ReturnValue::Int(42), ReturnValue::String("foo".to_string())]);
-    assert_eq!(list_rv.as_list(ReturnValue::as_int), Err(()));
-    assert_eq!(list_rv.as_list(ReturnValue::as_str), Err(()));
+        assert_eq!(ReturnValue::String("foo".to_string()).as_str(), Ok("foo"));
+        assert_eq!(ReturnValue::Int(42).as_str(), Err(()));
+
+        let list_rv = ReturnValue::List(vec![ReturnValue::Int(42), ReturnValue::Int(43)]);
+        assert_eq!(list_rv.as_list(ReturnValue::as_int), Ok(vec![42, 43]));
+        assert_eq!(list_rv.as_list(ReturnValue::as_str), Err(()));
+
+        let list_rv = ReturnValue::List(vec![ReturnValue::Int(42), ReturnValue::String("foo".to_string())]);
+        assert_eq!(list_rv.as_list(ReturnValue::as_int), Err(()));
+        assert_eq!(list_rv.as_list(ReturnValue::as_str), Err(()));
+
+        let map_rv = ReturnValue::Map(map!["foo" => ReturnValue::Int(42), "bar" => ReturnValue::Int(43)]);
+        assert_eq!(map_rv.as_map(ReturnValue::as_int), Ok(map!["foo" => 42, "bar" => 43]));
+        assert_eq!(map_rv.as_map(ReturnValue::as_str), Err(()));
+
+        let map_rv = ReturnValue::Map(map!["foo" => ReturnValue::Int(42), "bar" => ReturnValue::String("baz".to_string())]);
+        assert_eq!(map_rv.as_map(ReturnValue::as_int), Err(()));
+        assert_eq!(map_rv.as_map(ReturnValue::as_str), Err(()));
+
+        let mixed_rv = ReturnValue::List(vec![ReturnValue::Map(map![ "foo" => ReturnValue::Int(42) ])]);
+        assert_eq!(mixed_rv.as_list(ReturnValue::as_int_map), Ok(vec![map!["foo" => 42]]));
+
+        let mixed_rv = ReturnValue::Map(map!["foo" => ReturnValue::List(vec![ReturnValue::Int(42)])]);
+        assert_eq!(mixed_rv.as_map(ReturnValue::as_int_list), Ok(map!["foo" => vec![42]]));
+    }
 }
 
 /// Deserialization using `serde`.
