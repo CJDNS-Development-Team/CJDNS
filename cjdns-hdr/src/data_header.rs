@@ -82,10 +82,10 @@ pub enum ContentType {
 
 impl DataHeader {
     /// Size of serialized `DataHeader`
-    const SIZE: usize = 4;
+    pub const SIZE: usize = 4;
 
     /// Current version of `DataHeader` which is automatically set, if version is not specified during serialization.
-    const CURRENT_VERSION: u8 = 1;
+    pub const CURRENT_VERSION: u8 = 1;
 
     /// Parses bytes into `DataHeader` struct. Used as a constructor.
     ///

@@ -1,4 +1,4 @@
-//! Parsing and serialization logic for cjdns header, which is send from the cjdns engine lower half.
+//! Parsing and serialization logic for cjdns header, which is sent from the cjdns engine lower half.
 
 use std::convert::TryFrom;
 
@@ -10,7 +10,6 @@ use crate::{
     utils::{Reader, Writer},
 };
 
-const ROUTE_HEADER_SIZE: usize = 68;
 const ZERO_PUBLIC_KEY_BYTES: [u8; 32] = [0; 32];
 const ZERO_IP6_BYTES: [u8; 16] = [0; 16];
 const INCOMING_FRAME: u8 = 1;
@@ -27,8 +26,10 @@ pub struct RouteHeader {
 }
 
 impl RouteHeader {
+    pub const SIZE: usize = 68;
+
     pub fn parse(data: &[u8]) -> ParseResult<Self> {
-        if data.len() != ROUTE_HEADER_SIZE {
+        if data.len() != Self::SIZE {
             return Err(ParseError::InvalidPacketSize);
         }
         let mut data_reader = Reader::new(data);
@@ -42,7 +43,7 @@ impl RouteHeader {
             public_key
         };
         let switch_header = {
-            let header_bytes = data_reader.take_bytes(12).expect("invalid header data size");
+            let header_bytes = data_reader.take_bytes(SwitchHeader::SIZE).expect("invalid header data size");
             SwitchHeader::parse(header_bytes)?
         };
         let version = data_reader.read_u32_be().expect("invalid header data size");
@@ -117,18 +118,14 @@ impl RouteHeader {
             ZERO_IP6_BYTES.into()
         };
 
-        let mut data_writer = Writer::with_capacity(ROUTE_HEADER_SIZE);
-        // TODO ask Alex if to follow wrote style in switch and data headers
-        let data = &[
-            public_key_bytes.as_slice(),
-            switch_header_bytes.as_slice(),
-            &self.version.to_be_bytes(),
-            &[flags],
-            pad_bytes,
-            ip6_bytes.as_slice(),
-        ]
-        .concat();
-        data_writer.write_slice(data);
+        let mut data_writer = Writer::with_capacity(Self::SIZE);
+        data_writer.write_slice(public_key_bytes.as_slice());
+        data_writer.write_slice(switch_header_bytes.as_slice());
+        data_writer.write_u32_be(self.version);
+        data_writer.write_u8(flags);
+        data_writer.write_slice(pad_bytes);
+        data_writer.write_slice(ip6_bytes.as_slice());
+
         Ok(data_writer.into_vec())
     }
 }

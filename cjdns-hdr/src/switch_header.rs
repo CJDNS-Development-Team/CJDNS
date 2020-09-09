@@ -7,9 +7,6 @@ use crate::{
     utils::{Reader, Writer},
 };
 
-const SWITCH_HEADER_SIZE: usize = 12;
-const SWITCH_HEADER_CURRENT_VERSION: u8 = 1;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SwitchHeader {
     pub label: RoutingLabel<u64>,
@@ -21,8 +18,11 @@ pub struct SwitchHeader {
 }
 
 impl SwitchHeader {
+    pub const SIZE: usize = 12;
+    pub const CURRENT_VERSION: u8 = 1;
+
     pub fn parse(data: &[u8]) -> ParseResult<Self> {
-        if data.len() != SWITCH_HEADER_SIZE {
+        if data.len() != Self::SIZE {
             return Err(ParseError::InvalidPacketSize);
         }
         let mut data_reader = Reader::new(data);
@@ -39,8 +39,8 @@ impl SwitchHeader {
             // version in encoded in last 2 bits, label shift is encoded in first 6 bits
             (version_and_label_shift >> 6, version_and_label_shift & 0x3f)
         };
-        // version parsed is either `HEADER_CURRENT_VERSION` or 0
-        if version != SWITCH_HEADER_CURRENT_VERSION && version != 0 {
+        // version parsed is either `Self::CURRENT_VERSION` or 0
+        if version != Self::CURRENT_VERSION && version != 0 {
             return Err(ParseError::InvalidData("unrecognized version"));
         }
         let penalty = data_reader.read_u16_be().expect("invalid header data size");
@@ -56,7 +56,7 @@ impl SwitchHeader {
 
     pub fn serialize(&self) -> SerializeResult<Vec<u8>> {
         // All these checks are required, because it's possible to instantiate `SwitchHeader` without constructor function
-        if self.version != SWITCH_HEADER_CURRENT_VERSION && self.version != 0 {
+        if self.version != Self::CURRENT_VERSION && self.version != 0 {
             return Err(SerializeError::UnrecognizedData);
         }
         // invariant checks
@@ -67,14 +67,14 @@ impl SwitchHeader {
             return Err(SerializeError::InvalidInvariant("congestion value can't take more than 7 bits"));
         }
         let congestion_and_suppress_errors = self.congestion << 1 | self.suppress_errors as u8;
-        // during serialization version could only be equal to `HEADER_CURRENT_VERSION`
+        // during serialization version could only be equal to `Self::CURRENT_VERSION`
         let version_and_label_shift = if self.version == 0 {
-            SWITCH_HEADER_CURRENT_VERSION << 6 | self.label_shift
+            Self::CURRENT_VERSION << 6 | self.label_shift
         } else {
             self.version << 6 | self.label_shift
         };
 
-        let mut data_writer = Writer::with_capacity(SWITCH_HEADER_SIZE);
+        let mut data_writer = Writer::with_capacity(Self::SIZE);
         data_writer.write_u64_be(self.label.bits());
         data_writer.write_u8(congestion_and_suppress_errors);
         data_writer.write_u8(version_and_label_shift);
