@@ -5,7 +5,7 @@ use std::convert::TryFrom;
 use cjdns_core::keys::{BytesRepr, CJDNSPublicKey, CJDNS_IP6};
 
 use crate::{
-    errors::{HeaderError, Result},
+    errors::{ParseError, ParseResult, SerializeError, SerializeResult},
     switch_header::SwitchHeader,
     utils::{Reader, Writer},
 };
@@ -27,9 +27,9 @@ pub struct RouteHeader {
 }
 
 impl RouteHeader {
-    pub fn parse(data: &[u8]) -> Result<Self> {
+    pub fn parse(data: &[u8]) -> ParseResult<Self> {
         if data.len() != ROUTE_HEADER_SIZE {
-            return Err(HeaderError::CannotParse("invalid header data size"));
+            return Err(ParseError::InvalidPacketSize);
         }
         let mut data_reader = Reader::new(data);
         let public_key = {
@@ -43,7 +43,7 @@ impl RouteHeader {
         };
         let switch_header = {
             let header_bytes = data_reader.take_bytes(12).expect("invalid header data size");
-            SwitchHeader::parse(header_bytes).or(Err(HeaderError::CannotParse("can't parse switch header")))?
+            SwitchHeader::parse(header_bytes)?
         };
         let version = data_reader.read_u32_be().expect("invalid header data size");
         let (is_ctrl, is_incoming) = {
@@ -57,29 +57,29 @@ impl RouteHeader {
             let ip6 = if ip6_bytes_slice == &ZERO_IP6_BYTES {
                 None
             } else {
-                let from_key = CJDNS_IP6::try_from(ip6_bytes_slice.to_vec()).or(Err(HeaderError::CannotParse("can't create ip6 from bytes")))?;
+                let from_key = CJDNS_IP6::try_from(ip6_bytes_slice.to_vec()).or(Err(ParseError::InvalidData("can't create ip6 from received bytes")))?;
                 Some(from_key)
             };
             ip6
         };
         // checking invariants
         if is_ctrl && public_key.is_some() {
-            return Err(HeaderError::CannotParse("public key can not be defined in control frame"));
+            return Err(ParseError::InvalidInvariant("public key can not be defined in control frame"));
         }
         if is_ctrl && ip6_from_bytes.is_some() {
-            return Err(HeaderError::CannotParse("ip6 is defined for control frame"));
+            return Err(ParseError::InvalidInvariant("ip6 is defined for control frame"));
         }
         if !is_ctrl && ip6_from_bytes.is_none() {
-            return Err(HeaderError::CannotParse("ip6 is not defined"));
+            return Err(ParseError::InvalidInvariant("ip6 is not defined in incoming frame"));
         }
         if public_key.is_some() {
             let ip6_from_key = {
                 let ip6_from_key =
-                    CJDNS_IP6::try_from(public_key.as_ref().expect("zero key bytes")).or(Err(HeaderError::CannotParse("can't create ip6 from public key")))?;
+                    CJDNS_IP6::try_from(public_key.as_ref().expect("zero key bytes")).or(Err(ParseError::InvalidData("can't create ip6 from public key")))?;
                 Some(ip6_from_key)
             };
             if ip6_from_key != ip6_from_bytes {
-                return Err(HeaderError::CannotParse("ip6 derived from public key is not equal to ip6 from header bytes"));
+                return Err(ParseError::InvalidData("ip6 derived from public key is not equal to ip6 from header bytes"));
             }
         }
         Ok(RouteHeader {
@@ -92,16 +92,16 @@ impl RouteHeader {
         })
     }
 
-    pub fn serialize(&self) -> Result<Vec<u8>> {
+    pub fn serialize(&self) -> SerializeResult<Vec<u8>> {
         // checking invariants, because `RouteHeader` can be instantiated without calling constructor
         if !self.is_ctrl && self.ip6.is_none() {
-            return Err(HeaderError::CannotSerialize("ip6 is is not defined"));
+            return Err(SerializeError::InvalidInvariant("ip6 is is not defined in incoming frame"));
         }
         if self.is_ctrl && self.ip6.is_some() {
-            return Err(HeaderError::CannotSerialize("ip6 is defined for control frame"));
+            return Err(SerializeError::InvalidInvariant("ip6 is defined for control frame"));
         }
         if self.is_ctrl && self.public_key.is_some() {
-            return Err(HeaderError::CannotSerialize("public key can not be defined in control frame"));
+            return Err(SerializeError::InvalidInvariant("public key can not be defined in control frame"));
         }
         let public_key_bytes = if self.public_key.is_some() {
             self.public_key.as_ref().expect("public key is none").bytes()

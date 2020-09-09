@@ -3,12 +3,12 @@
 use cjdns_core::RoutingLabel;
 
 use crate::{
-    errors::{HeaderError, Result},
+    errors::{ParseError, ParseResult, SerializeError, SerializeResult},
     utils::{Reader, Writer},
 };
 
 const SWITCH_HEADER_SIZE: usize = 12;
-const HEADER_CURRENT_VERSION: u8 = 1;
+const SWITCH_HEADER_CURRENT_VERSION: u8 = 1;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SwitchHeader {
@@ -21,14 +21,14 @@ pub struct SwitchHeader {
 }
 
 impl SwitchHeader {
-    pub fn parse(data: &[u8]) -> Result<Self> {
+    pub fn parse(data: &[u8]) -> ParseResult<Self> {
         if data.len() != SWITCH_HEADER_SIZE {
-            return Err(HeaderError::CannotParse("invalid header data size"));
+            return Err(ParseError::InvalidPacketSize);
         }
         let mut data_reader = Reader::new(data);
         let label = {
             let label_bytes = data_reader.read_u64_be().expect("invalid header data size");
-            RoutingLabel::<u64>::try_new(label_bytes).ok_or(HeaderError::CannotParse("invalid label bytes"))?
+            RoutingLabel::<u64>::try_new(label_bytes).ok_or(ParseError::InvalidData("zero label bytes"))?
         };
         let (congestion, suppress_errors) = {
             let congestion_and_suppress_errors = data_reader.read_u8().expect("invalid header data size");
@@ -40,8 +40,8 @@ impl SwitchHeader {
             (version_and_label_shift >> 6, version_and_label_shift & 0x3f)
         };
         // version parsed is either `HEADER_CURRENT_VERSION` or 0
-        if version != HEADER_CURRENT_VERSION && version != 0 {
-            return Err(HeaderError::CannotParse("parsing header with unrecognized version"));
+        if version != SWITCH_HEADER_CURRENT_VERSION && version != 0 {
+            return Err(ParseError::InvalidData("unrecognized version"));
         }
         let penalty = data_reader.read_u16_be().expect("invalid header data size");
         Ok(SwitchHeader {
@@ -54,21 +54,22 @@ impl SwitchHeader {
         })
     }
 
-    pub fn serialize(&self) -> Result<Vec<u8>> {
+    pub fn serialize(&self) -> SerializeResult<Vec<u8>> {
         // All these checks are required, because it's possible to instantiate `SwitchHeader` without constructor function
-        if self.version != HEADER_CURRENT_VERSION && self.version != 0 {
-            return Err(HeaderError::CannotSerialize("invalid header version"));
+        if self.version != SWITCH_HEADER_CURRENT_VERSION && self.version != 0 {
+            return Err(SerializeError::UnrecognizedData);
         }
+        // invariant checks
         if self.label_shift > 63 {
-            return Err(HeaderError::CannotSerialize("label shift value takes more than 6 bits"));
+            return Err(SerializeError::InvalidInvariant("label_shift value can't take more than 6 bits"));
         }
         if self.congestion > 127 {
-            return Err(HeaderError::CannotSerialize("congestion value takes more than 7 bits"));
+            return Err(SerializeError::InvalidInvariant("congestion value can't take more than 7 bits"));
         }
         let congestion_and_suppress_errors = self.congestion << 1 | self.suppress_errors as u8;
         // during serialization version could only be equal to `HEADER_CURRENT_VERSION`
         let version_and_label_shift = if self.version == 0 {
-            HEADER_CURRENT_VERSION << 6 | self.label_shift
+            SWITCH_HEADER_CURRENT_VERSION << 6 | self.label_shift
         } else {
             self.version << 6 | self.label_shift
         };
