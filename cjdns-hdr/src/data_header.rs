@@ -171,7 +171,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_invalid_data() {
+    fn test_parse_invalid() {
         let invalid_hex_data = [
             // invalid length
             "1000",
@@ -201,7 +201,7 @@ mod tests {
     }
 
     #[test]
-    fn test_serialize_header() {
+    fn test_serialize() {
         let valid_headers = [
             instantiate_header(10, ContentType::Ip6Ah),
             instantiate_header(15, ContentType::Cjdht),

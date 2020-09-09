@@ -1,5 +1,3 @@
-// TODO tests
-
 use std::convert::TryFrom;
 
 type Result<T> = std::result::Result<T, ()>;
