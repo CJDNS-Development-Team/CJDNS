@@ -84,3 +84,46 @@ impl Writer {
         self.0.extend_from_slice(data);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_reader() {
+        let bytes = vec![0u8; 64];
+        let mut reader = Reader::new(&bytes);
+
+        let array_32 = reader.read_array_32().expect("bytes are read out");
+        assert_eq!(array_32, [0; 32]);
+        let num64 = reader.read_u64_be().expect("bytes are read out");
+        assert_eq!(num64.to_be_bytes(), [0; 8]);
+        let num32 = reader.read_u32_be().expect("bytes are read out");
+        assert_eq!(num32.to_be_bytes(), [0; 4]);
+        let num16 = reader.read_u16_be().expect("bytes are read out");
+        assert_eq!(num16.to_be_bytes(), [0; 2]);
+        let num8 = reader.read_u8().expect("bytes are read out");
+        assert_eq!(num8, 0);
+        // checking read out of bounds
+        assert!(reader.take_bytes(20).is_err());
+        // reading last bytes
+        reader.take_bytes(17).expect("bytes are read out");
+        assert_eq!(reader.len(), 0)
+    }
+
+    #[test]
+    fn test_writer() {
+        let initial_capacity = 64;
+        let mut writer = Writer::with_capacity(64);
+
+        writer.write_u8(0);
+        writer.write_u16_be(0);
+        writer.write_u32_be(0);
+        writer.write_u64_be(0);
+        writer.write_slice(&[0; 49]);
+
+        let bytes = writer.into_vec();
+        assert_eq!(bytes.len(), initial_capacity);
+        assert_eq!(bytes, vec![0; initial_capacity]);
+    }
+}
