@@ -25,6 +25,8 @@ pub struct DataHeader {
     pub content_type: ContentType,
 }
 
+/// Header content types.
+///
 /// The lowest 255 message types are reserved for cjdns/IPv6 packets.
 /// AKA: packets where the IP address is within the FC00::/8 block.
 /// Any packet sent in this way will have the IPv6 header deconstructed and this
@@ -58,8 +60,9 @@ pub enum ContentType {
     Ip6Udplite = 136,
     Ip6Max = 255,
 
-    /// Bencoded inter-router DHT messages
+    /// Bencoded inter-router DHT message
     Cjdht = 256,
+    /// Bencoded inter-router DHT message
     Iptun = 257,
 
     /// Reserved for future allocation

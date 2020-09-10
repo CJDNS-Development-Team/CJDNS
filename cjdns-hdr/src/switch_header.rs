@@ -30,13 +30,13 @@ impl SwitchHeader {
     /// Parses bytes into `SwitchHeader` struct. Used as a constructor.
     ///
     /// Results in error in several situations:
-    /// * if parsed [version]() value is not either 0, nor [current version]();
+    /// * if parsed `version` value is not either 0, nor [SwitchHeader::CURRENT_VERSION](struct.SwitchHeader.html#associatedconstant.CURRENT_VERSION);
     /// * if parsed label number is 0;
-    /// * if data input size isn't equal to [SwitchHeader::SIZE]().
+    /// * if data input size isn't equal to [SwitchHeader::SIZE](struct.SwitchHeader.html#associatedconstant.SIZE).
     ///
     /// `SwitchHeader` bytes have a following structure: 8 bytes for routing label, one byte for congestion value and suppress error flag, also a byte
     /// for version and label shift values and 2 bytes for penalty value. Congestion value always takes 7 bits. Last bit of congestion byte is suppress error flag.
-    /// Version value takes last 2 bits of a sharing with label shift value byte. First 6 bits of the byte "belong" to [label_shift]().
+    /// Version value takes last 2 bits of a sharing with label shift value byte. First 6 bits of the byte "belong" to `label_shift`.
     pub fn parse(data: &[u8]) -> ParseResult<Self> {
         if data.len() != Self::SIZE {
             return Err(ParseError::InvalidPacketSize);
@@ -72,11 +72,11 @@ impl SwitchHeader {
 
     /// Serializes `SwitchHeader` instance.
     ///
-    /// `SwitchHeader` type can be instantiated roughly, without using [parse]() method as a constructor.
-    /// That's why serialization can result in errors. If header [version]() isn't equal to 0 or to [current version](), then serialization fails.
-    /// Also serialization fails if [label_shift]() value takes more than 6 bits (which is 63u8), or if congestion value takes more than 7 bits (127u8).
+    /// `SwitchHeader` type can be instantiated roughly, without using [parse](struct.SwitchHeader.html#method.parse) method as a constructor.
+    /// That's why serialization can result in errors. If header `version` isn't equal to 0 or to [SwitchHeader::CURRENT_VERSION](struct.SwitchHeader.html#associatedconstant.CURRENT_VERSION), then serialization fails.
+    /// Also serialization fails if `label_shift` value takes more than 6 bits (which is 63u8), or if congestion value takes more than 7 bits (127u8).
     ///
-    /// If `SwitchHeader` was instantiated with 0 `version`, header will be parsed with version equal to [current version]().
+    /// If `SwitchHeader` was instantiated with 0 `version`, header will be parsed with version equal to [SwitchHeader::CURRENT_VERSION](struct.SwitchHeader.html#associatedconstant.CURRENT_VERSION).
     pub fn serialize(&self) -> SerializeResult<Vec<u8>> {
         // All these checks are required, because it's possible to instantiate `SwitchHeader` without constructor function
         if self.version != Self::CURRENT_VERSION && self.version != 0 {

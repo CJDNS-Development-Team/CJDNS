@@ -18,8 +18,8 @@ const CONTROL_FRAME: u8 = 2;
 /// Deserialized route header struct.
 ///
 /// `public_key` and `ip6` are optional. That is because route header has same structure both for control and incoming frames.
-/// So if it is control frame, then `public_key` and `ip6` fields should have None value. Sometimes it `public_key` can be None for
-/// incoming frames, but in that case ip6 will always have some value.
+/// So if it is control frame, then `public_key` and `ip6` fields should both have None value. Sometimes `public_key` can be None for
+/// incoming frames, but in that case ip6 will always have some value. Otherwise, header is considered invalid and won't be serialized.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RouteHeader {
     pub public_key: Option<CJDNSPublicKey>,
@@ -37,11 +37,11 @@ impl RouteHeader {
     /// Parses bytes into `RouteHeader` struct. Used as a constructor.
     ///
     /// Result in error in several situations:
-    /// * if input byte length isn't equal to [RouteHeader::SIZE]();
+    /// * if input byte length isn't equal to [RouteHeader::SIZE](struct.RouteHeader.html#associatedconstant.SIZE);
     /// * if parsing provided switch header bytes ended up with an error;
     /// * if ip6 bytes or public key bytes are invalid for ip6 initialization;
     /// * if derived ip6 from public key isn't equal to ip6, created from input bytes;
-    /// * if "[is_ctrl]() - [public_key]() - [ip6]()" invariant is not met;
+    /// * if "[is_ctrl](struct.RouteHeader.html#structfield.is_ctrl) - [public_key](struct.RouteHeader.html#structfield.public_key) - [ip6](struct.RouteHeader.html#structfield.ip6)" invariant is not met;
     /// * if flag for message type states not control, nor incoming frame.
     pub fn parse(data: &[u8]) -> ParseResult<Self> {
         if data.len() != Self::SIZE {
@@ -114,8 +114,8 @@ impl RouteHeader {
 
     /// Serialized `RouteHeader` instance.
     ///
-    /// `RouteHeader` type can be instantiated roughly, without using [parse]() method as a constructor.
-    /// That's why serialization can result in errors. For example, if invariants stated in [parse]() method are not met or
+    /// `RouteHeader` type can be instantiated roughly, without using [parse](struct.RouteHeader.html#method.parse) method as a constructor.
+    /// That's why serialization can result in errors. For example, if invariants stated in [parse](struct.RouteHeader.html#method.parse) method are not met or
     /// switch header serialization failed, then route header serialization ends up with an error.
     pub fn serialize(&self) -> SerializeResult<Vec<u8>> {
         // checking invariants, because `RouteHeader` can be instantiated without calling constructor
