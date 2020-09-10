@@ -1,15 +1,5 @@
 //! Content type enum.
 
-/** TODO for devs
-* When header bytes are being parsed, content type number should be considered as Unknown(u16).
-* Also, when it is serialized, its associated u16 value should be used for serialization.
-* Using `num_enum` crate doesn't allow us using "Other" variant with associated u16 value. The current payoff is using `ContentType::Max` as a default value.
-* What's bad about it, is that we can't serialize header with this "default" (aka `ContentType::Max`, aka u32) content type,
-* because it's constant value has u32 type, but serialization requires using u16. Obviously, casting default u32 value to u16 has a consequence - truncation.
-*
-* Possible solution could be saving u16 value to header field and using enum wrapper over `ContentType` with `Known` and `Unknown` variants.
-*/
-
 use std::convert::TryFrom;
 
 use num_enum::{FromPrimitive, IntoPrimitive};
@@ -47,32 +37,45 @@ pub enum ContentType {
     Ip6Comp = 108,
     Ip6Sctp = 132,
     Ip6Udplite = 136,
-    Ip6Max = 255,
 
     /// Bencoded inter-router DHT message
     Cjdht = 256,
     /// Bencoded inter-router DHT message
     Iptun = 257,
 
+    /// This content type will never appear in the wild, it represents unencrypted control frames
+    Ctrl = 0xffff + 1,
+
+    /// Unrecognized or user-defined content type.
+    ///
+    /// If a message with unrecognized content type received, it is parsed as `Other`.
+    /// Though if this message should be re-serialized and forwarded, the content type must be preserved.
+    /// This should be done by other means, such as storing raw content type elsewhere.
+    #[num_enum(default)]
+    Other = ContentType::MAX,
+}
+
+impl ContentType {
+    /// The lowest 255 message types are reserved for cjdns/IPv6 packets
+    pub const IP6_MAX: u32 = 255;
+
     /// Reserved for future allocation
-    Reserved = 258,
-    ReservedMax = 0x7fff,
+    pub const RESERVED: u32 = 258;
+    pub const RESERVED_MAX: u32 = 0x7fff;
 
     /// Content types in the AVAILABLE range are not defined and can be used
     /// like port numbers for subsystems of cjdns to communicate with subsystems within
     /// cjdns on other machines, providing they first agree on which numbers to use via
     /// CTRL messages
-    Available = 0x8000,
+    pub const AVAILABLE: u32 = 0x8000;
 
-    /// This content type will never appear in the wild, it represents unencrypted control frames.
-    Ctrl = 0xffff + 1,
+    /// Maximum possible defined value for the content type
+    pub const MAX: u32 = 0xffff + 2;
 
-    // read a big comment at the beginning
-    #[num_enum(default)]
-    Max = 0xffff + 2,
-}
+    pub fn from_u16(code: u16) -> Self {
+        ContentType::from_primitive(code as u32)
+    }
 
-impl ContentType {
     pub fn try_to_u16(self) -> Option<u16> {
         // conversion from content type to u32 is provided by num_enum crate
         u16::try_from(u32::from(self)).ok()
@@ -81,8 +84,8 @@ impl ContentType {
 
 #[test]
 fn test_content_type_conversion() {
-    let unknown_content_types = [3, 5, 13, 18, 30, 150, 250, 0x8001];
+    let unknown_content_types = [3, 5, 13, 18, 30, 150, 250, 258, 0x8000, 0x8001];
     for &code in &unknown_content_types {
-        assert_eq!(ContentType::from(code), ContentType::Max);
+        assert_eq!(ContentType::from_primitive(code), ContentType::Other);
     }
 }

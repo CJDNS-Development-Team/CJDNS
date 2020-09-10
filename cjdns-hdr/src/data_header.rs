@@ -44,7 +44,7 @@ impl DataHeader {
         }
         let content_type = {
             let content_type_code = data_reader.read_u16_be().expect("invalid header data size");
-            ContentType::from(content_type_code as u32)
+            ContentType::from_u16(content_type_code)
         };
         Ok(DataHeader { version, content_type })
     }
@@ -63,6 +63,9 @@ impl DataHeader {
         }
         let mut data_writer = Writer::with_capacity(Self::SIZE);
         let version_with_flags = if self.version == 0 { Self::CURRENT_VERSION << 4 } else { self.version << 4 };
+        if self.content_type == ContentType::Other {
+            return Err(SerializeError::InvalidData("content type is not recognized or not preserved"));
+        }
         let content_type_code = self.content_type.try_to_u16().ok_or(SerializeError::InvalidData(
             "content type can't be serialized into bytes slice with respected length",
         ))?;
@@ -129,7 +132,7 @@ mod tests {
             let bytes_data = decode_hex(data);
             let data_header = DataHeader::parse(&bytes_data).expect("invalid header data");
             // read comment at the beginning of the module
-            assert_eq!(data_header.content_type, ContentType::Max);
+            assert_eq!(data_header.content_type, ContentType::Other);
         }
     }
 
@@ -150,7 +153,7 @@ mod tests {
             // content type number > u16
             instantiate_header(0, ContentType::Ctrl),
             // even default fails. Read comment at the beginning of the module
-            instantiate_header(10, ContentType::Max),
+            instantiate_header(10, ContentType::Other),
         ];
         for header in invalid_headers.iter() {
             assert!(header.serialize().is_err());
