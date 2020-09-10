@@ -126,7 +126,9 @@ impl DataHeader {
         }
         let mut data_writer = Writer::with_capacity(Self::SIZE);
         let version_with_flags = if self.version == 0 { Self::CURRENT_VERSION << 4 } else { self.version << 4 };
-        let content_type_number = self.content_type.try_to_u16().or(Err(SerializeError::InvalidContentType))?;
+        let content_type_number = self.content_type.try_to_u16().or(Err(SerializeError::InvalidData(
+            "content type can't be serialized into bytes slice with respected length",
+        )))?;
 
         data_writer.write_u8(version_with_flags);
         // writing pad to returning bytes vec

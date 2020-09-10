@@ -5,11 +5,11 @@ pub enum ParseError {
     #[error("Received data doesn't suit header size")]
     InvalidPacketSize,
 
-    #[error("Received invalid data: {0}")]
-    InvalidData(&'static str),
-
     #[error("Invariant not met: {0}")]
     InvalidInvariant(&'static str),
+
+    #[error("Received invalid data: {0}")]
+    InvalidData(&'static str),
 }
 
 #[derive(Error, Copy, Clone, PartialEq, Eq, Debug)]
@@ -20,8 +20,8 @@ pub enum SerializeError {
     #[error("Invariant not met: {0}")]
     InvalidInvariant(&'static str),
 
-    #[error("Content type can't be serialized into bytes slice with respected length")]
-    InvalidContentType, // todo variant which is used once?
+    #[error("Received invalid data: {0}")]
+    InvalidData(&'static str),
 }
 
 pub(crate) type ParseResult<T> = std::result::Result<T, ParseError>;

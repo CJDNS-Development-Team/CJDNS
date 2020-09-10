@@ -57,7 +57,7 @@ impl SwitchHeader {
         };
         // version parsed is either `Self::CURRENT_VERSION` or 0
         if version != Self::CURRENT_VERSION && version != 0 {
-            return Err(ParseError::InvalidData("unrecognized version"));
+            return Err(ParseError::InvalidData("unrecognized switch header version"));
         }
         let penalty = data_reader.read_u16_be().expect("invalid header data size");
         Ok(SwitchHeader {
@@ -127,7 +127,7 @@ mod tests {
             suppress_errors: true,
             version,
             label_shift,
-            penalty: 0
+            penalty: 0,
         }
     }
 
@@ -159,7 +159,7 @@ mod tests {
             // zero label
             "000000000000000012341234",
             // wrong version -> 3
-            "000000000000001300c80000"
+            "000000000000001300c80000",
         ];
         for hex_header in invalid_hex_data.iter() {
             let invalid_bytes = decode_hex(hex_header);

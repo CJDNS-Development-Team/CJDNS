@@ -39,9 +39,10 @@ impl RouteHeader {
     /// Result in error in several situations:
     /// * if input byte length isn't equal to [RouteHeader::SIZE]();
     /// * if parsing provided switch header bytes ended up with an error;
-    /// * if ip6 bytes or public key bytes are invalid for ip6 initialization
-    /// * if derived ip6 from public key isn't equal to ip6, created from input bytes
-    /// * if "[is_ctrl]() - [public_key]() - [ip6]()" invariant is not met
+    /// * if ip6 bytes or public key bytes are invalid for ip6 initialization;
+    /// * if derived ip6 from public key isn't equal to ip6, created from input bytes;
+    /// * if "[is_ctrl]() - [public_key]() - [ip6]()" invariant is not met;
+    /// * if flag for message type states not control, nor incoming frame.
     pub fn parse(data: &[u8]) -> ParseResult<Self> {
         if data.len() != Self::SIZE {
             return Err(ParseError::InvalidPacketSize);
@@ -65,6 +66,10 @@ impl RouteHeader {
             let flags = data_reader.read_u8().expect("invalid header data size");
             (flags == CONTROL_FRAME, flags == INCOMING_FRAME)
         };
+        // !is_ctrl & !is_incoming
+        if is_ctrl == is_incoming {
+            return Err(ParseError::InvalidData("invalid flag: either not control, nor incoming"));
+        }
         // pad
         let _unused = data_reader.take_bytes(3).expect("invalid header data size");
         let ip6_from_bytes = {
@@ -110,18 +115,31 @@ impl RouteHeader {
     /// Serialized `RouteHeader` instance.
     ///
     /// `RouteHeader` type can be instantiated roughly, without using [parse]() method as a constructor.
-    /// That's why serialization can result in errors. For example, if "[is_ctrl]() - [public_key]() - [ip6]()" invariant is not met or
+    /// That's why serialization can result in errors. For example, if invariants stated in [parse]() method are not met or
     /// switch header serialization failed, then route header serialization ends up with an error.
     pub fn serialize(&self) -> SerializeResult<Vec<u8>> {
         // checking invariants, because `RouteHeader` can be instantiated without calling constructor
-        if !self.is_ctrl && self.ip6.is_none() {
-            return Err(SerializeError::InvalidInvariant("ip6 is is not defined in incoming frame"));
+        if self.is_ctrl == self.is_incoming {
+            return Err(SerializeError::InvalidInvariant("message must be one of two: control or incoming"));
+        }
+        if self.is_ctrl && self.public_key.is_some() {
+            return Err(SerializeError::InvalidInvariant("public key can not be defined in control frame"));
         }
         if self.is_ctrl && self.ip6.is_some() {
             return Err(SerializeError::InvalidInvariant("ip6 is defined for control frame"));
         }
-        if self.is_ctrl && self.public_key.is_some() {
-            return Err(SerializeError::InvalidInvariant("public key can not be defined in control frame"));
+        if !self.is_ctrl && self.ip6.is_none() {
+            return Err(SerializeError::InvalidInvariant("ip6 is is not defined in incoming frame"));
+        }
+        if self.public_key.is_some() {
+            let ip6_from_key = {
+                let ip6_from_key = CJDNS_IP6::try_from(self.public_key.as_ref().expect("zero key bytes"))
+                    .or(Err(SerializeError::InvalidData("can't create ip6 from public key")))?;
+                Some(ip6_from_key)
+            };
+            if ip6_from_key != self.ip6 {
+                return Err(SerializeError::InvalidData("ip6 derived from public key is not equal to ip6 from header bytes"));
+            }
         }
         let public_key_bytes = if self.public_key.is_some() {
             self.public_key.as_ref().expect("public key is none").bytes()
@@ -165,6 +183,24 @@ mod tests {
         hex::decode(hex).expect("invalid hex string")
     }
 
+    fn instantiate_header(pk: Option<CJDNSPublicKey>, ip: Option<CJDNS_IP6>, is_ctrl: bool, is_incoming: bool) -> RouteHeader {
+        RouteHeader {
+            public_key: pk,
+            ip6: ip,
+            version: 0,
+            switch_header: SwitchHeader {
+                label: RoutingLabel::try_from("0000.0000.0000.0013").expect("invalid label string"),
+                congestion: 0,
+                suppress_errors: false,
+                version: 1,
+                label_shift: 8,
+                penalty: 0,
+            },
+            is_ctrl,
+            is_incoming,
+        }
+    }
+
     #[test]
     fn test_route_header_parse() {
         let test_data = decode_hex(
@@ -191,5 +227,90 @@ mod tests {
             }
         );
         assert_eq!(serialized_header, test_data);
+    }
+
+    #[test]
+    fn test_parse_invalid() {
+        let invalid_hex_data = [
+            // invalid len
+            "ff00112233445566778899aabbccddee",
+            "a331ebbed8d92ac03b10efed3e389cd0c6ec7331a72dbde198476c5eb4d14a1f0000000000000013004800000000000001000000fc928136dc1fe6e04ef6a6dd7187b85f000111",
+            // invalid switch header
+            "a331ebbed8d92ac03b10efed3e389cd0c6ec7331a72dbde198476c5eb4d14a1f000000000000001300c800000000000001000000fc928136dc1fe6e04ef6a6dd7187b85f",
+            // invalid flag
+            "a331ebbed8d92ac03b10efed3e389cd0c6ec7331a72dbde198476c5eb4d14a1f0000000000000013004800000000000003000000fc928136dc1fe6e04ef6a6dd7187b85f",
+            // invalid invariants
+            // public key is some, but the message is "control"
+            "a331ebbed8d92ac03b10efed3e389cd0c6ec7331a72dbde198476c5eb4d14a1f0000000000000013004800000000000002000000fc928136dc1fe6e04ef6a6dd7187b85f",
+            // message is "control", but ip6 is some
+            "00000000000000000000000000000000000000000000000000000000000000000000000000000013004800000000000002000000fc928136dc1fe6e04ef6a6dd7187b85f",
+            // message is not "control", but ip6 is none
+            "a331ebbed8d92ac03b10efed3e389cd0c6ec7331a72dbde198476c5eb4d14a1f000000000000001300480000000000000100000000000000000000000000000000000000",
+            // ip6 from public key is not equal to ip6 from bytes
+            "bd5ef1051e8f5e607f8d420711b4853b14b6c628bb90ba9695169a552a22c07b0000000000000013004800000000000001000000fcf5c1ecbe679ad51f6cf31b5d7437b0",
+        ];
+        for hex_header in invalid_hex_data.iter() {
+            let invalid_bytes = decode_hex(hex_header);
+            assert!(RouteHeader::parse(&invalid_bytes).is_err());
+        }
+    }
+
+    #[test]
+    fn test_serialize() {
+        let invalid_headers = [
+            // flag invariant not met
+            instantiate_header(
+                CJDNSPublicKey::try_from("3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k".to_string()).ok(),
+                CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).ok(),
+                true,
+                true,
+            ),
+            instantiate_header(
+                CJDNSPublicKey::try_from("3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k".to_string()).ok(),
+                CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).ok(),
+                false,
+                false,
+            ),
+            // public key is some, but message is control
+            instantiate_header(
+                CJDNSPublicKey::try_from("3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k".to_string()).ok(),
+                CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).ok(),
+                true,
+                false,
+            ),
+            // ip6 is some but message is control
+            instantiate_header(
+                None,
+                CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).ok(),
+                true,
+                false,
+            ),
+            // message is incoming, but ip6 is none
+            instantiate_header(
+                CJDNSPublicKey::try_from("3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k".to_string()).ok(),
+                None,
+                false,
+                true,
+            ),
+            // ip6 from public_key != ip6 from bytes
+            instantiate_header(
+                CJDNSPublicKey::try_from("xpr2z2s3hnr0qzpk2u121uqjv15dc335v54pccqlqj6c5p840yy0.k".to_string()).ok(),
+                CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).ok(),
+                false,
+                true,
+            ),
+        ];
+        for header in invalid_headers.iter() {
+            assert!(header.serialize().is_err());
+        }
+
+        // important case
+        let valid_header = instantiate_header(
+            None,
+            CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).ok(),
+            false,
+            true,
+        );
+        assert!(valid_header.serialize().is_ok())
     }
 }

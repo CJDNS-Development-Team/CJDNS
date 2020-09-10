@@ -13,7 +13,7 @@
 //!
 //! TODO
 
-pub use data_header::{DataHeader, ContentType};
+pub use data_header::{ContentType, DataHeader};
 pub use route_header::RouteHeader;
 pub use switch_header::SwitchHeader;
 
