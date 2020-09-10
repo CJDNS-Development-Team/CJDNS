@@ -8,15 +8,13 @@ use crate::{
 };
 
 /// Deserialized switch header struct.
-///
-/// `congestion` and `suppress_errors` are encoded in 1 byte. The same is with `version` and `label_shift`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SwitchHeader {
     pub label: RoutingLabel<u64>,
-    pub congestion: u8,
+    pub congestion: u8, // 7 bits
     pub suppress_errors: bool,
-    pub version: u8,
-    pub label_shift: u8,
+    pub version: u8, // 2 bits
+    pub label_shift: u8, // 6 bits
     pub penalty: u16,
 }
 
@@ -24,15 +22,15 @@ impl SwitchHeader {
     /// Size of serialized `SwitchHeader`
     pub const SIZE: usize = 12;
 
-    /// Current version of `SwitchHeader` which is automatically set, if version is not specified (aka 0) during serialization.
+    /// Current version of `SwitchHeader` which is automatically set, if version is not specified (i.e. == 0) during serialization.
     pub const CURRENT_VERSION: u8 = 1;
 
-    /// Parses bytes into `SwitchHeader` struct. Used as a constructor.
+    /// Parses raw bytes into `SwitchHeader` struct.
     ///
     /// Results in error in several situations:
-    /// * if parsed `version` value is not either 0, nor [SwitchHeader::CURRENT_VERSION](struct.SwitchHeader.html#associatedconstant.CURRENT_VERSION);
+    /// * if parsed `version` value is neither 0 nor [SwitchHeader::CURRENT_VERSION](struct.SwitchHeader.html#associatedconstant.CURRENT_VERSION);
     /// * if parsed label number is 0;
-    /// * if data input size isn't equal to [SwitchHeader::SIZE](struct.SwitchHeader.html#associatedconstant.SIZE).
+    /// * if data input size != [SwitchHeader::SIZE](struct.SwitchHeader.html#associatedconstant.SIZE).
     ///
     /// `SwitchHeader` bytes have a following structure: 8 bytes for routing label, one byte for congestion value and suppress error flag, also a byte
     /// for version and label shift values and 2 bytes for penalty value. Congestion value always takes 7 bits. Last bit of congestion byte is suppress error flag.
@@ -72,13 +70,15 @@ impl SwitchHeader {
 
     /// Serializes `SwitchHeader` instance.
     ///
-    /// `SwitchHeader` type can be instantiated roughly, without using [parse](struct.SwitchHeader.html#method.parse) method as a constructor.
-    /// That's why serialization can result in errors. If header `version` isn't equal to 0 or to [SwitchHeader::CURRENT_VERSION](struct.SwitchHeader.html#associatedconstant.CURRENT_VERSION), then serialization fails.
-    /// Also serialization fails if `label_shift` value takes more than 6 bits (which is 63u8), or if congestion value takes more than 7 bits (127u8).
+    /// `SwitchHeader` type can be instantiated directly, without using [parse](struct.SwitchHeader.html#method.parse) method.
+    /// That's why serialization can result in errors. If header `version` isn't equal to 0
+    /// or to [SwitchHeader::CURRENT_VERSION](struct.SwitchHeader.html#associatedconstant.CURRENT_VERSION), then serialization fails.
+    /// Also serialization fails if `label_shift` value takes more than 6 bits (i.e. > 63), or if congestion value takes more than 7 bits (i.e. > 127).
     ///
-    /// If `SwitchHeader` was instantiated with 0 `version`, header will be parsed with version equal to [SwitchHeader::CURRENT_VERSION](struct.SwitchHeader.html#associatedconstant.CURRENT_VERSION).
+    /// If `SwitchHeader` was instantiated with 0 `version`, header will be parsed with version
+    /// equal to [SwitchHeader::CURRENT_VERSION](struct.SwitchHeader.html#associatedconstant.CURRENT_VERSION).
     pub fn serialize(&self) -> SerializeResult<Vec<u8>> {
-        // All these checks are required, because it's possible to instantiate `SwitchHeader` without constructor function
+        // All these checks are required, because it's possible to instantiate `SwitchHeader` directly
         if self.version != Self::CURRENT_VERSION && self.version != 0 {
             return Err(SerializeError::UnrecognizedData);
         }

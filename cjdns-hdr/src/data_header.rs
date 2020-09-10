@@ -1,4 +1,4 @@
-//! Logic for parsing and serializing a simple data header, providing type of content
+//! Logic for parsing and serializing the data header, providing type of content
 
 /** TODO for devs
 * When header bytes are being parsed, content type number should be considered as Unknown(u16).
@@ -18,7 +18,7 @@ use crate::{
     utils::{Reader, Writer},
 };
 
-/// Deserialized simple data header struct.
+/// Deserialized data header struct.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataHeader {
     pub version: u8,
@@ -90,7 +90,7 @@ impl DataHeader {
     /// Current version of `DataHeader` which is automatically set, if version is not specified during serialization.
     pub const CURRENT_VERSION: u8 = 1;
 
-    /// Parses bytes into `DataHeader` struct. Used as a constructor.
+    /// Parses raw bytes into `DataHeader` struct.
     ///
     /// Results in error if input bytes length isn't equal to 4, which is current size of serialized header.
     ///
@@ -107,20 +107,24 @@ impl DataHeader {
             let version_with_flags = data_reader.read_u8().expect("invalid header data size");
             version_with_flags >> 4
         };
-        // unused
-        let _pad = data_reader.read_u8().expect("invalid header data size");
+        // Zero-padding
+        let pad = data_reader.read_u8().expect("invalid header data size");
+        if pad != 0 {
+            return Err(ParseError::InvalidData("non-zero padding"));
+        }
         let content_type = {
-            let content_number = data_reader.read_u16_be().expect("invalid header data size");
-            ContentType::from(content_number as u32)
+            let content_type_code = data_reader.read_u16_be().expect("invalid header data size");
+            ContentType::from(content_type_code as u32)
         };
         Ok(DataHeader { version, content_type })
     }
 
     /// Serializes `DataHeader` instance.
     ///
-    /// `DataHeader` type can be instantiated roughly, without using [parse](todo) method as a constructor.
-    /// That's why serialization can result in errors. If header [version](todo) is greater than 15, then serialization fails, because [version](todo) is a number which takes 4 bits in `DataHeader`.
-    /// Also serialization fails if no suitable 16 bit content type number was found.
+    /// `DataHeader` type can be instantiated directly, without using `parse` method.
+    /// That's why serialization can result in errors. If header `version` is greater than 15, then serialization fails,
+    /// because `version` is only a 4-bit field in `DataHeader`.
+    /// Also serialization fails if no suitable 16-bit content type code was found.
     ///
     /// If `DataHeader` was instantiated with 0 `version`, header will be parsed with version equal to [current version](todo).
     pub fn serialize(&self) -> SerializeResult<Vec<u8>> {
@@ -129,14 +133,13 @@ impl DataHeader {
         }
         let mut data_writer = Writer::with_capacity(Self::SIZE);
         let version_with_flags = if self.version == 0 { Self::CURRENT_VERSION << 4 } else { self.version << 4 };
-        let content_type_number = self.content_type.try_to_u16().or(Err(SerializeError::InvalidData(
+        let content_type_code = self.content_type.try_to_u16().or(Err(SerializeError::InvalidData(
             "content type can't be serialized into bytes slice with respected length",
         )))?;
 
         data_writer.write_u8(version_with_flags);
-        // writing pad to returning bytes vec
-        data_writer.write_u8(0);
-        data_writer.write_u16_be(content_type_number);
+        data_writer.write_u8(0); // zero-padding
+        data_writer.write_u16_be(content_type_code);
 
         Ok(data_writer.into_vec())
     }
@@ -176,7 +179,7 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_invalid() {
+    fn test_parse_invalid_length() {
         let invalid_hex_data = [
             // invalid length
             "1000",
@@ -219,7 +222,7 @@ mod tests {
         let invalid_headers = [
             // invalid version
             instantiate_header(16, ContentType::Ip6Encap),
-            // content type number gt u16
+            // content type number > u16
             instantiate_header(0, ContentType::Ctrl),
             // even default fails. Read comment at the beginning of the module
             instantiate_header(10, ContentType::Max),
@@ -231,9 +234,9 @@ mod tests {
 
     #[test]
     fn test_content_type_conversion() {
-        let unknown_content_numbers = [3, 5, 13, 18, 30, 150, 250, 0x8001];
-        for &number in unknown_content_numbers.iter() {
-            assert_eq!(ContentType::from(number), ContentType::Max);
+        let unknown_content_types = [3, 5, 13, 18, 30, 150, 250, 0x8001];
+        for &code in &unknown_content_types {
+            assert_eq!(ContentType::from(code), ContentType::Max);
         }
     }
 }

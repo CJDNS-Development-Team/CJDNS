@@ -1,4 +1,4 @@
-//! Parsing and serialization logic for cjdns header, which is sent from the cjdns engine lower half.
+//! Parsing and serialization logic for cjdns route header, which is sent from the cjdns engine lower half.
 
 use std::convert::TryFrom;
 
@@ -17,8 +17,8 @@ const CONTROL_FRAME: u8 = 2;
 
 /// Deserialized route header struct.
 ///
-/// `public_key` and `ip6` are optional. That is because route header has same structure both for control and incoming frames.
-/// So if it is control frame, then `public_key` and `ip6` fields should both have None value. Sometimes `public_key` can be None for
+/// `public_key` and `ip6` are optional. That is because route header has same structure for both control and incoming frames.
+/// So if it is a control frame, then `public_key` and `ip6` fields should both have None value. Sometimes `public_key` can be None for
 /// incoming frames, but in that case ip6 will always have some value. Otherwise, header is considered invalid and won't be serialized.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RouteHeader {
@@ -34,13 +34,13 @@ impl RouteHeader {
     /// Size of serialized `RouteHeader`
     pub const SIZE: usize = 68;
 
-    /// Parses bytes into `RouteHeader` struct. Used as a constructor.
+    /// Parses raw bytes into `RouteHeader` struct.
     ///
     /// Result in error in several situations:
     /// * if input byte length isn't equal to [RouteHeader::SIZE](struct.RouteHeader.html#associatedconstant.SIZE);
     /// * if parsing provided switch header bytes ended up with an error;
     /// * if ip6 bytes or public key bytes are invalid for ip6 initialization;
-    /// * if derived ip6 from public key isn't equal to ip6, created from input bytes;
+    /// * if ip6 derived from public key isn't equal to ip6 created from input bytes;
     /// * if "[is_ctrl](struct.RouteHeader.html#structfield.is_ctrl) - [public_key](struct.RouteHeader.html#structfield.public_key) - [ip6](struct.RouteHeader.html#structfield.ip6)" invariant is not met;
     /// * if flag for message type states not control, nor incoming frame.
     pub fn parse(data: &[u8]) -> ParseResult<Self> {
@@ -50,12 +50,11 @@ impl RouteHeader {
         let mut data_reader = Reader::new(data);
         let public_key = {
             let public_key_array = data_reader.read_array_32().expect("invalid header data size");
-            let public_key = if ZERO_PUBLIC_KEY_BYTES == public_key_array {
+            if ZERO_PUBLIC_KEY_BYTES == public_key_array {
                 None
             } else {
                 Some(CJDNSPublicKey::from(public_key_array))
-            };
-            public_key
+            }
         };
         let switch_header = {
             let header_bytes = data_reader.take_bytes(SwitchHeader::SIZE).expect("invalid header data size");
@@ -66,21 +65,19 @@ impl RouteHeader {
             let flags = data_reader.read_u8().expect("invalid header data size");
             (flags == CONTROL_FRAME, flags == INCOMING_FRAME)
         };
-        // !is_ctrl & !is_incoming
+        // Flags `is_ctrl` and `is_incoming` are mutually exclusive
         if is_ctrl == is_incoming {
             return Err(ParseError::InvalidData("invalid flag: either not control, nor incoming"));
         }
-        // pad
-        let _unused = data_reader.take_bytes(3).expect("invalid header data size");
+        let _zeroes = data_reader.take_bytes(3).expect("invalid header data size"); // padding
         let ip6_from_bytes = {
             let ip6_bytes_slice = data_reader.take_bytes(16).expect("invalid header data size");
-            let ip6 = if ip6_bytes_slice == &ZERO_IP6_BYTES {
+            if ip6_bytes_slice == &ZERO_IP6_BYTES {
                 None
             } else {
-                let from_key = CJDNS_IP6::try_from(ip6_bytes_slice.to_vec()).or(Err(ParseError::InvalidData("can't create ip6 from received bytes")))?;
-                Some(from_key)
-            };
-            ip6
+                let ip6 = CJDNS_IP6::try_from(ip6_bytes_slice.to_vec()).or(Err(ParseError::InvalidData("can't create ip6 from received bytes")))?;
+                Some(ip6)
+            }
         };
         // checking invariants
         if is_ctrl && public_key.is_some() {
@@ -92,14 +89,12 @@ impl RouteHeader {
         if !is_ctrl && ip6_from_bytes.is_none() {
             return Err(ParseError::InvalidInvariant("ip6 is not defined in incoming frame"));
         }
-        if public_key.is_some() {
-            let ip6_from_key = {
-                let ip6_from_key =
-                    CJDNS_IP6::try_from(public_key.as_ref().expect("zero key bytes")).or(Err(ParseError::InvalidData("can't create ip6 from public key")))?;
-                Some(ip6_from_key)
-            };
-            if ip6_from_key != ip6_from_bytes {
-                return Err(ParseError::InvalidData("ip6 derived from public key is not equal to ip6 from header bytes"));
+        if let Some(public_key) = public_key.as_ref() {
+            if let Some(ip6_from_bytes) = ip6_from_bytes.as_ref() {
+                let ip6_from_key = CJDNS_IP6::try_from(public_key).or(Err(ParseError::InvalidData("can't create ip6 from public key")))?;
+                if ip6_from_key != *ip6_from_bytes {
+                    return Err(ParseError::InvalidData("ip6 derived from public key is not equal to ip6 from header bytes"));
+                }
             }
         }
         Ok(RouteHeader {
@@ -114,13 +109,13 @@ impl RouteHeader {
 
     /// Serialized `RouteHeader` instance.
     ///
-    /// `RouteHeader` type can be instantiated roughly, without using [parse](struct.RouteHeader.html#method.parse) method as a constructor.
+    /// `RouteHeader` type can be instantiated directly, without using [parse](struct.RouteHeader.html#method.parse) method.
     /// That's why serialization can result in errors. For example, if invariants stated in [parse](struct.RouteHeader.html#method.parse) method are not met or
     /// switch header serialization failed, then route header serialization ends up with an error.
     pub fn serialize(&self) -> SerializeResult<Vec<u8>> {
-        // checking invariants, because `RouteHeader` can be instantiated without calling constructor
+        // checking invariants, because `RouteHeader` can be instantiated directly
         if self.is_ctrl == self.is_incoming {
-            return Err(SerializeError::InvalidInvariant("message must be one of two: control or incoming"));
+            return Err(SerializeError::InvalidInvariant("message must be either control or incoming"));
         }
         if self.is_ctrl && self.public_key.is_some() {
             return Err(SerializeError::InvalidInvariant("public key can not be defined in control frame"));
@@ -131,29 +126,19 @@ impl RouteHeader {
         if !self.is_ctrl && self.ip6.is_none() {
             return Err(SerializeError::InvalidInvariant("ip6 is is not defined in incoming frame"));
         }
-        if self.public_key.is_some() {
-            let ip6_from_key = {
-                let ip6_from_key = CJDNS_IP6::try_from(self.public_key.as_ref().expect("zero key bytes"))
-                    .or(Err(SerializeError::InvalidData("can't create ip6 from public key")))?;
-                Some(ip6_from_key)
-            };
-            if ip6_from_key != self.ip6 {
-                return Err(SerializeError::InvalidData("ip6 derived from public key is not equal to ip6 from header bytes"));
+        if let Some(public_key) = self.public_key.as_ref() {
+            if let Some(ip6) = self.ip6.as_ref() {
+                let ip6_from_key = CJDNS_IP6::try_from(public_key).or(Err(SerializeError::InvalidData("can't create ip6 from public key")))?;
+                if ip6_from_key != *ip6 {
+                    return Err(SerializeError::InvalidData("ip6 derived from public key is not equal to ip6 from header bytes"));
+                }
             }
         }
-        let public_key_bytes = if self.public_key.is_some() {
-            self.public_key.as_ref().expect("public key is none").bytes()
-        } else {
-            ZERO_PUBLIC_KEY_BYTES.into()
-        };
+        let public_key_bytes = self.public_key.as_ref().map(|key| key.bytes()).unwrap_or_else(|| ZERO_PUBLIC_KEY_BYTES.into());
         let switch_header_bytes = self.switch_header.serialize()?;
         let flags = if self.is_ctrl { CONTROL_FRAME } else { INCOMING_FRAME };
         let pad_bytes = &[0u8; 3];
-        let ip6_bytes = if self.ip6.is_some() {
-            self.ip6.as_ref().expect("ip6 is none").bytes()
-        } else {
-            ZERO_IP6_BYTES.into()
-        };
+        let ip6_bytes = self.ip6.as_ref().map(|ip6| ip6.bytes()).unwrap_or_else(|| ZERO_IP6_BYTES.into());
 
         let mut data_writer = Writer::with_capacity(Self::SIZE);
         data_writer.write_slice(public_key_bytes.as_slice());

@@ -1,8 +1,8 @@
 //! Library for parsing and serializing cjdns route and data headers. This includes:
 //! * [SwitchHeader](struct.SwitchHeader.html) - The header used by the cjdns switch.
 //! * [RouteHeader](struct.RouteHeader.html) - This header is emitted from the cjdns engine lower half which tells the upper half where the packet came from, it is also used when sending a packet to/via the lower half, it tells the proper destination and the path which the packet should take (if applicable).
-//! * [DataHeader](struct.DataHeader.html) - This is a simple header which merely tells the type of content.
-//! * [ContentType](enum.ContentType.html) - This is an enum of content types.
+//! * [DataHeader](struct.DataHeader.html) - The data header.
+//! * [ContentType](enum.ContentType.html) - Content type enum.
 //!
 //! When serializing `SwitchHeader` and `DataHeader`, if the version is unspecified, it will be automatically set to the current header version.
 //! In `RouteHeader` the version is for telling the core what is the version of the other node: if it is unspecified or zero, the core will attempt to guess it.
