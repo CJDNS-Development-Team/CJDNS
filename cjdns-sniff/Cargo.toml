@@ -23,6 +23,4 @@ tokio = { version = "0.2", features = ["fs", "macros", "net", "udp", "time", "si
 cjdns-admin = { path = "../cjdns-admin" }
 cjdns-core = { path = "../cjdns-core" } # cjdns-keys only
 #cjdns-ctrl = { path = "../cjdns-ctrl" }
-#cjdns-hdr = { path = "../cjdns-hdr" }
-
-hex = "0.4" # TODO for debug only, remove when all is done
+cjdns-hdr = { path = "../cjdns-hdr" }
