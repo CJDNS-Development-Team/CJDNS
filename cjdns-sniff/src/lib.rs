@@ -10,6 +10,7 @@ use tokio::net::UdpSocket;
 use cjdns_admin::{cjdns_invoke, ReturnValue};
 pub use cjdns_admin::Connection;
 use cjdns_bytes::{ParseError, SerializeError};
+pub use cjdns_ctrl::CtrlMessage;
 use cjdns_hdr::{DataHeader, RouteHeader};
 pub use cjdns_hdr::ContentType;
 
@@ -25,7 +26,7 @@ pub struct Message {
     pub content_bytes: Option<Vec<u8>>,
     pub raw_bytes: Option<Vec<u8>>,
     pub content_benc: Option<()>, //TODO need proper type here - bencode module
-    pub content: Option<()>, //TODO need proper type here - cjdns-ctrl
+    pub content: Option<CtrlMessage>,
 }
 
 impl Sniffer {
@@ -117,16 +118,21 @@ impl Sniffer {
                 /* Bencode.encode(content_benc) */ None //TODO implement when Bencode module is refactored
             }
             Message { route_header: Some(route_header), content: Some(_content), .. } if route_header.is_ctrl => {
-                /* Cjdnsctrl.serialize(msg.content) */ None //TODO implement when cjdns-ctrl is ready
+                if let Some(content) = msg.content {
+                    let content_bytes = content.serialize().map_err(|e| SendError::SerializeError(e))?;
+                    Some(content_bytes)
+                } else {
+                    None
+                }
             }
             Message { content_bytes: Some(content_bytes), .. } => {
-                Some(content_bytes)
+                Some(content_bytes.clone())
             }
             _ => None,
         };
 
         if let Some(content_bytes) = content_bytes {
-            buf.extend_from_slice(content_bytes);
+            buf.extend_from_slice(&content_bytes);
         }
 
         let written = self.socket.send_to(&buf, dest).await.map_err(|e| SendError::SocketError(e))?;
@@ -201,16 +207,11 @@ impl Sniffer {
 
         // Control message content
         let content = if content_benc.is_none() && is_ctrl {
-            /* -- TODO fix this when cjdns-ctrl is available
-            try {
-                out.content = Cjdnsctrl.parse(dataBytes);
-            } catch (e) {
-                out.content = {
-                    error: e.message
-                };
+            if let Some(data_bytes) = data_bytes {
+                Some(CtrlMessage::parse(data_bytes)?)
+            } else {
+                None
             }
-            */
-            Some(())
         } else {
             None
         };
