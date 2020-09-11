@@ -1,9 +1,11 @@
+//! Parsing and serialization helpers.
+
 use std::convert::TryFrom;
 
 type Result<T> = std::result::Result<T, ()>;
 
-pub(crate) struct Reader<'a>(&'a [u8]);
-pub(crate) struct Writer(Vec<u8>);
+pub struct Reader<'a>(&'a [u8]);
+pub struct Writer(Vec<u8>);
 
 impl<'a> Reader<'a> {
     pub fn new(data: &'a [u8]) -> Self {

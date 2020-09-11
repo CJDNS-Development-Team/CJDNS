@@ -34,15 +34,13 @@
 //! ```
 //!
 
+pub use cjdns_bytes::{ParseError, SerializeError};
 pub use content_type::ContentType;
 pub use data_header::DataHeader;
 pub use route_header::RouteHeader;
 pub use switch_header::SwitchHeader;
-pub use errors::{ParseError, SerializeError};
 
 mod content_type;
 mod data_header;
-mod errors;
 mod route_header;
 mod switch_header;
-mod utils;

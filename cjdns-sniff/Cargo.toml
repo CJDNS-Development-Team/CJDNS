@@ -21,6 +21,7 @@ thiserror = "1.0"
 tokio = { version = "0.2", features = ["fs", "macros", "net", "udp", "time", "signal"] }
 
 cjdns-admin = { path = "../cjdns-admin" }
+cjdns-bytes = { path = "../cjdns-bytes" }
 cjdns-core = { path = "../cjdns-core" } # cjdns-keys only
-#cjdns-ctrl = { path = "../cjdns-ctrl" }
+cjdns-ctrl = { path = "../cjdns-ctrl" }
 cjdns-hdr = { path = "../cjdns-hdr" }

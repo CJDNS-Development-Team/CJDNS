@@ -1,0 +1,13 @@
+[package]
+name = "cjdns-ctrl"
+version = "0.1.0"
+authors = [
+    "Sabaun Taraki <taraki.sabaun.rl@gmail.com>"
+]
+edition = "2018"
+license = "GPL-3.0"
+description = "Library for parsing/serializing CTRL messages"
+
+[dependencies]
+cjdns-bytes = { path = "../cjdns-bytes" }
+cjdns-core = { path = "../cjdns-core" } # cjdns-keys only

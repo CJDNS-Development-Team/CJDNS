@@ -137,6 +137,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "cjdns-bytes"
+version = "0.1.0"
+dependencies = [
+ "thiserror 1.0.20 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "cjdns-core"
 version = "0.1.0"
 dependencies = [
@@ -151,13 +158,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "cjdns-ctrl"
+version = "0.1.0"
+dependencies = [
+ "cjdns-bytes 0.1.0",
+ "cjdns-core 0.1.0",
+]
+
+[[package]]
 name = "cjdns-hdr"
 version = "0.1.0"
 dependencies = [
+ "cjdns-bytes 0.1.0",
  "cjdns-core 0.1.0",
  "hex 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "num_enum 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "thiserror 1.0.20 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -167,7 +182,9 @@ dependencies = [
  "anyhow 1.0.32 (registry+https://github.com/rust-lang/crates.io-index)",
  "bendy 0.3.2 (git+https://github.com/CJDNS-Development-Team/bendy-cjdns?tag=v0.3.2-cjdns)",
  "cjdns-admin 0.1.0",
+ "cjdns-bytes 0.1.0",
  "cjdns-core 0.1.0",
+ "cjdns-ctrl 0.1.0",
  "cjdns-hdr 0.1.0",
  "clap 3.0.0-beta.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",

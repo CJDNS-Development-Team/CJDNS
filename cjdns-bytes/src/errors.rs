@@ -1,3 +1,5 @@
+//! Parsing and serialization errors.
+
 use thiserror::Error;
 
 #[derive(Error, Copy, Clone, PartialEq, Eq, Debug)]

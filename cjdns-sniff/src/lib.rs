@@ -9,7 +9,8 @@ use tokio::net::UdpSocket;
 
 use cjdns_admin::{cjdns_invoke, ReturnValue};
 pub use cjdns_admin::Connection;
-use cjdns_hdr::{DataHeader, ParseError, RouteHeader, SerializeError};
+use cjdns_bytes::{ParseError, SerializeError};
+use cjdns_hdr::{DataHeader, RouteHeader};
 pub use cjdns_hdr::ContentType;
 
 pub struct Sniffer {

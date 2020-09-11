@@ -9,9 +9,9 @@ license = "GPL-3.0"
 description = "Library for parsing and serializing cjdns route and data headers"
 
 [dependencies]
-thiserror = "1.0"
 num_enum = "0.5"
-cjdns-core = { path = "../cjdns-core" }
+cjdns-bytes = { path = "../cjdns-bytes" }
+cjdns-core = { path = "../cjdns-core" } # cjdns-keys only
 
 [dev-dependencies]
 hex = "0.4"

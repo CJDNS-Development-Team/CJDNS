@@ -1,11 +1,8 @@
 //! Logic for cjdns switch header parsing and serialization
 
+use cjdns_bytes::{ParseError, SerializeError};
+use cjdns_bytes::{Reader, Writer};
 use cjdns_core::RoutingLabel;
-
-use crate::{
-    errors::{ParseError, SerializeError},
-    utils::{Reader, Writer},
-};
 
 /// Deserialized switch header struct.
 #[derive(Debug, Clone, PartialEq, Eq)]

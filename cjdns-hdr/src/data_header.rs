@@ -1,10 +1,9 @@
 //! Logic for parsing and serializing the data header, providing type of content
 
-use crate::{
-    content_type::ContentType,
-    errors::{ParseError, SerializeError},
-    utils::{Reader, Writer},
-};
+use cjdns_bytes::{ParseError, SerializeError};
+use cjdns_bytes::{Reader, Writer};
+
+use crate::content_type::ContentType;
 
 /// Deserialized data header struct.
 #[derive(Debug, Clone, PartialEq, Eq)]

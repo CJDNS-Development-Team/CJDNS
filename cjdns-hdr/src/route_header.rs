@@ -2,13 +2,11 @@
 
 use std::convert::TryFrom;
 
-use cjdns_core::keys::{BytesRepr, CJDNSPublicKey, CJDNS_IP6};
+use cjdns_bytes::{ParseError, SerializeError};
+use cjdns_bytes::{Reader, Writer};
+use cjdns_core::keys::{BytesRepr, CJDNS_IP6, CJDNSPublicKey};
 
-use crate::{
-    errors::{ParseError, SerializeError},
-    switch_header::SwitchHeader,
-    utils::{Reader, Writer},
-};
+use crate::switch_header::SwitchHeader;
 
 const ZERO_PUBLIC_KEY_BYTES: [u8; 32] = [0; 32];
 const ZERO_IP6_BYTES: [u8; 16] = [0; 16];
