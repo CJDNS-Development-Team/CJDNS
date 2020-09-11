@@ -1,8 +1,8 @@
 //! Logic for parsing and serializing the data header, providing type of content
 
 use crate::{
-    ContentType,
-    errors::{ParseError, ParseResult, SerializeError, SerializeResult},
+    content_type::ContentType,
+    errors::{ParseError, SerializeError},
     utils::{Reader, Writer},
 };
 
@@ -28,7 +28,7 @@ impl DataHeader {
     /// Content number is a u16 number which is a numerical representation of [ContentType](todo) variant.
     /// If content number is not defined in `ContentType`, default `ContentType` variant will be used.
     /// *Note*: default `ContentType` variant is a temporary solution.
-    pub fn parse(data: &[u8]) -> ParseResult<Self> {
+    pub fn parse(data: &[u8]) -> Result<Self, ParseError> {
         if data.len() != Self::SIZE {
             return Err(ParseError::InvalidPacketSize);
         }
@@ -57,7 +57,7 @@ impl DataHeader {
     /// Also serialization fails if no suitable 16-bit content type code was found.
     ///
     /// If `DataHeader` was instantiated with 0 `version`, header will be parsed with version equal to [current version](todo).
-    pub fn serialize(&self) -> SerializeResult<Vec<u8>> {
+    pub fn serialize(&self) -> Result<Vec<u8>, SerializeError> {
         if self.version > 15 {
             return Err(SerializeError::InvalidInvariant("version value can't take more than 4 bits"));
         }

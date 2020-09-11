@@ -5,7 +5,7 @@ use std::convert::TryFrom;
 use cjdns_core::keys::{BytesRepr, CJDNSPublicKey, CJDNS_IP6};
 
 use crate::{
-    errors::{ParseError, ParseResult, SerializeError, SerializeResult},
+    errors::{ParseError, SerializeError},
     switch_header::SwitchHeader,
     utils::{Reader, Writer},
 };
@@ -43,7 +43,7 @@ impl RouteHeader {
     /// * if ip6 derived from public key isn't equal to ip6 created from input bytes;
     /// * if "[is_ctrl](struct.RouteHeader.html#structfield.is_ctrl) - [public_key](struct.RouteHeader.html#structfield.public_key) - [ip6](struct.RouteHeader.html#structfield.ip6)" invariant is not met;
     /// * if flag for message type states not control, nor incoming frame.
-    pub fn parse(data: &[u8]) -> ParseResult<Self> {
+    pub fn parse(data: &[u8]) -> Result<Self, ParseError> {
         if data.len() != Self::SIZE {
             return Err(ParseError::InvalidPacketSize);
         }
@@ -112,7 +112,7 @@ impl RouteHeader {
     /// `RouteHeader` type can be instantiated directly, without using [parse](struct.RouteHeader.html#method.parse) method.
     /// That's why serialization can result in errors. For example, if invariants stated in [parse](struct.RouteHeader.html#method.parse) method are not met or
     /// switch header serialization failed, then route header serialization ends up with an error.
-    pub fn serialize(&self) -> SerializeResult<Vec<u8>> {
+    pub fn serialize(&self) -> Result<Vec<u8>, SerializeError> {
         // checking invariants, because `RouteHeader` can be instantiated directly
         if self.is_ctrl == self.is_incoming {
             return Err(SerializeError::InvalidInvariant("message must be either control or incoming"));

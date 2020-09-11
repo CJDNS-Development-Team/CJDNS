@@ -3,7 +3,7 @@
 use cjdns_core::RoutingLabel;
 
 use crate::{
-    errors::{ParseError, ParseResult, SerializeError, SerializeResult},
+    errors::{ParseError, SerializeError},
     utils::{Reader, Writer},
 };
 
@@ -35,7 +35,7 @@ impl SwitchHeader {
     /// `SwitchHeader` bytes have a following structure: 8 bytes for routing label, one byte for congestion value and suppress error flag, also a byte
     /// for version and label shift values and 2 bytes for penalty value. Congestion value always takes 7 bits. Last bit of congestion byte is suppress error flag.
     /// Version value takes last 2 bits of a sharing with label shift value byte. First 6 bits of the byte "belong" to `label_shift`.
-    pub fn parse(data: &[u8]) -> ParseResult<Self> {
+    pub fn parse(data: &[u8]) -> Result<Self, ParseError> {
         if data.len() != Self::SIZE {
             return Err(ParseError::InvalidPacketSize);
         }
@@ -77,7 +77,7 @@ impl SwitchHeader {
     ///
     /// If `SwitchHeader` was instantiated with 0 `version`, header will be parsed with version
     /// equal to [SwitchHeader::CURRENT_VERSION](struct.SwitchHeader.html#associatedconstant.CURRENT_VERSION).
-    pub fn serialize(&self) -> SerializeResult<Vec<u8>> {
+    pub fn serialize(&self) -> Result<Vec<u8>, SerializeError> {
         // All these checks are required, because it's possible to instantiate `SwitchHeader` directly
         if self.version != Self::CURRENT_VERSION && self.version != 0 {
             return Err(SerializeError::UnrecognizedData);

@@ -23,6 +23,3 @@ pub enum SerializeError {
     #[error("Received invalid data: {0}")]
     InvalidData(&'static str),
 }
-
-pub(crate) type ParseResult<T> = std::result::Result<T, ParseError>;
-pub(crate) type SerializeResult<T> = std::result::Result<T, SerializeError>;
