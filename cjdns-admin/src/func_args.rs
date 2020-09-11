@@ -58,7 +58,7 @@ fn test_args_ser() -> Result<(), Box<dyn std::error::Error>> {
     args.add("boo".to_string(), ArgValue::Int(42));
     args.add("zoo".to_string(), ArgValue::Int(-42));
 
-    let benc = String::from_utf8(bendy::serde::to_bytes(&args)?)?;
+    let benc = String::from_utf8(bencode::to_bytes(&args)?)?;
     assert_eq!(benc, "d3:booi42e3:foo3:bar3:zooi-42ee");
 
     Ok(())

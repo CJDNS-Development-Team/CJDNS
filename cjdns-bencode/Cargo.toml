@@ -1,15 +1,16 @@
 [package]
-name = "cjdns-admin"
+name = "cjdns-bencode"
 version = "0.1.0"
 authors = [
     "Alex Kordys <a.kordys@mixbytes.io>"
 ]
 edition = "2018"
 license = "GPL-3.0"
-description = "cjdns node admin lib & binary"
+description = "cjdns Bencode library"
 
 [dependencies]
 anyhow = "1.0"
+bendy = { git = "https://github.com/CJDNS-Development-Team/bendy-cjdns", tag = "v0.3.2-cjdns", features = ["std", "serde"] }
 dirs = "3.0"
 hex = "0.4"
 rand = "0.7"
@@ -18,6 +19,3 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 sodiumoxide = "0.2"
 thiserror = "1.0"
-tokio = { version = "0.2", features = ["fs", "net", "macros", "time"] }
-
-cjdns-bencode = { path = "../cjdns-bencode" }

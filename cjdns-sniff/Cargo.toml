@@ -10,7 +10,6 @@ description = "Tools for dumping and injecting cjdns traffic"
 
 [dependencies]
 anyhow = "1.0"
-bendy = { git = "https://github.com/CJDNS-Development-Team/bendy-cjdns", tag = "v0.3.2-cjdns", features = ["std", "serde"] } # bencode support
 clap = { version = "3.0.0-beta.1", default-features = false, features = [ "std", "derive" ] }
 env_logger = "0.7"
 log = { version = "0.4", features = ["max_level_trace", "release_max_level_info"] }
@@ -21,6 +20,7 @@ thiserror = "1.0"
 tokio = { version = "0.2", features = ["fs", "macros", "net", "udp", "time", "signal"] }
 
 cjdns-admin = { path = "../cjdns-admin" }
+cjdns-bencode = { path = "../cjdns-bencode" }
 cjdns-bytes = { path = "../cjdns-bytes" }
 cjdns-core = { path = "../cjdns-core" } # cjdns-keys only
 cjdns-ctrl = { path = "../cjdns-ctrl" }

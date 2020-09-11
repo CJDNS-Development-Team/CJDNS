@@ -2,6 +2,8 @@
 
 #![deny(missing_docs)]
 
+extern crate cjdns_bencode as bencode;
+
 pub use crate::config::Opts;
 pub use crate::conn::Connection;
 pub use crate::errors::Error;
