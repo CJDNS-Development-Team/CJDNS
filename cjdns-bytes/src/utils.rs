@@ -41,6 +41,15 @@ impl<'a> Reader<'a> {
         Ok(bytes_32_array)
     }
 
+    pub fn read_all_pure(&self) -> &[u8] {
+        self.0
+    }
+
+    pub fn read_all_mut(&mut self) -> Result<&[u8]> {
+        let bytes = self.take_bytes(self.len()).map_err(|_| unreachable!("attempting to read data more than slice have"))?;
+        Ok(bytes)
+    }
+
     pub fn take_bytes(&mut self, count: usize) -> Result<&[u8]> {
         if self.len() < count {
             return Err(());
