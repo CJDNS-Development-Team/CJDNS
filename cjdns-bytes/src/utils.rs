@@ -45,9 +45,8 @@ impl<'a> Reader<'a> {
         self.0
     }
 
-    pub fn read_all_mut(&mut self) -> Result<&[u8]> {
-        let bytes = self.take_bytes(self.len()).map_err(|_| unreachable!("attempting to read data more than slice have"))?;
-        Ok(bytes)
+    pub fn read_all_mut(&mut self) -> &[u8] {
+        self.take_bytes(self.len()).expect("attempting to read data more than slice have")
     }
 
     pub fn take_bytes(&mut self, count: usize) -> Result<&[u8]> {
