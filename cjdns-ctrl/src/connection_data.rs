@@ -59,6 +59,7 @@ lazy_static! {
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 struct ConnectionMessageMeta {
     magic: u32,
+    // Todo unused in js
     min_size: u8,
     max_size: u16,
     header_size: u8,
@@ -75,11 +76,13 @@ impl ConnectionData {
         }
         let version = reader.read_u32_be().expect("invalid message size");
         let (key, content) = {
-            let key = if conn_type == CtrlMessageType::KeyPing || conn_type == CtrlMessageType::KeyPong {
-                let key_bytes = reader.read_array_32().expect("invalid message size");
-                Some(CJDNSPublicKey::from(key_bytes))
-            } else {
-                None
+            // todo 3. Which style is better: if/ if let / match
+            let key = match conn_type {
+                CtrlMessageType::KeyPing | CtrlMessageType::KeyPong => {
+                    let key_bytes = reader.read_array_32().expect("invalid message size");
+                    Some(CJDNSPublicKey::from(key_bytes))
+                },
+                _ => None
             };
             let content = reader.read_all_mut().to_vec();
             (key, content)

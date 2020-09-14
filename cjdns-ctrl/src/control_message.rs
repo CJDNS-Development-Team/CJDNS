@@ -51,10 +51,7 @@ impl CtrlMessage {
         let mut reader = Reader::new(bytes);
         let endian = {
             let encoded_checksum = reader.read_u16_be().expect("invalid message size");
-            let computed_checksum = {
-                let checksum_bytes = reader.read_all_pure();
-                netchecksum::cksum_raw(checksum_bytes)
-            };
+            let computed_checksum = netchecksum::cksum_raw(reader.read_all_pure());
             if encoded_checksum == computed_checksum {
                 ByteOrder::LE
             } else if computed_checksum == BigEndian::read_u16(&encoded_checksum.to_le_bytes()) {
@@ -70,7 +67,7 @@ impl CtrlMessage {
         let raw_data = reader.read_all_mut();
         let msg_data = match msg_type {
             CtrlMessageType::Error => CtrlMessageData::ErrorData(ErrorData::parse(raw_data)?),
-            CtrlMessageType::GetsNodeQ | CtrlMessageType::GetsNodeR => unimplemented!(),
+            CtrlMessageType::GetsNodeQ | CtrlMessageType::GetsNodeR => unimplemented!(), // todo 4 or unreachable? https://github.com/cjdelisle/cjdnsctrl/blob/ec6c8b68aac6cd4fde3011ef1321f776f76d03d0/index.js#L96
             // Ping | Pong | KeyPing | KeyPong
             conn_type => CtrlMessageData::ConnectionData(ConnectionData::parse(raw_data, conn_type)?),
         };
