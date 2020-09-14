@@ -1,22 +1,24 @@
 use num_enum::FromPrimitive;
 
-use cjdns_bytes::{ParseError, Reader};
+use cjdns_bytes::{ParseError, Reader, SerializeError};
 use cjdns_hdr::SwitchHeader;
 
 /// Data for error type messages
+///
+/// `additional` field states for raw data, that is allowed not to be parsed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ErrorData {
     pub err_type: ErrorMessageType,
-    pub switch_header: Option<SwitchHeader>,
-    pub nonce: Option<u32>,
+    pub switch_header: SwitchHeader,
     pub additional: Vec<u8>,
 }
 
+/// Concrete types of error for control error message
 #[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive)]
 #[repr(u32)]
 pub enum ErrorMessageType {
     /// No error, everything is ok.
-    None = 0,
+    None = 0, // todo discuss
     /// The switch label was malformed.
     MalformedAddress,
     /// Packet dropped because link is congested.
@@ -43,27 +45,39 @@ pub enum ErrorMessageType {
 }
 
 impl ErrorData {
+    /// `ErrorData` minimum size. First 4 bytes are for error type code.
+    pub const MIN_SIZE: usize = 4 + SwitchHeader::SIZE;
+
+    /// Parses raw bytes into `ErrorData`
+    ///
+    /// Result in error in several situations:
+    /// * input bytes length is less than `ErrorData::MIN_SIZE`
+    /// * switch header parsing failed
     pub fn parse(bytes: &[u8]) -> Result<Self, ParseError> {
-        // todo 1 check length?
+        if bytes.len() < Self::MIN_SIZE {
+            return Err(ParseError::InvalidPacketSize);
+        }
         let mut reader = Reader::new(bytes);
         let err_type = {
             let error_type_code = reader.read_u32_be().expect("invalid message size");
             ErrorMessageType::from_u32(error_type_code)
         };
-        let switch_header = if let Some(bytes) = reader.take_bytes(SwitchHeader::SIZE).ok() {
-            Some(SwitchHeader::parse(bytes)?)
-        } else {
-            None
+        let switch_header = {
+            let switch_header_bytes = reader.take_bytes(SwitchHeader::SIZE).expect("invalid message size");
+            SwitchHeader::parse(switch_header_bytes)?
         };
-        // todo 2 https://github.com/cjdelisle/cjdnsctrl/blob/ec6c8b68aac6cd4fde3011ef1321f776f76d03d0/ErrMsg.js#L96
-        let nonce = reader.read_u32_be().ok();
+        // Originally nonce was parsed after switch header, but some protocol changes were applied in 2014.
+        // We live additional as raw data to be parsed into nonce or other stuff later.
         let additional = reader.read_all_mut().to_vec();
         Ok(ErrorData {
             err_type,
             switch_header,
-            nonce,
             additional,
         })
+    }
+
+    pub fn serialize(&self) -> Result<Vec<u8>, SerializeError> {
+        todo!()
     }
 }
 
@@ -88,9 +102,6 @@ mod tests {
     fn test_base() {
         let test_bytes = decode_hex("0000000a62c1d23a648114010379000000012d7c000006c378e071c46aefad3aa295fff396371d10678e9833807de083a4a40da39bf0f68f15c4380afbe92405196242a74bb304a8285088579f94fb01867be2171aa8d2c7b54198a89bbdb80c668e9c05");
         let parsed_err = ErrorData::parse(&test_bytes).expect("invalid error data");
-        // parsed additional bytes
-        // vec![0u8, 0, 6, 195, 120, 224, 113, 196, 106, 239, 173, 58, 162, 149, 255, 243, 150, 55, 29, 16, 103, 142, 152, 51, 128, 125, 224, 131, 164, 164, 13, 163, 155, 240, 246, 143, 21, 196, 56, 10, 251, 233, 36, 5, 25, 98, 66, 167, 75, 179, 4, 168, 40, 80, 136, 87, 159, 148, 251, 1, 134, 123, 226, 23, 26, 168, 210, 199, 181, 65, 152, 168, 155, 189, 184, 12, 102, 142, 156, 5];
         assert_eq!(parsed_err.err_type, ErrorMessageType::ReturnPathInvalid);
-        assert_eq!(parsed_err.nonce, Some(77180));
     }
 }

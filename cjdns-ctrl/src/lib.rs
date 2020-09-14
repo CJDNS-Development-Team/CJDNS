@@ -1,6 +1,4 @@
 //! Parsing/serializing CTRL messages
-#[macro_use]
-extern crate lazy_static;
 
 mod connection_data;
 mod control_message;

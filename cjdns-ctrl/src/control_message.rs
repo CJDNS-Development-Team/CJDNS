@@ -1,22 +1,25 @@
 use std::convert::TryFrom;
+use std::mem::size_of;
 
 use byteorder::{BigEndian, ByteOrder as BO};
-use num_enum::{TryFromPrimitive, TryFromPrimitiveError};
+use num_enum::{IntoPrimitive, TryFromPrimitive, TryFromPrimitiveError};
 
-use cjdns_bytes::{ParseError, Reader, SerializeError};
+use cjdns_bytes::{ParseError, Reader, SerializeError, Writer};
 use cjdns_core::keys::CJDNSPublicKey;
 use netchecksum;
 
-use crate::{connection_data::ConnectionData, error_data::ErrorData};
+use crate::{connection_data::PingData, error_data::ErrorData};
 
+/// Serialized control message
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CtrlMessage {
     pub msg_type: CtrlMessageType,
     pub msg_data: CtrlMessageData,
-    pub endian: ByteOrder,
+    pub endianness: ByteOrder,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, TryFromPrimitive)]
+/// Control message type, which is considered as message header
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, TryFromPrimitive, IntoPrimitive)]
 #[repr(u16)]
 pub enum CtrlMessageType {
     Error = 2,
@@ -28,12 +31,14 @@ pub enum CtrlMessageType {
     GetsNodeR,
 }
 
+/// Control message serialized body data
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CtrlMessageData {
-    ConnectionData(ConnectionData),
+    ConnectionData(PingData),
     ErrorData(ErrorData),
 }
 
+/// Control message checksum endianness
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum ByteOrder {
     LE,
@@ -41,13 +46,20 @@ pub enum ByteOrder {
 }
 
 impl CtrlMessage {
-    // todo 1 does not comply with C impl https://github.com/cjdelisle/cjdnsctrl/blob/ec6c8b68aac6cd4fde3011ef1321f776f76d03d0/index.js#L40
-    // pub const MIN_SIZE: usize = Self::HEADER_SIZE + 40; // keyping is 40, but ping is 8. which consider as smallest?
+    /// Control message header size
     pub const HEADER_SIZE: usize = 4;
 
+    /// Parses raw bytes into `CtrlMessage`.
+    ///
+    /// Result in error in several situations:
+    /// * input bytes length is less then `CtrlMessage::HEADER_SIZE`
+    /// * input data got invalid checksum
+    /// * unrecognized control message type code was parsed
+    /// * control message body parsing methods failed. For more information about this read documentation for corresponding data structs (i.e. `PingData`, `ErrorData`)
     pub fn parse(bytes: &[u8]) -> Result<Self, ParseError> {
-        // TODO 1 check bytes len only for being less than HEADER_SIZE? because other data lengths we could handle in msg data handlers
-        // or https://github.com/cjdelisle/cjdns/blob/77259a49e5bc7ca7bc6dca5bd423e02be563bdc5/wire/Control.h#L213 ? But what to do then if we get ping message
+        if bytes.len() < Self::HEADER_SIZE {
+            return Err(ParseError::InvalidPacketSize);
+        }
         let mut reader = Reader::new(bytes);
         let endian = {
             let encoded_checksum = reader.read_u16_be().expect("invalid message size");
@@ -67,21 +79,70 @@ impl CtrlMessage {
         let raw_data = reader.read_all_mut();
         let msg_data = match msg_type {
             CtrlMessageType::Error => CtrlMessageData::ErrorData(ErrorData::parse(raw_data)?),
-            CtrlMessageType::GetsNodeQ | CtrlMessageType::GetsNodeR => unimplemented!(), // todo 4 or unreachable? https://github.com/cjdelisle/cjdnsctrl/blob/ec6c8b68aac6cd4fde3011ef1321f776f76d03d0/index.js#L96
+            CtrlMessageType::GetsNodeQ | CtrlMessageType::GetsNodeR => todo!(),
             // Ping | Pong | KeyPing | KeyPong
-            conn_type => CtrlMessageData::ConnectionData(ConnectionData::parse(raw_data, conn_type)?),
+            ping_type => CtrlMessageData::ConnectionData(PingData::parse(raw_data, ping_type)?),
         };
-        Ok(CtrlMessage { msg_type, msg_data, endian })
+        Ok(CtrlMessage {
+            msg_type,
+            msg_data,
+            endianness: endian,
+        })
     }
 
     pub fn serialize(&self) -> Result<Vec<u8>, SerializeError> {
-        todo!()
+        let raw_data = match self.msg_type {
+            CtrlMessageType::Error => {
+                let error_data = self.msg_data.extract_error_data().expect("invalid message type");
+                error_data.serialize()?
+            }
+            CtrlMessageType::GetsNodeQ | CtrlMessageType::GetsNodeR => todo!(),
+            // Ping | Pong | KeyPing | KeyPong
+            ping_type => {
+                let conn_data = self.msg_data.extract_connection_data().expect("invalid message type");
+                conn_data.serialize(ping_type)?
+            }
+        };
+        // encoded msg type and msg raw data
+        let data = {
+            let msg_type_bytes = self.msg_type.to_u16();
+            let mut data = Vec::with_capacity(size_of::<u16>() + raw_data.len());
+            data.extend_from_slice(&msg_type_bytes.to_be_bytes());
+            data.extend_from_slice(&raw_data);
+            data
+        };
+        let checksum = netchecksum::cksum_raw(&data);
+        let mut writer = Writer::with_capacity(size_of::<u16>() + data.len());
+        writer.write_u16_be(checksum);
+        writer.write_slice(&data);
+
+        Ok(writer.into_vec())
     }
 }
 
 impl CtrlMessageType {
     fn from_u16(code: u16) -> Result<CtrlMessageType, ()> {
         CtrlMessageType::try_from(code).map_err(|_| ())
+    }
+
+    fn to_u16(self) -> u16 {
+        self.into()
+    }
+}
+
+impl CtrlMessageData {
+    fn extract_error_data(&self) -> Option<&ErrorData> {
+        match self {
+            Self::ErrorData(data) => Some(data),
+            _ => None,
+        }
+    }
+
+    fn extract_connection_data(&self) -> Option<&PingData> {
+        match self {
+            Self::ConnectionData(data) => Some(data),
+            _ => None,
+        }
     }
 }
 
@@ -106,12 +167,12 @@ mod tests {
             parsed_msg,
             CtrlMessage {
                 msg_type: CtrlMessageType::Ping,
-                msg_data: CtrlMessageData::ConnectionData(ConnectionData {
+                msg_data: CtrlMessageData::ConnectionData(PingData {
                     version: 18,
                     key: None,
                     content: decode_hex("4d160b1eee2929e12e19a3b1")
                 }),
-                endian: ByteOrder::LE
+                endianness: ByteOrder::LE
             }
         );
     }
@@ -124,12 +185,12 @@ mod tests {
             parsed_msg,
             CtrlMessage {
                 msg_type: CtrlMessageType::KeyPing,
-                msg_data: CtrlMessageData::ConnectionData(ConnectionData {
+                msg_data: CtrlMessageData::ConnectionData(PingData {
                     version: 18,
                     key: CJDNSPublicKey::try_from("3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k".to_string()).ok(),
                     content: decode_hex("02e29842b42aedb6bce2ead3")
                 }),
-                endian: ByteOrder::LE
+                endianness: ByteOrder::LE
             }
         );
     }
@@ -142,9 +203,9 @@ mod tests {
         let test_bytes = decode_hex(error_hex);
         let parsed_msg = CtrlMessage::parse(&test_bytes).expect("invalid message data");
         let parsed_additional = vec![
-            0u8, 0, 6, 195, 120, 224, 113, 196, 106, 239, 173, 58, 162, 149, 255, 243, 150, 55, 29, 16, 103, 142, 152, 51, 128, 125, 224, 131, 164, 164, 13,
-            163, 155, 240, 246, 143, 21, 196, 56, 10, 251, 233, 36, 5, 25, 98, 66, 167, 75, 179, 4, 168, 40, 80, 136, 87, 159, 148, 251, 1, 134, 123, 226, 23,
-            26, 168, 210, 199, 181, 65, 152, 168, 155, 189, 184, 12, 102, 142, 156, 5,
+            0u8, 1, 45, 124, 0, 0, 6, 195, 120, 224, 113, 196, 106, 239, 173, 58, 162, 149, 255, 243, 150, 55, 29, 16, 103, 142, 152, 51, 128, 125, 224, 131,
+            164, 164, 13, 163, 155, 240, 246, 143, 21, 196, 56, 10, 251, 233, 36, 5, 25, 98, 66, 167, 75, 179, 4, 168, 40, 80, 136, 87, 159, 148, 251, 1, 134,
+            123, 226, 23, 26, 168, 210, 199, 181, 65, 152, 168, 155, 189, 184, 12, 102, 142, 156, 5,
         ];
         assert_eq!(
             parsed_msg,
@@ -152,18 +213,17 @@ mod tests {
                 msg_type: CtrlMessageType::Error,
                 msg_data: CtrlMessageData::ErrorData(ErrorData {
                     err_type: ErrorMessageType::ReturnPathInvalid,
-                    switch_header: Some(SwitchHeader {
+                    switch_header: SwitchHeader {
                         label: RoutingLabel::<u64>::try_from("62c1.d23a.6481.1401").expect("invalid routing label string"),
                         congestion: 1,
                         suppress_errors: true,
                         version: 1,
                         label_shift: 57,
                         penalty: 0
-                    }),
-                    nonce: Some(77180),
+                    },
                     additional: parsed_additional
                 }),
-                endian: ByteOrder::LE
+                endianness: ByteOrder::LE
             }
         );
     }
