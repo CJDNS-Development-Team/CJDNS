@@ -91,6 +91,7 @@ impl CtrlMessage {
     }
 
     pub fn serialize(&self) -> Result<Vec<u8>, SerializeError> {
+        // todo 1 need more invariant checks, because of access to error data and ping data
         let raw_data = match self.msg_type {
             CtrlMessageType::Error => {
                 let error_data = self.msg_data.extract_error_data().expect("invalid message type");

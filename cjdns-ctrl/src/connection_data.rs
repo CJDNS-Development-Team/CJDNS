@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use cjdns_bytes::{ParseError, Reader, SerializeError};
-use cjdns_core::keys::CJDNSPublicKey;
+use cjdns_bytes::{ParseError, Reader, SerializeError, Writer};
+use cjdns_core::keys::{BytesRepr, CJDNSPublicKey};
 
 use crate::control_message::CtrlMessageType;
 
@@ -48,13 +48,25 @@ impl PingData {
         Ok(PingData { version, key, content })
     }
 
-    pub fn serialize(&self, conn_type: CtrlMessageType) -> Result<Vec<u8>, SerializeError> {
-        todo!()
-        // if self.version == 0 {
-        //     return Err(SerializeError::InvalidData("version should be greater than 0"));
-        // }
-        // // check key type
-        // let conn_magic = TYPE_TO_META.get(&conn_type).expect("unknown connection type").magic;
+    // todo 2 ask alex if it is ok not to check conn type? may be it is ok to use `&CtrlMessage{ msg_type, ..}: &CtrlMessage` instead of `CtrlMessageType`
+    // todo 1 enough invariant checks?
+    pub fn serialize(&self, ping: CtrlMessageType) -> Result<Vec<u8>, SerializeError> {
+        if self.version == 0 {
+            return Err(SerializeError::InvalidData("version should be greater than 0"));
+        }
+        let ping_magic = Self::ping_to_magic(ping);
+
+        // either min size or min size plus size of cjdns public key
+        let writer_size = self.key.as_ref().map_or(Self::MIN_SIZE, |_| Self::MIN_SIZE + 32);
+        let mut writer = Writer::with_capacity(writer_size);
+        writer.write_u32_be(ping_magic);
+        writer.write_u32_be(self.version);
+        if let Some(key) = &self.key {
+            writer.write_slice(&key.bytes());
+        }
+        writer.write_slice(&self.content);
+
+        Ok(writer.into_vec())
     }
 
     fn ping_to_magic(ping: CtrlMessageType) -> u32 {
