@@ -1,6 +1,8 @@
-use num_enum::FromPrimitive;
+use std::mem::size_of;
 
-use cjdns_bytes::{ParseError, Reader, SerializeError};
+use num_enum::{FromPrimitive, IntoPrimitive};
+
+use cjdns_bytes::{ParseError, Reader, SerializeError, Writer};
 use cjdns_hdr::SwitchHeader;
 
 /// Data for error type messages
@@ -14,7 +16,7 @@ pub struct ErrorData {
 }
 
 /// Concrete types of error for control error message
-#[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, FromPrimitive, IntoPrimitive)]
 #[repr(u32)]
 pub enum ErrorMessageType {
     /// No error, everything is ok.
@@ -77,13 +79,28 @@ impl ErrorData {
     }
 
     pub fn serialize(&self) -> Result<Vec<u8>, SerializeError> {
-        todo!()
+        if self.err_type == ErrorMessageType::Other {
+            return Err(SerializeError::InvalidData("unrecognized error type"));
+        }
+        let err_type_code = self.err_type.to_u32();
+        let switch_header_bytes = self.switch_header.serialize()?;
+
+        let mut writer = Writer::with_capacity(size_of::<u32>() + SwitchHeader::SIZE + self.additional.len());
+        writer.write_u32_be(err_type_code);
+        writer.write_slice(&switch_header_bytes);
+        writer.write_slice(&self.additional);
+
+        Ok(writer.into_vec())
     }
 }
 
 impl ErrorMessageType {
     fn from_u32(code: u32) -> ErrorMessageType {
         ErrorMessageType::from_primitive(code)
+    }
+
+    fn to_u32(self) -> u32 {
+        u32::from(self)
     }
 }
 
@@ -102,6 +119,8 @@ mod tests {
     fn test_base() {
         let test_bytes = decode_hex("0000000a62c1d23a648114010379000000012d7c000006c378e071c46aefad3aa295fff396371d10678e9833807de083a4a40da39bf0f68f15c4380afbe92405196242a74bb304a8285088579f94fb01867be2171aa8d2c7b54198a89bbdb80c668e9c05");
         let parsed_err = ErrorData::parse(&test_bytes).expect("invalid error data");
+        let serialized_err = parsed_err.serialize().expect("invalid error data");
         assert_eq!(parsed_err.err_type, ErrorMessageType::ReturnPathInvalid);
+        assert_eq!(serialized_err, test_bytes);
     }
 }

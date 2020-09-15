@@ -164,6 +164,7 @@ mod tests {
     fn test_ping() {
         let test_bytes = decode_hex("a2e5000309f91102000000124d160b1eee2929e12e19a3b1");
         let parsed_msg = CtrlMessage::parse(&test_bytes).expect("invalid message data");
+        let serialized_msg = parsed_msg.serialize().expect("invalid message data");
         assert_eq!(
             parsed_msg,
             CtrlMessage {
@@ -176,12 +177,14 @@ mod tests {
                 endianness: ByteOrder::LE
             }
         );
+        assert_eq!(serialized_msg, test_bytes);
     }
 
     #[test]
     fn test_key_ping() {
         let test_bytes = decode_hex("994b00050123456700000012a331ebbed8d92ac03b10efed3e389cd0c6ec7331a72dbde198476c5eb4d14a1f02e29842b42aedb6bce2ead3");
         let parsed_msg = CtrlMessage::parse(&test_bytes).expect("invalid message data");
+        let serialized_msg = parsed_msg.serialize().expect("invalid message data");
         assert_eq!(
             parsed_msg,
             CtrlMessage {
@@ -194,6 +197,7 @@ mod tests {
                 endianness: ByteOrder::LE
             }
         );
+        assert_eq!(serialized_msg, test_bytes);
     }
 
     #[test]
@@ -208,6 +212,7 @@ mod tests {
             164, 164, 13, 163, 155, 240, 246, 143, 21, 196, 56, 10, 251, 233, 36, 5, 25, 98, 66, 167, 75, 179, 4, 168, 40, 80, 136, 87, 159, 148, 251, 1, 134,
             123, 226, 23, 26, 168, 210, 199, 181, 65, 152, 168, 155, 189, 184, 12, 102, 142, 156, 5,
         ];
+        let serialized_msg = parsed_msg.serialize().expect("invalid message data");
         assert_eq!(
             parsed_msg,
             CtrlMessage {
@@ -227,5 +232,6 @@ mod tests {
                 endianness: ByteOrder::LE
             }
         );
+        assert_eq!(serialized_msg, test_bytes);
     }
 }

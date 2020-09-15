@@ -98,28 +98,32 @@ mod tests {
     #[test]
     fn test_ping() {
         let test_bytes = decode_hex("09f91102000000124d160b1eee2929e12e19a3b1");
-        let parsed_conn = PingData::parse(&test_bytes, CtrlMessageType::Ping).expect("invalid conn data");
+        let parsed_ping = PingData::parse(&test_bytes, CtrlMessageType::Ping).expect("invalid ping data");
+        let serialized_ping = parsed_ping.serialize(CtrlMessageType::Ping).expect("invalid ping data");
         assert_eq!(
-            parsed_conn,
+            parsed_ping,
             PingData {
                 version: 18,
                 key: None,
                 content: decode_hex("4d160b1eee2929e12e19a3b1")
             }
-        )
+        );
+        assert_eq!(serialized_ping, test_bytes);
     }
 
     #[test]
     fn test_key_ping() {
         let test_bytes = decode_hex("0123456700000012a331ebbed8d92ac03b10efed3e389cd0c6ec7331a72dbde198476c5eb4d14a1f02e29842b42aedb6bce2ead3");
-        let parsed_conn = PingData::parse(&test_bytes, CtrlMessageType::KeyPing).expect("invalid conn data");
+        let parsed_ping = PingData::parse(&test_bytes, CtrlMessageType::KeyPing).expect("invalid conn data");
+        let serialized_ping = parsed_ping.serialize(CtrlMessageType::KeyPing).expect("invalid conn data");
         assert_eq!(
-            parsed_conn,
+            parsed_ping,
             PingData {
                 version: 18,
                 key: CJDNSPublicKey::try_from("3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k".to_string()).ok(),
                 content: decode_hex("02e29842b42aedb6bce2ead3")
             }
-        )
+        );
+        assert_eq!(serialized_ping, test_bytes);
     }
 }
