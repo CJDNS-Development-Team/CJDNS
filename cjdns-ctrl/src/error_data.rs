@@ -55,6 +55,7 @@ impl ErrorData {
     /// Result in error in several situations:
     /// * input bytes length is less than `ErrorData::MIN_SIZE`
     /// * switch header parsing failed
+    /// * received error type has zero code, which is considered as `None` error.
     pub fn parse(bytes: &[u8]) -> Result<Self, ParseError> {
         if bytes.len() < Self::MIN_SIZE {
             return Err(ParseError::InvalidPacketSize);
@@ -86,7 +87,7 @@ impl ErrorData {
     ///
     /// `ErrorData` type can be instantiated directly, without using `parse` method.
     /// That's why serialization can result in errors in several situations:
-    /// * instance error type is unrecognized
+    /// * instance error type has a `Unrecognized` or `None` type
     /// * switch header serialization failed
     pub fn serialize(&self) -> Result<Vec<u8>, SerializeError> {
         if self.err_type == ErrorMessageType::Unrecognized || self.err_type == ErrorMessageType::None {
