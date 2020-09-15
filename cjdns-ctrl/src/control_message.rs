@@ -1,14 +1,12 @@
 use std::convert::TryFrom;
 use std::mem::size_of_val;
 
-use byteorder::{BigEndian, ByteOrder as BO};
-use num_enum::{IntoPrimitive, TryFromPrimitive, TryFromPrimitiveError};
+use num_enum::{IntoPrimitive, TryFromPrimitive};
 
 use cjdns_bytes::{ParseError, Reader, SerializeError, Writer};
-use cjdns_core::keys::CJDNSPublicKey;
 use netchecksum;
 
-use crate::{ping_data::PingData, error_data::ErrorData};
+use crate::{PingData, ErrorData};
 
 /// Serialized control message
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,7 +16,7 @@ pub struct CtrlMessage {
 }
 
 /// Control message type, which is considered as message header
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, TryFromPrimitive, IntoPrimitive)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, TryFromPrimitive, IntoPrimitive)]
 #[repr(u16)]
 pub enum CtrlMessageType {
     Error = 2,
@@ -33,7 +31,7 @@ pub enum CtrlMessageType {
 /// Control message serialized body data
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CtrlMessageData {
-    ConnectionData(PingData),
+    PingData(PingData),
     ErrorData(ErrorData),
 }
 
@@ -59,8 +57,7 @@ impl CtrlMessage {
         {
             let encoded_checksum = reader.read_u16_be().expect("invalid message size");
             let computed_checksum = netchecksum::cksum_raw(reader.read_all_pure());
-            // todo as alex if it's ok to use external crate only for this
-            if encoded_checksum != computed_checksum && computed_checksum != BigEndian::read_u16(&encoded_checksum.to_le_bytes()) {
+            if computed_checksum != encoded_checksum && computed_checksum != encoded_checksum.to_be() {
                 return Err(ParseError::InvalidData("invalid checksum"));
             }
         }
@@ -73,7 +70,7 @@ impl CtrlMessage {
             CtrlMessageType::Error => CtrlMessageData::ErrorData(ErrorData::parse(raw_data)?),
             CtrlMessageType::GetsNodeQ | CtrlMessageType::GetsNodeR => todo!(),
             // Ping | Pong | KeyPing | KeyPong
-            ping_type => CtrlMessageData::ConnectionData(PingData::parse(raw_data, ping_type)?),
+            ping_type => CtrlMessageData::PingData(PingData::parse(raw_data, ping_type)?),
         };
         Ok(CtrlMessage {
             msg_type,
@@ -138,7 +135,7 @@ impl CtrlMessageData {
 
     fn extract_ping_data(&self) -> Option<&PingData> {
         match self {
-            Self::ConnectionData(data) => Some(data),
+            Self::PingData(data) => Some(data),
             _ => None,
         }
     }
@@ -148,10 +145,13 @@ impl CtrlMessageData {
 mod tests {
     use hex;
 
-    use super::*;
-    use crate::error_data::ErrorMessageType;
+    use cjdns_core::keys::CJDNSPublicKey;
     use cjdns_core::RoutingLabel;
     use cjdns_hdr::SwitchHeader;
+
+    use crate::ErrorMessageType;
+
+    use super::*;
 
     fn decode_hex(hex: &str) -> Vec<u8> {
         hex::decode(hex).expect("invalid hex string")
@@ -166,7 +166,7 @@ mod tests {
             parsed_msg,
             CtrlMessage {
                 msg_type: CtrlMessageType::Ping,
-                msg_data: CtrlMessageData::ConnectionData(PingData {
+                msg_data: CtrlMessageData::PingData(PingData {
                     version: 18,
                     key: None,
                     content: decode_hex("4d160b1eee2929e12e19a3b1")
@@ -185,7 +185,7 @@ mod tests {
             parsed_msg,
             CtrlMessage {
                 msg_type: CtrlMessageType::KeyPing,
-                msg_data: CtrlMessageData::ConnectionData(PingData {
+                msg_data: CtrlMessageData::PingData(PingData {
                     version: 18,
                     key: CJDNSPublicKey::try_from("3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k".to_string()).ok(),
                     content: decode_hex("02e29842b42aedb6bce2ead3")

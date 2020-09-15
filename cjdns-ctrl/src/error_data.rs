@@ -62,7 +62,11 @@ impl ErrorData {
         let mut reader = Reader::new(bytes);
         let err_type = {
             let error_type_code = reader.read_u32_be().expect("invalid message size");
-            ErrorMessageType::from_u32(error_type_code)
+            let err_type = ErrorMessageType::from_u32(error_type_code);
+            if err_type == ErrorMessageType::None {
+                return Err(ParseError::InvalidData("control message has None body error type"));
+            }
+            err_type
         };
         let switch_header = {
             let switch_header_bytes = reader.take_bytes(SwitchHeader::SIZE).expect("invalid message size");
@@ -85,8 +89,8 @@ impl ErrorData {
     /// * instance error type is unrecognized
     /// * switch header serialization failed
     pub fn serialize(&self) -> Result<Vec<u8>, SerializeError> {
-        if self.err_type == ErrorMessageType::Unrecognized {
-            return Err(SerializeError::InvalidData("unrecognized error type"));
+        if self.err_type == ErrorMessageType::Unrecognized || self.err_type == ErrorMessageType::None {
+            return Err(SerializeError::InvalidData("Unrecognized or None error type"));
         }
         let err_type_code = self.err_type.to_u32();
         let switch_header_bytes = self.switch_header.serialize()?;
@@ -114,8 +118,7 @@ impl ErrorMessageType {
 mod tests {
     use hex;
 
-    use super::{ErrorData, ErrorMessageType};
-    use cjdns_hdr::SwitchHeader;
+    use super::*;
 
     fn decode_hex(hex: &str) -> Vec<u8> {
         hex::decode(hex).expect("invalid hex string")

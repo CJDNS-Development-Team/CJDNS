@@ -1,9 +1,7 @@
-use std::collections::HashMap;
-
 use cjdns_bytes::{ParseError, Reader, SerializeError, Writer};
 use cjdns_core::keys::{BytesRepr, CJDNSPublicKey};
 
-use crate::control_message::CtrlMessageType;
+use crate::CtrlMessageType;
 
 /// Body data for ping type control messages
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,7 +52,6 @@ impl PingData {
     /// That's why serialization can result in errors in several situations:
     /// * instance has version of 0
     /// * `ping` variable, which is defined by control message [serialize]() method, has key ping/pong type, but `key` is not specified in the data instance
-    // todo Any way to do more strict ping. Like `&CtrlMessage{ msg_type, ..}: &CtrlMessage` instead of `CtrlMessageType`?
     pub fn serialize(&self, ping: CtrlMessageType) -> Result<Vec<u8>, SerializeError> {
         if self.version == 0 {
             return Err(SerializeError::InvalidData("version should be greater than 0"));
@@ -83,7 +80,6 @@ impl PingData {
             CtrlMessageType::Pong => 0x9d74e35b,
             CtrlMessageType::KeyPing => 0x01234567,
             CtrlMessageType::KeyPong => 0x89abcdef,
-            // Todo check of CtrlMessageType being Error required?
             _ => unreachable!("provided non ping message type"),
         }
     }

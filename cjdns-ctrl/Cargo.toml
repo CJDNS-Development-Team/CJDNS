@@ -10,10 +10,9 @@ description = "Library for parsing/serializing CTRL messages"
 
 [dependencies]
 cjdns-bytes = { path = "../cjdns-bytes" }
-cjdns-core = { path = "../cjdns-core" } # todo cjdns-keys only
+cjdns-core = { path = "../cjdns-core" }
 cjdns-hdr = { path = "../cjdns-hdr" }
 netchecksum = { path = "../netchecksum" }
-byteorder = "1.3.4" # todo could be removed?
 num_enum = "0.5"
 
 [dev-dependencies]
