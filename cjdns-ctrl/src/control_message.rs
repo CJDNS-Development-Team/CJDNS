@@ -6,7 +6,7 @@ use num_enum::{IntoPrimitive, TryFromPrimitive};
 use cjdns_bytes::{ParseError, Reader, SerializeError, Writer};
 use netchecksum;
 
-use crate::{PingData, ErrorData};
+use crate::{ErrorData, PingData};
 
 /// Serialized control message
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -57,7 +57,7 @@ impl CtrlMessage {
         {
             let encoded_checksum = reader.read_u16_be().expect("invalid message size");
             let computed_checksum = netchecksum::cksum_raw(reader.read_all_pure());
-            if computed_checksum != encoded_checksum && computed_checksum != encoded_checksum.to_be() {
+            if computed_checksum != encoded_checksum {
                 return Err(ParseError::InvalidData("invalid checksum"));
             }
         }
@@ -72,10 +72,7 @@ impl CtrlMessage {
             // Ping | Pong | KeyPing | KeyPong
             ping_type => CtrlMessageData::PingData(PingData::parse(raw_data, ping_type)?),
         };
-        Ok(CtrlMessage {
-            msg_type,
-            msg_data,
-        })
+        Ok(CtrlMessage { msg_type, msg_data })
     }
 
     /// Serializes `CtrlMessage` instance.
@@ -87,13 +84,19 @@ impl CtrlMessage {
     pub fn serialize(&self) -> Result<Vec<u8>, SerializeError> {
         let raw_data = match self.msg_type {
             CtrlMessageType::Error => {
-                let error_data = self.msg_data.extract_error_data().ok_or(SerializeError::InvalidInvariant("message with error header, but ping data body"))?;
+                let error_data = self
+                    .msg_data
+                    .extract_error_data()
+                    .ok_or(SerializeError::InvalidInvariant("message with error header, but ping data body"))?;
                 error_data.serialize()?
             }
             CtrlMessageType::GetsNodeQ | CtrlMessageType::GetsNodeR => todo!(),
             // Ping | Pong | KeyPing | KeyPong
             ping_type => {
-                let ping_data = self.msg_data.extract_ping_data().ok_or(SerializeError::InvalidInvariant("message with ping header, but error data body"))?;
+                let ping_data = self
+                    .msg_data
+                    .extract_ping_data()
+                    .ok_or(SerializeError::InvalidInvariant("message with ping header, but error data body"))?;
                 ping_data.serialize(ping_type)?
             }
         };
@@ -177,6 +180,25 @@ mod tests {
     }
 
     #[test]
+    fn test_pong() {
+        let test_bytes = decode_hex("497400049d74e35b0000001280534c66df69e44b496d5bc8");
+        let parsed_msg = CtrlMessage::parse(&test_bytes).expect("invalid message data");
+        let serialized_msg = parsed_msg.serialize().expect("invalid message data");
+        assert_eq!(
+            parsed_msg,
+            CtrlMessage {
+                msg_type: CtrlMessageType::Pong,
+                msg_data: CtrlMessageData::PingData(PingData {
+                    version: 18,
+                    key: None,
+                    content: decode_hex("80534c66df69e44b496d5bc8")
+                }),
+            }
+        );
+        assert_eq!(serialized_msg, test_bytes);
+    }
+
+    #[test]
     fn test_key_ping() {
         let test_bytes = decode_hex("994b00050123456700000012a331ebbed8d92ac03b10efed3e389cd0c6ec7331a72dbde198476c5eb4d14a1f02e29842b42aedb6bce2ead3");
         let parsed_msg = CtrlMessage::parse(&test_bytes).expect("invalid message data");
@@ -188,6 +210,25 @@ mod tests {
                 msg_data: CtrlMessageData::PingData(PingData {
                     version: 18,
                     key: CJDNSPublicKey::try_from("3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k".to_string()).ok(),
+                    content: decode_hex("02e29842b42aedb6bce2ead3")
+                }),
+            }
+        );
+        assert_eq!(serialized_msg, test_bytes);
+    }
+
+    #[test]
+    fn test_key_pong() {
+        let test_bytes = decode_hex("3b96000689abcdef000000126bd2e8e50faca3d987623d6a043c17c0d9e9004e145f8dd90615d34edbb36d6a02e29842b42aedb6bce2ead3");
+        let parsed_msg = CtrlMessage::parse(&test_bytes).expect("invalid message data");
+        let serialized_msg = parsed_msg.serialize().expect("invalid message data");
+        assert_eq!(
+            parsed_msg,
+            CtrlMessage {
+                msg_type: CtrlMessageType::KeyPong,
+                msg_data: CtrlMessageData::PingData(PingData {
+                    version: 18,
+                    key: CJDNSPublicKey::try_from("cmnkylz1dx8mx3bdxku80yw20gqmg0s9nsrusdv0psnxnfhqfmu0.k".to_string()).ok(),
                     content: decode_hex("02e29842b42aedb6bce2ead3")
                 }),
             }
@@ -227,5 +268,62 @@ mod tests {
             }
         );
         assert_eq!(serialized_msg, test_bytes);
+    }
+
+    #[test]
+    fn test_parse_invalid() {
+        let invalid_data = [
+            // invalid length
+            "aabb",
+            // invalid checksum
+            "000011111111aaaaaaaa",
+            // unrecognized message type
+            "a2de000a09f91102000000124d160b1eee2929e12e19a3b1",
+        ];
+        for data in invalid_data.iter() {
+            let test_bytes = decode_hex(data);
+            assert!(CtrlMessage::parse(&test_bytes).is_err());
+        }
+    }
+
+    #[test]
+    fn test_serialize_invalid() {
+        let invalid_instances = [
+            // type doesn't confirm to data
+            CtrlMessage {
+                msg_type: CtrlMessageType::Error,
+                msg_data: CtrlMessageData::PingData(PingData {
+                    version: 18,
+                    key: None,
+                    content: decode_hex("80534c66df69e44b496d5bc8"),
+                }),
+            },
+            CtrlMessage {
+                msg_type: CtrlMessageType::Ping,
+                msg_data: CtrlMessageData::ErrorData(ErrorData {
+                    err_type: ErrorMessageType::ReturnPathInvalid,
+                    switch_header: SwitchHeader {
+                        label: RoutingLabel::<u64>::try_from("62c1.d23a.6481.1401").expect("invalid routing label string"),
+                        congestion: 1,
+                        suppress_errors: true,
+                        version: 1,
+                        label_shift: 57,
+                        penalty: 0,
+                    },
+                    additional: vec![],
+                }),
+            },
+        ];
+        for ctrl_data in invalid_instances.iter() {
+            assert!(ctrl_data.serialize().is_err());
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_parse_get_node_msg() {
+        let test_bytes = decode_hex("a2e1000709f91102000000124d160b1eee2929e12e19a3b1");
+        // same result will be for serialize
+        let _ = CtrlMessage::parse(&test_bytes);
     }
 }

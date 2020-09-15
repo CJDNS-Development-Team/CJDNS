@@ -51,10 +51,10 @@
 //! assert_eq!(serialized_msg, test_bytes)
 //! ```
 
-pub use ping_data::PingData;
-pub use control_message::{CtrlMessage, CtrlMessageType, CtrlMessageData};
+pub use control_message::{CtrlMessage, CtrlMessageData, CtrlMessageType};
 pub use error_data::{ErrorData, ErrorMessageType};
+pub use ping_data::PingData;
 
-mod ping_data;
 mod control_message;
 mod error_data;
+mod ping_data;

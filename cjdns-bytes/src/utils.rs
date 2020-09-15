@@ -116,7 +116,7 @@ mod tests {
         assert!(reader.take_bytes(20).is_err());
         // reading last bytes
         reader.take_bytes(17).expect("bytes are read out");
-        assert_eq!(reader.len(), 0)
+        assert_eq!(reader.len(), 0);
     }
 
     #[test]
@@ -133,5 +133,18 @@ mod tests {
         let bytes = writer.into_vec();
         assert_eq!(bytes.len(), initial_capacity);
         assert_eq!(bytes, vec![0; initial_capacity]);
+    }
+
+    #[test]
+    fn test_read_all() {
+        let bytes = vec![0; 32];
+        let mut reader = Reader::new(&bytes);
+
+        assert_eq!(bytes.as_slice(), reader.read_all_pure());
+        let _ = reader.read_u16_be();
+        assert_eq!(&bytes[2..], reader.read_all_pure());
+        let _ = reader.read_u16_be();
+        assert_eq!(&bytes[4..], reader.read_all_mut());
+        assert_eq!(0, reader.len())
     }
 }
