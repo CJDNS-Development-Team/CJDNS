@@ -5,7 +5,7 @@ use num_enum::{FromPrimitive, IntoPrimitive};
 use cjdns_bytes::{ParseError, Reader, SerializeError, Writer};
 use cjdns_hdr::SwitchHeader;
 
-/// Data for error type messages
+/// Body data for error type messages
 ///
 /// `additional` field states for raw data, that is allowed not to be parsed.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,7 +47,7 @@ pub enum ErrorMessageType {
 }
 
 impl ErrorData {
-    /// `ErrorData` minimum size. First 4 bytes are for error type code.
+    /// `ErrorData` minimum size. First 4 bytes are reserved for error type code.
     pub const MIN_SIZE: usize = 4 + SwitchHeader::SIZE;
 
     /// Parses raw bytes into `ErrorData`
@@ -78,6 +78,12 @@ impl ErrorData {
         })
     }
 
+    /// Serializes `ErrorData` instance.
+    ///
+    /// `ErrorData` type can be instantiated directly, without using `parse` method.
+    /// That's why serialization can result in errors in several situations:
+    /// * instance error type is unrecognized
+    /// * switch header serialization failed
     pub fn serialize(&self) -> Result<Vec<u8>, SerializeError> {
         if self.err_type == ErrorMessageType::Unrecognized {
             return Err(SerializeError::InvalidData("unrecognized error type"));

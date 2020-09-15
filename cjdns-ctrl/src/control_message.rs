@@ -38,7 +38,9 @@ pub enum CtrlMessageData {
 }
 
 impl CtrlMessage {
-    /// Control message header size
+    /// Control message header size, which is considered as minimum size message bytes to parsed.
+    /// Actually, message size should be greater than is stated in this constant, but this is checked further
+    /// in `CtrlMessage` "sub-parsers".
     pub const HEADER_SIZE: usize = 4;
 
     /// Parses raw bytes into `CtrlMessage`.
@@ -47,7 +49,7 @@ impl CtrlMessage {
     /// * input bytes length is less then `CtrlMessage::HEADER_SIZE`
     /// * input data got invalid checksum
     /// * unrecognized control message type code was parsed
-    /// * control message body parsing methods failed. For more information about this read documentation for corresponding data structs (i.e. `PingData`, `ErrorData`)
+    /// * control message body parsing methods failed. For more information about this read documentation for corresponding message data structs (i.e. `PingData`, `ErrorData`)
     pub fn parse(bytes: &[u8]) -> Result<Self, ParseError> {
         if bytes.len() < Self::HEADER_SIZE {
             return Err(ParseError::InvalidPacketSize);
@@ -79,7 +81,7 @@ impl CtrlMessage {
         })
     }
 
-    /// Serialized `CtrlMessage` instance.
+    /// Serializes `CtrlMessage` instance.
     ///
     /// `CtrlMessage` type can be instantiated directly, without using `parse` method.
     /// That's why serialization can result in errors in several situations:

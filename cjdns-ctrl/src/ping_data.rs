@@ -48,7 +48,13 @@ impl PingData {
         Ok(PingData { version, key, content })
     }
 
-    // todo More strict use `&CtrlMessage{ msg_type, ..}: &CtrlMessage` instead of `CtrlMessageType`?
+    /// Serialized `PingData` instance.
+    ///
+    /// `PingData` type can be instantiated directly, without using `parse` method.
+    /// That's why serialization can result in errors in several situations:
+    /// * instance has version of 0
+    /// * `ping` variable, which is defined by control message [serialize]() method, has key ping/pong type, but `key` is not specified in the data instance
+    // todo Any way to do more strict ping. Like `&CtrlMessage{ msg_type, ..}: &CtrlMessage` instead of `CtrlMessageType`?
     pub fn serialize(&self, ping: CtrlMessageType) -> Result<Vec<u8>, SerializeError> {
         if self.version == 0 {
             return Err(SerializeError::InvalidData("version should be greater than 0"));
