@@ -57,11 +57,9 @@ impl CtrlMessage {
         {
             let encoded_checksum = reader.read_u16_be().expect("invalid message size");
             let computed_checksum = netchecksum::cksum_raw(reader.read_all_pure());
-            if encoded_checksum != computed_checksum {
-                // todo as alex if it's ok to use external crate only for this
-                if computed_checksum != BigEndian::read_u16(&encoded_checksum.to_le_bytes()) {
-                    return Err(ParseError::InvalidData("invalid checksum"));
-                }
+            // todo as alex if it's ok to use external crate only for this
+            if encoded_checksum != computed_checksum && computed_checksum != BigEndian::read_u16(&encoded_checksum.to_le_bytes()) {
+                return Err(ParseError::InvalidData("invalid checksum"));
             }
         }
         let msg_type = {

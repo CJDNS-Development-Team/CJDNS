@@ -37,17 +37,14 @@ impl PingData {
             }
         }
         let version = reader.read_u32_be().expect("invalid message size");
-        let (key, content) = {
-            let key = match ping {
-                CtrlMessageType::KeyPing | CtrlMessageType::KeyPong => {
-                    let key_bytes = reader.read_array_32().or(Err(ParseError::InvalidPacketSize))?;
-                    Some(CJDNSPublicKey::from(key_bytes))
-                }
-                _ => None,
-            };
-            let content = reader.read_all_mut().to_vec();
-            (key, content)
+        let key = match ping {
+            CtrlMessageType::KeyPing | CtrlMessageType::KeyPong => {
+                let key_bytes = reader.read_array_32().or(Err(ParseError::InvalidPacketSize))?;
+                Some(CJDNSPublicKey::from(key_bytes))
+            }
+            _ => None,
         };
+        let content = reader.read_all_mut().to_vec();
         Ok(PingData { version, key, content })
     }
 
