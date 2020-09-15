@@ -1,4 +1,4 @@
-use std::mem::size_of;
+use std::mem::size_of_val;
 
 use num_enum::{FromPrimitive, IntoPrimitive};
 
@@ -20,7 +20,7 @@ pub struct ErrorData {
 #[repr(u32)]
 pub enum ErrorMessageType {
     /// No error, everything is ok.
-    None = 0, // todo discuss
+    None = 0,
     /// The switch label was malformed.
     MalformedAddress,
     /// Packet dropped because link is congested.
@@ -43,7 +43,7 @@ pub enum ErrorMessageType {
     ReturnPathInvalid,
 
     #[num_enum(default)]
-    Other,
+    Unrecognized,
 }
 
 impl ErrorData {
@@ -79,13 +79,13 @@ impl ErrorData {
     }
 
     pub fn serialize(&self) -> Result<Vec<u8>, SerializeError> {
-        if self.err_type == ErrorMessageType::Other {
+        if self.err_type == ErrorMessageType::Unrecognized {
             return Err(SerializeError::InvalidData("unrecognized error type"));
         }
         let err_type_code = self.err_type.to_u32();
         let switch_header_bytes = self.switch_header.serialize()?;
 
-        let mut writer = Writer::with_capacity(size_of::<u32>() + SwitchHeader::SIZE + self.additional.len());
+        let mut writer = Writer::with_capacity(size_of_val(&err_type_code) + SwitchHeader::SIZE + self.additional.len());
         writer.write_u32_be(err_type_code);
         writer.write_slice(&switch_header_bytes);
         writer.write_slice(&self.additional);

@@ -15,7 +15,6 @@ use crate::{connection_data::PingData, error_data::ErrorData};
 pub struct CtrlMessage {
     pub msg_type: CtrlMessageType,
     pub msg_data: CtrlMessageData,
-    pub endianness: ByteOrder,
 }
 
 /// Control message type, which is considered as message header
@@ -38,13 +37,6 @@ pub enum CtrlMessageData {
     ErrorData(ErrorData),
 }
 
-/// Control message checksum endianness
-#[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub enum ByteOrder {
-    LE,
-    BE,
-}
-
 impl CtrlMessage {
     /// Control message header size
     pub const HEADER_SIZE: usize = 4;
@@ -61,17 +53,17 @@ impl CtrlMessage {
             return Err(ParseError::InvalidPacketSize);
         }
         let mut reader = Reader::new(bytes);
-        let endian = {
+        // Validating message checksum
+        {
             let encoded_checksum = reader.read_u16_be().expect("invalid message size");
             let computed_checksum = netchecksum::cksum_raw(reader.read_all_pure());
-            if encoded_checksum == computed_checksum {
-                ByteOrder::LE
-            } else if computed_checksum == BigEndian::read_u16(&encoded_checksum.to_le_bytes()) {
-                ByteOrder::BE
-            } else {
-                return Err(ParseError::InvalidData("invalid checksum"));
+            if encoded_checksum != computed_checksum {
+                // todo as alex if it's ok to use external crate only for this
+                if computed_checksum != BigEndian::read_u16(&encoded_checksum.to_le_bytes()) {
+                    return Err(ParseError::InvalidData("invalid checksum"));
+                }
             }
-        };
+        }
         let msg_type = {
             let type_code = reader.read_u16_be().expect("invalid message size");
             CtrlMessageType::from_u16(type_code).or(Err(ParseError::InvalidData("unknown ctrl packet")))?
@@ -86,7 +78,6 @@ impl CtrlMessage {
         Ok(CtrlMessage {
             msg_type,
             msg_data,
-            endianness: endian,
         })
     }
 
@@ -109,7 +100,6 @@ impl CtrlMessage {
                 ping_data.serialize(ping_type)?
             }
         };
-        // computing checksum
         let checksum_data = {
             let msg_type_bytes = self.msg_type.to_u16();
             // encoded msg type and msg raw data
@@ -181,7 +171,6 @@ mod tests {
                     key: None,
                     content: decode_hex("4d160b1eee2929e12e19a3b1")
                 }),
-                endianness: ByteOrder::LE
             }
         );
         assert_eq!(serialized_msg, test_bytes);
@@ -201,7 +190,6 @@ mod tests {
                     key: CJDNSPublicKey::try_from("3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k".to_string()).ok(),
                     content: decode_hex("02e29842b42aedb6bce2ead3")
                 }),
-                endianness: ByteOrder::LE
             }
         );
         assert_eq!(serialized_msg, test_bytes);
@@ -236,7 +224,6 @@ mod tests {
                     },
                     additional: parsed_additional
                 }),
-                endianness: ByteOrder::LE
             }
         );
         assert_eq!(serialized_msg, test_bytes);

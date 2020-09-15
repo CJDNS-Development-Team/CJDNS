@@ -13,7 +13,6 @@ pub struct PingData {
     pub content: Vec<u8>,
 }
 
-// Todo check of CtrlMessageType being Error required?
 impl PingData {
     /// Minimum ping data size
     pub const MIN_SIZE: usize = 8;
@@ -29,10 +28,13 @@ impl PingData {
             return Err(ParseError::InvalidPacketSize);
         }
         let mut reader = Reader::new(bytes);
-        let encoded_magic = reader.read_u32_be().expect("invalid message size");
-        let original_magic = Self::ping_to_magic(ping);
-        if encoded_magic != original_magic {
-            return Err(ParseError::InvalidData("invalid encoded connection magic"));
+        // Validating ping data magic
+        {
+            let encoded_magic = reader.read_u32_be().expect("invalid message size");
+            let original_magic = Self::ping_to_magic(ping);
+            if encoded_magic != original_magic {
+                return Err(ParseError::InvalidData("invalid encoded connection magic"));
+            }
         }
         let version = reader.read_u32_be().expect("invalid message size");
         let (key, content) = {
@@ -49,15 +51,17 @@ impl PingData {
         Ok(PingData { version, key, content })
     }
 
-    // todo 2 ask alex if it is ok not to check conn type? More strict use `&CtrlMessage{ msg_type, ..}: &CtrlMessage` instead of `CtrlMessageType`?
-    // todo 1 enough invariant checks?
+    // todo More strict use `&CtrlMessage{ msg_type, ..}: &CtrlMessage` instead of `CtrlMessageType`?
     pub fn serialize(&self, ping: CtrlMessageType) -> Result<Vec<u8>, SerializeError> {
         if self.version == 0 {
             return Err(SerializeError::InvalidData("version should be greater than 0"));
         }
+        if (ping == CtrlMessageType::KeyPing || ping == CtrlMessageType::KeyPong) && self.key.is_none() {
+            return Err(SerializeError::InvalidInvariant("key should be specified for key ping/pong messages"));
+        }
         let ping_magic = Self::ping_to_magic(ping);
 
-        // either min size or min size plus size of cjdns public key
+        // either min size or min size plus cjdns public key size
         let writer_size = self.key.as_ref().map_or(Self::MIN_SIZE, |_| Self::MIN_SIZE + 32);
         let mut writer = Writer::with_capacity(writer_size);
         writer.write_u32_be(ping_magic);
@@ -76,6 +80,7 @@ impl PingData {
             CtrlMessageType::Pong => 0x9d74e35b,
             CtrlMessageType::KeyPing => 0x01234567,
             CtrlMessageType::KeyPong => 0x89abcdef,
+            // Todo check of CtrlMessageType being Error required?
             _ => unreachable!("provided non ping message type"),
         }
     }
