@@ -13,6 +13,7 @@ pub struct PingData {
     pub content: Vec<u8>,
 }
 
+// Todo check of CtrlMessageType being Error required?
 impl PingData {
     /// Minimum ping data size
     pub const MIN_SIZE: usize = 8;
@@ -48,7 +49,7 @@ impl PingData {
         Ok(PingData { version, key, content })
     }
 
-    // todo 2 ask alex if it is ok not to check conn type? may be it is ok to use `&CtrlMessage{ msg_type, ..}: &CtrlMessage` instead of `CtrlMessageType`
+    // todo 2 ask alex if it is ok not to check conn type? More strict use `&CtrlMessage{ msg_type, ..}: &CtrlMessage` instead of `CtrlMessageType`?
     // todo 1 enough invariant checks?
     pub fn serialize(&self, ping: CtrlMessageType) -> Result<Vec<u8>, SerializeError> {
         if self.version == 0 {
@@ -114,8 +115,8 @@ mod tests {
     #[test]
     fn test_key_ping() {
         let test_bytes = decode_hex("0123456700000012a331ebbed8d92ac03b10efed3e389cd0c6ec7331a72dbde198476c5eb4d14a1f02e29842b42aedb6bce2ead3");
-        let parsed_ping = PingData::parse(&test_bytes, CtrlMessageType::KeyPing).expect("invalid conn data");
-        let serialized_ping = parsed_ping.serialize(CtrlMessageType::KeyPing).expect("invalid conn data");
+        let parsed_ping = PingData::parse(&test_bytes, CtrlMessageType::KeyPing).expect("invalid ping data");
+        let serialized_ping = parsed_ping.serialize(CtrlMessageType::KeyPing).expect("invalid ping data");
         assert_eq!(
             parsed_ping,
             PingData {

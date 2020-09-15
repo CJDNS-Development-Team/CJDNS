@@ -1,5 +1,5 @@
 use std::convert::TryFrom;
-use std::mem::size_of;
+use std::mem::size_of_val;
 
 use byteorder::{BigEndian, ByteOrder as BO};
 use num_enum::{IntoPrimitive, TryFromPrimitive, TryFromPrimitiveError};
@@ -90,32 +90,39 @@ impl CtrlMessage {
         })
     }
 
+    /// Serialized `CtrlMessage` instance.
+    ///
+    /// `CtrlMessage` type can be instantiated directly, without using `parse` method.
+    /// That's why serialization can result in errors in several situations:
+    /// * instantiated message with different header and body types. For example, message with error type stated in header and ping data will fail serialization
+    /// * error/ping data serialization failed
     pub fn serialize(&self) -> Result<Vec<u8>, SerializeError> {
-        // todo 1 need more invariant checks, because of access to error data and ping data
         let raw_data = match self.msg_type {
             CtrlMessageType::Error => {
-                let error_data = self.msg_data.extract_error_data().expect("invalid message type");
+                let error_data = self.msg_data.extract_error_data().ok_or(SerializeError::InvalidInvariant("message with error header, but ping data body"))?;
                 error_data.serialize()?
             }
             CtrlMessageType::GetsNodeQ | CtrlMessageType::GetsNodeR => todo!(),
             // Ping | Pong | KeyPing | KeyPong
             ping_type => {
-                let conn_data = self.msg_data.extract_connection_data().expect("invalid message type");
-                conn_data.serialize(ping_type)?
+                let ping_data = self.msg_data.extract_ping_data().ok_or(SerializeError::InvalidInvariant("message with ping header, but error data body"))?;
+                ping_data.serialize(ping_type)?
             }
         };
-        // encoded msg type and msg raw data
-        let data = {
+        // computing checksum
+        let checksum_data = {
             let msg_type_bytes = self.msg_type.to_u16();
-            let mut data = Vec::with_capacity(size_of::<u16>() + raw_data.len());
+            // encoded msg type and msg raw data
+            let mut data = Vec::with_capacity(size_of_val(&msg_type_bytes) + raw_data.len());
             data.extend_from_slice(&msg_type_bytes.to_be_bytes());
             data.extend_from_slice(&raw_data);
             data
         };
-        let checksum = netchecksum::cksum_raw(&data);
-        let mut writer = Writer::with_capacity(size_of::<u16>() + data.len());
+        let checksum = netchecksum::cksum_raw(&checksum_data);
+
+        let mut writer = Writer::with_capacity(size_of_val(&checksum) + checksum_data.len());
         writer.write_u16_be(checksum);
-        writer.write_slice(&data);
+        writer.write_slice(&checksum_data);
 
         Ok(writer.into_vec())
     }
@@ -139,7 +146,7 @@ impl CtrlMessageData {
         }
     }
 
-    fn extract_connection_data(&self) -> Option<&PingData> {
+    fn extract_ping_data(&self) -> Option<&PingData> {
         match self {
             Self::ConnectionData(data) => Some(data),
             _ => None,
