@@ -1,8 +1,12 @@
 //! Tool to sniff CJDHT messages.
 
+use std::convert::TryFrom;
+
 use anyhow::{anyhow, Error};
 use tokio::{select, signal};
 
+use cjdns_bencode::BValue;
+use cjdns_core::keys::CJDNS_IP6;
 use cjdns_sniff::{ContentType, Message, Sniffer};
 
 #[tokio::main]
@@ -40,19 +44,27 @@ fn dump_msg(msg: Message) -> Result<String, Error> {
     buf.push(route_header.switch_header.label.to_string());
     buf.push(route_header.ip6.as_ref().map(|s| s.to_string()).unwrap_or_default());
 
-    /* -- TODO implement when Bencode module is propely refactored
-    const qb = msg.contentBenc.q;
-    if (!qb) {
-        pr.push('reply');
-    } else {
-        const q = qb.toString('utf8');
-        pr.push(q);
-        if (q === 'fn') {
-            if (!msg.contentBenc) { throw new Error(); }
-            pr.push(Cjdnskeys.ip6BytesToString(msg.contentBenc.tar));
-        }
+    if let Some(benc) = msg.content_benc {
+        dump_bencode(benc, &mut buf).map_err(|_| anyhow!("unrecognized bencoded content"))?;
     }
-    */
 
     Ok(buf.join(" "))
+}
+
+fn dump_bencode(benc: BValue, buf: &mut Vec<String>) -> Result<(), ()> {
+    if let Some(qb) = benc.get_dict_value("q")? {
+        let q = qb.as_string()?;
+        let is_fn = q == "fn";
+        buf.push(q);
+        if is_fn {
+            if let Some(tar) = benc.get_dict_value("tar")? {
+                let tar = tar.as_bytes()?;
+                let tar = CJDNS_IP6::try_from(tar).map_err(|_| ())?;
+                buf.push(tar.to_string());
+            }
+        }
+    } else {
+        buf.push("reply".to_string())
+    }
+    Ok(())
 }

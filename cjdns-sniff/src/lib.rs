@@ -9,6 +9,7 @@ use tokio::net::UdpSocket;
 
 use cjdns_admin::{cjdns_invoke, ReturnValue};
 pub use cjdns_admin::Connection;
+use cjdns_bencode::{BencodeError, BValue};
 use cjdns_bytes::{ParseError, SerializeError};
 pub use cjdns_ctrl::CtrlMessage;
 use cjdns_hdr::{DataHeader, RouteHeader};
@@ -25,7 +26,7 @@ pub struct Message {
     pub data_header: Option<DataHeader>,
     pub content_bytes: Option<Vec<u8>>,
     pub raw_bytes: Option<Vec<u8>>,
-    pub content_benc: Option<()>, //TODO need proper type here - bencode module
+    pub content_benc: Option<BValue>,
     pub content: Option<CtrlMessage>,
 }
 
@@ -114,8 +115,9 @@ impl Sniffer {
         }
 
         let content_bytes = match &msg {
-            Message { data_header: Some(data_header), content_benc: Some(_content_benc), .. } if data_header.content_type == ContentType::Cjdht => {
-                /* Bencode.encode(content_benc) */ None //TODO implement when Bencode module is refactored
+            Message { data_header: Some(data_header), content_benc: Some(content_benc), .. } if data_header.content_type == ContentType::Cjdht => {
+                let bytes = content_benc.encode().map_err(|e| SendError::BencodeError(e))?;
+                Some(bytes)
             }
             Message { route_header: Some(route_header), content: Some(_content), .. } if route_header.is_ctrl => {
                 if let Some(content) = msg.content {
@@ -197,10 +199,10 @@ impl Sniffer {
         let data_bytes = if bytes.len() > 0 { Some(bytes) } else { None };
 
         // Bencoded content
-        let content_benc = match &data_header {
-            Some(data_header) if data_header.content_type == ContentType::Cjdht => {
-                /* out.contentBenc = Bencode.decode(dataBytes); */ //TODO implement this when Bencode module is propely refactored
-                Some(())
+        let content_benc = match (&data_header, data_bytes) {
+            (Some(data_header), Some(data_bytes)) if data_header.content_type == ContentType::Cjdht => {
+                let content = BValue::decode(data_bytes).map_err(|_| ParseError::InvalidData("failed to decode bencoded content"))?;
+                Some(content)
             }
             _ => None
         };
@@ -246,6 +248,9 @@ pub enum ConnectError {
 pub enum SendError {
     #[error("Data serialization error: {0}")]
     SerializeError(#[source] SerializeError),
+
+    #[error("Data serialization error: {0}")]
+    BencodeError(BencodeError),
 
     #[error("Failed to connect to CJDNS router: {0}")]
     SocketError(#[source] io::Error),
