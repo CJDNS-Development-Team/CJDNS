@@ -1,6 +1,6 @@
 //! Parsing/serializing CTRL messages
 
-mod connection_data;
+mod ping_data;
 mod control_message;
 mod error_data;
 

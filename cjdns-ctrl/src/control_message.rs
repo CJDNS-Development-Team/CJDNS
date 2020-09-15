@@ -8,7 +8,7 @@ use cjdns_bytes::{ParseError, Reader, SerializeError, Writer};
 use cjdns_core::keys::CJDNSPublicKey;
 use netchecksum;
 
-use crate::{connection_data::PingData, error_data::ErrorData};
+use crate::{ping_data::PingData, error_data::ErrorData};
 
 /// Serialized control message
 #[derive(Debug, Clone, PartialEq, Eq)]
