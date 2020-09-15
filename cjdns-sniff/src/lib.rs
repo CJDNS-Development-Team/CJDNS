@@ -1,6 +1,36 @@
 //! Library for sniffing and injecting cjdns traffic.
 //!
 //! **NOTE**: This requires cjdns v18 or higher.
+//!
+//! # API
+//! * `Sniffer::sniff_traffic(conn, type)`
+//!   * `conn` - a cjdns-admin which is connected to an existing cjdns engine on the local machine.
+//!   * `type` - the type of traffic to sniff, see `ContentType` in cjdns-hdr (you probably want `ContentType::Cjdht`).
+//!
+//! # Example
+//! ```no_run
+//! # use cjdns_sniff::{ContentType, Message, Sniffer};
+//! # async fn test() -> Result<(), Box<dyn std::error::Error>> {
+//! async {
+//!     let cjdns = cjdns_admin::connect(None).await?;
+//!     let mut sniffer = Sniffer::sniff_traffic(cjdns, ContentType::Cjdht).await?;
+//!     let msg = sniffer.receive().await?;
+//!     println!("{:?}", msg);
+//!     sniffer.disconnect().await?;
+//!     # Ok(())
+//! }
+//! # .await }
+//! ```
+//!
+//! # Message structure
+//! * `route_header` A `RouteHeader` object (see cjdns-hdr).
+//! * `data_header` A `DataHeader` object (see cjdns-hdr).
+//! * `content_bytes` Raw binary of the content, if it cannot be decoded into neither `content_benc` nor `content`.
+//! * `raw_bytes` The whole message's serialized representation.
+//! * `content_benc` *optional* in the event that the `content_type` is `ContentType::Cjdht` the b-decoded content.
+//! * `content` *optional* in the event that the message is control message (`route_header.is_ctrl == true`).
+
+#![deny(missing_docs)]
 
 use std::io;
 
@@ -15,22 +45,31 @@ pub use cjdns_ctrl::CtrlMessage;
 use cjdns_hdr::{DataHeader, RouteHeader};
 pub use cjdns_hdr::ContentType;
 
+/// Wraps connection to cjdns admin interface and allows to send and receive messages of a certain type.
 pub struct Sniffer {
     cjdns: Connection,
     socket: UdpSocket,
 }
 
+/// Message that is being sent or received by cjdns router.
 #[derive(Clone, Default, Debug)]
 pub struct Message {
+    /// Route header
     pub route_header: Option<RouteHeader>,
+    /// Data header
     pub data_header: Option<DataHeader>,
+    /// Raw binary of the content, if it cannot be decoded into neither `content_benc` nor `content`
     pub content_bytes: Option<Vec<u8>>,
+    /// The whole message's serialized representation
     pub raw_bytes: Option<Vec<u8>>,
+    /// If the `content_type` is `ContentType::Cjdht` this is the b-decoded content
     pub content_benc: Option<BValue>,
+    /// If the message is control message (`route_header.is_ctrl == true`) this is the decoded control message
     pub content: Option<CtrlMessage>,
 }
 
 impl Sniffer {
+    /// Create new `Sniffer` instance by connecting to a cjdns node.
     pub async fn sniff_traffic(mut conn: Connection, content_type: ContentType) -> Result<Self, ConnectError> {
         let udp_socket = Self::connect(&mut conn, content_type).await?;
         let res = Sniffer {
@@ -99,6 +138,7 @@ impl Sniffer {
         Ok(socket)
     }
 
+    /// Send a message. Destination is an optional argument, if `None`, localhost is used.
     pub async fn send(&mut self, msg: Message, dest: Option<&str>) -> Result<(), SendError> {
         let dest = dest.unwrap_or("fc00::1");
 
@@ -119,13 +159,9 @@ impl Sniffer {
                 let bytes = content_benc.encode().map_err(|e| SendError::BencodeError(e))?;
                 Some(bytes)
             }
-            Message { route_header: Some(route_header), content: Some(_content), .. } if route_header.is_ctrl => {
-                if let Some(content) = msg.content {
-                    let content_bytes = content.serialize().map_err(|e| SendError::SerializeError(e))?;
-                    Some(content_bytes)
-                } else {
-                    None
-                }
+            Message { route_header: Some(route_header), content: Some(content), .. } if route_header.is_ctrl => {
+                let content_bytes = content.serialize().map_err(|e| SendError::SerializeError(e))?;
+                Some(content_bytes)
             }
             Message { content_bytes: Some(content_bytes), .. } => {
                 Some(content_bytes.clone())
@@ -145,6 +181,7 @@ impl Sniffer {
         Ok(())
     }
 
+    /// Receive a message.
     pub async fn receive(&mut self) -> Result<Message, ReceiveError> {
         // Limit receive packet lenght to typical Ethernet MTU for now; need to check actual max packet length on CJDNS Node side though.
         let mut buf = [0; 1500];
@@ -156,6 +193,8 @@ impl Sniffer {
         Ok(msg)
     }
 
+    /// Disconnect from cjdns router. Failing to do so would result in a stale UDP connection on router side.
+    /// Though, this connection will be automatically reused on next connect.
     pub async fn disconnect(&mut self) -> Result<(), ConnectError> {
         // Get local UDP port we are listening on
         let port = self.socket.local_addr().map_err(|e| ConnectError::SocketError(e))?.port();
@@ -232,38 +271,50 @@ impl Sniffer {
     }
 }
 
+/// Connection or disconnection error.
 #[derive(Error, Debug)]
 pub enum ConnectError {
+    /// RPC invocation error (e.g. network error)
     #[error("Failed to communicate with CJDNS router: {0}")]
     RpcError(#[source] cjdns_admin::Error),
 
+    /// Bad RPC response (unrecognized message format etc)
     #[error("Failed to communicate with CJDNS router: bad RPC response")]
     BadResponse,
 
+    /// UDP socket error
     #[error("Failed to connect to CJDNS router: {0}")]
     SocketError(#[source] io::Error),
 }
 
+/// Error while sending message.
 #[derive(Error, Debug)]
 pub enum SendError {
+    /// Generic serialization error
     #[error("Data serialization error: {0}")]
     SerializeError(#[source] SerializeError),
 
+    /// Bencode serialization error
     #[error("Data serialization error: {0}")]
     BencodeError(BencodeError),
 
+    /// UDP socket error
     #[error("Failed to connect to CJDNS router: {0}")]
     SocketError(#[source] io::Error),
 
+    /// Unable to write all the data to the socket (too big message)
     #[error("Failed to send buffer: only {0} of {1} bytes written")]
     WriteError(usize, usize),
 }
 
+/// Error while receiving message.
 #[derive(Error, Debug)]
 pub enum ReceiveError {
+    /// UDP socket error
     #[error("Failed to connect to CJDNS router: {0}")]
     SocketError(#[source] io::Error),
 
+    /// Generic deserialization error
     #[error("Data parse error: {0}")]
     ParseError(#[source] ParseError),
 }
