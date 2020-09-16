@@ -85,8 +85,7 @@ impl CtrlMessage {
         let raw_data = match self.msg_type {
             CtrlMessageType::Error => {
                 let error_data = self
-                    .msg_data
-                    .extract_error_data()
+                    .get_error_data()
                     .ok_or(SerializeError::InvalidInvariant("message with error header, but ping data body"))?;
                 error_data.serialize()?
             }
@@ -94,8 +93,7 @@ impl CtrlMessage {
             // Ping | Pong | KeyPing | KeyPong
             ping_type => {
                 let ping_data = self
-                    .msg_data
-                    .extract_ping_data()
+                    .get_ping_data()
                     .ok_or(SerializeError::InvalidInvariant("message with ping header, but error data body"))?;
                 ping_data.serialize(ping_type)?
             }
@@ -115,6 +113,14 @@ impl CtrlMessage {
         writer.write_slice(&checksum_data);
 
         Ok(writer.into_vec())
+    }
+
+    pub fn get_error_data(&self) -> Option<&ErrorData> {
+        self.msg_data.extract_error_data()
+    }
+
+    pub fn get_ping_data(&self) -> Option<&PingData> {
+        self.msg_data.extract_ping_data()
     }
 }
 
