@@ -68,7 +68,7 @@ impl CtrlMessage {
         let raw_data = reader.read_all_mut();
         let msg_data = match msg_type {
             CtrlMessageType::Error => CtrlMessageData::ErrorData(ErrorData::parse(raw_data)?),
-            CtrlMessageType::GetsNodeQ | CtrlMessageType::GetsNodeR => todo!(),
+            CtrlMessageType::GetsNodeQ | CtrlMessageType::GetsNodeR => return Err(ParseError::InvalidData("can't parse GetsNode messages")),
             // Ping | Pong | KeyPing | KeyPong
             ping_type => CtrlMessageData::PingData(PingData::parse(raw_data, ping_type)?),
         };
@@ -89,7 +89,7 @@ impl CtrlMessage {
                     .ok_or(SerializeError::InvalidInvariant("message with error header, but ping data body"))?;
                 error_data.serialize()?
             }
-            CtrlMessageType::GetsNodeQ | CtrlMessageType::GetsNodeR => todo!(),
+            CtrlMessageType::GetsNodeQ | CtrlMessageType::GetsNodeR => return Err(SerializeError::InvalidData("can't serialize GetsNode messages")),
             // Ping | Pong | KeyPing | KeyPong
             ping_type => {
                 let ping_data = self
@@ -326,10 +326,20 @@ mod tests {
     }
 
     #[test]
-    #[should_panic]
-    fn test_parse_get_node_msg() {
+    fn test_get_node_msg() {
+        // GetsNodeQ message
         let test_bytes = decode_hex("a2e1000709f91102000000124d160b1eee2929e12e19a3b1");
-        // same result will be for serialize
-        let _ = CtrlMessage::parse(&test_bytes);
+        assert!(CtrlMessage::parse(&test_bytes).is_err());
+
+        let test_instance = CtrlMessage {
+            msg_type: CtrlMessageType::GetsNodeR,
+            // actually node really important what body is for the test
+            msg_data: CtrlMessageData::PingData(PingData {
+                version: 18,
+                key: None,
+                content: decode_hex("4d160b1eee2929e12e19a3b1"),
+            }),
+        };
+        assert!(test_instance.serialize().is_err());
     }
 }

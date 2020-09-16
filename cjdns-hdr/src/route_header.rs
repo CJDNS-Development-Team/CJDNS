@@ -61,7 +61,7 @@ impl RouteHeader {
         let version = data_reader.read_u32_be().expect("invalid header data size");
         let (is_ctrl, is_incoming) = {
             let flags = data_reader.read_u8().expect("invalid header data size");
-            (flags == CONTROL_FRAME, flags == INCOMING_FRAME)
+            (flags & CONTROL_FRAME != 0, flags & INCOMING_FRAME != 0)
         };
         let _zeroes = data_reader.take_bytes(3).expect("invalid header data size"); // padding
         let ip6_from_bytes = {
@@ -81,7 +81,7 @@ impl RouteHeader {
             return Err(ParseError::InvalidInvariant("ip6 is defined for control frame"));
         }
         if !is_ctrl && ip6_from_bytes.is_none() {
-            return Err(ParseError::InvalidInvariant("ip6 is not defined in incoming frame"));
+            return Err(ParseError::InvalidInvariant("ip6 is not defined for non-control frame"));
         }
         if let Some(public_key) = public_key.as_ref() {
             if let Some(ip6_from_bytes) = ip6_from_bytes.as_ref() {
@@ -115,7 +115,7 @@ impl RouteHeader {
             return Err(SerializeError::InvalidInvariant("ip6 is defined for control frame"));
         }
         if !self.is_ctrl && self.ip6.is_none() {
-            return Err(SerializeError::InvalidInvariant("ip6 is is not defined in incoming frame"));
+            return Err(SerializeError::InvalidInvariant("ip6 is not defined for non-control frame"));
         }
         if let Some(public_key) = self.public_key.as_ref() {
             if let Some(ip6) = self.ip6.as_ref() {
@@ -127,7 +127,16 @@ impl RouteHeader {
         }
         let public_key_bytes = self.public_key.as_ref().map(|key| key.bytes()).unwrap_or_else(|| ZERO_PUBLIC_KEY_BYTES.into());
         let switch_header_bytes = self.switch_header.serialize()?;
-        let flags = if self.is_ctrl { CONTROL_FRAME } else { INCOMING_FRAME };
+        let flags = {
+            let mut ret_flag = 0;
+            if self.is_ctrl {
+                ret_flag += CONTROL_FRAME;
+            }
+            if self.is_incoming {
+                ret_flag += INCOMING_FRAME;
+            }
+            ret_flag
+        };
         let pad_bytes = &[0u8; 3];
         let ip6_bytes = self.ip6.as_ref().map(|ip6| ip6.bytes()).unwrap_or_else(|| ZERO_IP6_BYTES.into());
 
@@ -154,6 +163,7 @@ mod tests {
 
     use super::RouteHeader;
     use crate::switch_header::SwitchHeader;
+    use crate::route_header::{CONTROL_FRAME, INCOMING_FRAME};
 
     fn decode_hex(hex: &str) -> Vec<u8> {
         hex::decode(hex).expect("invalid hex string")
@@ -277,6 +287,38 @@ mod tests {
         ];
         for valid_header in valid_cases.iter() {
             assert!(valid_header.serialize().is_ok());
+        }
+    }
+
+    #[test]
+    fn test_flag_checks() {
+        let flag_idx = 48;
+        let test_data = [
+            ("a331ebbed8d92ac03b10efed3e389cd0c6ec7331a72dbde198476c5eb4d14a1f0000000000000013004800000000000001000000fc928136dc1fe6e04ef6a6dd7187b85f", false, true),
+            ("0000000000000000000000000000000000000000000000000000000000000000000000000000001300480000000000000200000000000000000000000000000000000000", true, false),
+            ("0000000000000000000000000000000000000000000000000000000000000000000000000000001300480000000000000300000000000000000000000000000000000000", true, true),
+            ("a331ebbed8d92ac03b10efed3e389cd0c6ec7331a72dbde198476c5eb4d14a1f0000000000000013004800000000000000000000fc928136dc1fe6e04ef6a6dd7187b85f", false, false)
+        ];
+        for &(hex_data, is_ctrl, is_incoming) in test_data.iter() {
+            // parse test
+            let test_bytes = decode_hex(hex_data);
+            let parsed_header = RouteHeader::parse(&test_bytes).expect("invalid header");
+            assert_eq!(parsed_header.is_incoming, is_incoming);
+            assert_eq!(parsed_header.is_ctrl, is_ctrl);
+            // serialize test
+            let serialized_header = parsed_header.serialize().expect("invalid header");
+            let serialized_flag_byte = serialized_header[flag_idx];
+            let test_flag_byte = {
+                let mut byte = 0;
+                if is_ctrl {
+                    byte += CONTROL_FRAME;
+                }
+                if is_incoming {
+                    byte += INCOMING_FRAME;
+                }
+                byte
+            };
+            assert_eq!(serialized_flag_byte, test_flag_byte);
         }
     }
 }
