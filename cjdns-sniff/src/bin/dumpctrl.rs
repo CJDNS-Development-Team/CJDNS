@@ -4,7 +4,8 @@ use anyhow::{anyhow, Error};
 use tokio::{select, signal};
 
 use cjdns_ctrl::CtrlMessageType;
-use cjdns_sniff::{ContentType, Message, Sniffer};
+use cjdns_hdr::ParseError;
+use cjdns_sniff::{ContentType, Message, ReceiveError, Sniffer};
 
 #[tokio::main]
 async fn main() {
@@ -34,7 +35,13 @@ async fn run() -> Result<(), Error> {
 async fn receive_loop(sniffer: &mut Sniffer) -> Result<(), Error> {
     loop {
         select! {
-            msg = sniffer.receive() => dump_msg(msg?)?,
+            msg = sniffer.receive() => {
+                match msg {
+                    Ok(msg) => dump_msg(msg)?,
+                    Err(err @ ReceiveError::SocketError(_)) => return Err(err.into()),
+                    Err(ReceiveError::ParseError(err, data)) => dump_error(err, data),
+                }
+            },
             _ = signal::ctrl_c() => break,
         }
     }
@@ -70,7 +77,7 @@ fn dump_msg(msg: Message) -> Result<(), Error> {
     Ok(())
 }
 
-pub fn msg_type_str(m: CtrlMessageType) -> &'static str {
+fn msg_type_str(m: CtrlMessageType) -> &'static str {
     match m {
         CtrlMessageType::Error => "ERROR",
         CtrlMessageType::Ping => "PING",
@@ -80,4 +87,8 @@ pub fn msg_type_str(m: CtrlMessageType) -> &'static str {
         CtrlMessageType::GetsNodeQ => "GETSNODEQ",
         CtrlMessageType::GetsNodeR => "GETSNODER",
     }
+}
+
+fn dump_error(err: ParseError, data: Vec<u8>) {
+    println!("Bad message received:\n{}\n{}", hex::encode(data), anyhow!(err));
 }

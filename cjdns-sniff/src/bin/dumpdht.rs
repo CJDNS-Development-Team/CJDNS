@@ -7,7 +7,8 @@ use tokio::{select, signal};
 
 use cjdns_bencode::BValue;
 use cjdns_core::keys::CJDNS_IP6;
-use cjdns_sniff::{ContentType, Message, Sniffer};
+use cjdns_hdr::ParseError;
+use cjdns_sniff::{ContentType, Message, ReceiveError, Sniffer};
 
 #[tokio::main]
 async fn main() {
@@ -37,7 +38,13 @@ async fn run() -> Result<(), Error> {
 async fn receive_loop(sniffer: &mut Sniffer) -> Result<(), Error> {
     loop {
         select! {
-            msg = sniffer.receive() => dump_msg(msg?)?,
+            msg = sniffer.receive() => {
+                match msg {
+                    Ok(msg) => dump_msg(msg)?,
+                    Err(err @ ReceiveError::SocketError(_)) => return Err(err.into()),
+                    Err(ReceiveError::ParseError(err, data)) => dump_error(err, data),
+                }
+            },
             _ = signal::ctrl_c() => break,
         }
     }
@@ -78,4 +85,8 @@ fn dump_bencode(benc: BValue, buf: &mut Vec<String>) -> Result<(), ()> {
         buf.push("reply".to_string())
     }
     Ok(())
+}
+
+fn dump_error(err: ParseError, data: Vec<u8>) {
+    println!("Bad message received:\n{}\n{}", hex::encode(data), anyhow!(err));
 }

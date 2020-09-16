@@ -188,7 +188,7 @@ impl Sniffer {
 
         let (size, _) = self.socket.recv_from(&mut buf).await.map_err(|e| ReceiveError::SocketError(e))?;
         let data = &buf[..size];
-        let msg = Self::decode_message(data).map_err(|e| ReceiveError::ParseError(e))?;
+        let msg = Self::decode_message(data).map_err(|e| ReceiveError::ParseError(e, data.to_vec()))?;
 
         Ok(msg)
     }
@@ -316,5 +316,5 @@ pub enum ReceiveError {
 
     /// Generic deserialization error
     #[error("Data parse error: {0}")]
-    ParseError(#[source] ParseError),
+    ParseError(#[source] ParseError, Vec<u8>),
 }
