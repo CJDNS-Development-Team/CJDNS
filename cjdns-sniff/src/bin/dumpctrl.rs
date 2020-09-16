@@ -3,7 +3,7 @@
 use anyhow::{anyhow, Error};
 use tokio::{select, signal};
 
-use cjdns_ctrl::CtrlMessageType;
+use cjdns_ctrl::{CtrlMessageType, ErrorMessageType};
 use cjdns_hdr::ParseError;
 use cjdns_sniff::{ContentType, Message, ReceiveError, Sniffer};
 
@@ -58,7 +58,7 @@ fn dump_msg(msg: Message) -> Result<(), Error> {
     buf.push(msg_type_str(content.msg_type).to_string());
     if content.msg_type == CtrlMessageType::Error {
         let err_data = content.get_error_data().ok_or_else(|| anyhow!("invalid control error message"))?;
-        buf.push(format!("{}", err_data.err_type));
+        buf.push(format!("{}", err_type_str(err_data.err_type)));
         buf.push(format!("label_at_err_node: {}", err_data.switch_header.label));
         buf.push(hex::encode(&err_data.additional));
     } else {
@@ -77,8 +77,8 @@ fn dump_msg(msg: Message) -> Result<(), Error> {
     Ok(())
 }
 
-fn msg_type_str(m: CtrlMessageType) -> &'static str {
-    match m {
+fn msg_type_str(t: CtrlMessageType) -> &'static str {
+    match t {
         CtrlMessageType::Error => "ERROR",
         CtrlMessageType::Ping => "PING",
         CtrlMessageType::Pong => "PONG",
@@ -86,6 +86,23 @@ fn msg_type_str(m: CtrlMessageType) -> &'static str {
         CtrlMessageType::KeyPong => "KEYPONG",
         CtrlMessageType::GetsNodeQ => "GETSNODEQ",
         CtrlMessageType::GetsNodeR => "GETSNODER",
+    }
+}
+
+fn err_type_str(t: ErrorMessageType) -> &'static str {
+    match t {
+        ErrorMessageType::None => "NONE",
+        ErrorMessageType::MalformedAddress => "MALFORMED_ADDRESS",
+        ErrorMessageType::Flood => "FLOOD",
+        ErrorMessageType::LinkLimitExceeded => "LINK_LIMIT_EXCEEDED",
+        ErrorMessageType::OversizeMessage => "OVERSIZE_MESSAGE",
+        ErrorMessageType::UndersizedMessage => "UNDERSIZE_MESSAGE",
+        ErrorMessageType::Authentication => "AUTHENTICATION",
+        ErrorMessageType::Invalid => "INVALID",
+        ErrorMessageType::Undeliverable => "UNDELIVERABLE",
+        ErrorMessageType::LoopRoute => "LOOP_ROUTE",
+        ErrorMessageType::ReturnPathInvalid => "RETURN_PATH_INVALID",
+        ErrorMessageType::Unrecognized => "<UNRECOGNIZED>",
     }
 }
 
