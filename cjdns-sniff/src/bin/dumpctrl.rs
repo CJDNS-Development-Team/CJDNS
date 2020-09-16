@@ -47,7 +47,7 @@ fn dump_msg(msg: Message) -> Result<String, Error> {
         // nonce is not dumped currently
         buf.push(hex::encode(&err_data.additional));
     } else {
-        let ping_data = content.get_ping_data().ok_or_else(|| anyhow!("invalid control error message"))?;
+        let ping_data = content.get_ping_data().ok_or_else(|| anyhow!("invalid control ping message"))?;
         if content.msg_type == CtrlMessageType::Ping || content.msg_type == CtrlMessageType::Pong {
             buf.push(format!("v{}", ping_data.version));
         }
