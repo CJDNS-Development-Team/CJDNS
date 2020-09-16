@@ -24,7 +24,7 @@ impl DataHeader {
     /// Results in error if input bytes length isn't equal to 4, which is current size of serialized header.
     ///
     /// `DataHeader` bytes have a following structure : one byte each for version and padding, two bytes for content number.
-    /// Content number is a u16 number which is a numerical representation of [ContentType](todo) variant.
+    /// Content number is a u16 number which is a numerical representation of `ContentType`.
     /// If content number is not defined in `ContentType`, default `ContentType` variant will be used.
     /// *Note*: default `ContentType` variant is a temporary solution.
     pub fn parse(data: &[u8]) -> Result<Self, ParseError> {
@@ -55,7 +55,7 @@ impl DataHeader {
     /// because `version` is only a 4-bit field in `DataHeader`.
     /// Also serialization fails if no suitable 16-bit content type code was found.
     ///
-    /// If `DataHeader` was instantiated with 0 `version`, header will be parsed with version equal to [current version](todo).
+    /// If `DataHeader` was instantiated with 0 `version`, header will be parsed with version equal to [current version](struct.DataHeader.html#associatedconstant.CURRENT_VERSION).
     pub fn serialize(&self) -> Result<Vec<u8>, SerializeError> {
         if self.version > 15 {
             return Err(SerializeError::InvalidInvariant("version value can't take more than 4 bits"));
