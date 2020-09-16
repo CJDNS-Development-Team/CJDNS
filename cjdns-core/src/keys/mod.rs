@@ -1,9 +1,12 @@
 //! Public and private key types.
 
-use std::convert::TryFrom;
-use std::sync::{
-    atomic::{AtomicBool, Ordering},
-    Once,
+use std::{
+    convert::TryFrom,
+    fmt,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Once,
+    }
 };
 
 use data_encoding::BASE32_DNSCURVE;
@@ -219,6 +222,12 @@ impl TryFrom<String> for CJDNS_IP6 {
             return Ok(CJDNS_IP6 { k: value });
         }
         Err(KeyError::CannotCreateFromString)
+    }
+}
+
+impl fmt::Display for CJDNS_IP6 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.k)
     }
 }
 

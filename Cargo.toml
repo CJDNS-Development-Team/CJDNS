@@ -2,8 +2,12 @@
 
 members = [
     "cjdns-core",
+    "cjdns-bencode",
+    "cjdns-bytes",
     "cjdns-hdr",
+    "cjdns-ctrl",
     "cjdns-admin",
+    "cjdns-sniff",
     "cjdns-snode",
     "netchecksum",
 ]

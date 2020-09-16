@@ -29,14 +29,14 @@ mod internal {
     // Implements `Request` for `Query` and `QueryAuth`.
     impl<T: Serialize> Request for T {
         fn to_bencode(&self) -> Result<Vec<u8>, Error> {
-            bendy::serde::to_bytes(self).map_err(|e| Error::Protocol(e))
+            bencode::to_bytes(self).map_err(|e| Error::Protocol(e))
         }
     }
 
     // Implements `Response` for `GenericResponse`.
     impl<T: DeserializeOwned> Response for T {
         fn from_bencode(bytes: &[u8]) -> Result<Self, Error> {
-            bendy::serde::from_bytes(bytes).map_err(|e| Error::Protocol(e))
+            bencode::from_bytes(bytes).map_err(|e| Error::Protocol(e))
         }
     }
 
@@ -87,19 +87,6 @@ mod internal {
         #[serde(flatten, default)]
         #[serde(bound(deserialize = "P: DeserializeOwned"))]
         pub(crate) payload: P,
-    }
-
-    #[test]
-    fn test_bencode_leading_zeroes() {
-        /*
-         * Bencode does not allow leading zeroes in encoded integers.
-         * Alas, cjdns' original implementation violates this rule,
-         * and sometimes encodes ints with leading zeroes.
-         * To work around this, bencode library (bendy) should be patched
-         * to support this.
-         * This test checks that we use correct (patched) library.
-         */
-        assert_eq!(u8::from_bencode("i042e".as_bytes()).ok(), Some(42_u8));
     }
 }
 

@@ -1,0 +1,13 @@
+[package]
+name = "cjdns-bytes"
+version = "0.1.0"
+authors = [
+    "Alex Kordys <a.kordys@mixbytes.io>",
+    "Sabaun Taraki <taraki.sabaun.rl@gmail.com>"
+]
+edition = "2018"
+license = "GPL-3.0"
+description = "Parsing & serializing tools"
+
+[dependencies]
+thiserror = "1.0"

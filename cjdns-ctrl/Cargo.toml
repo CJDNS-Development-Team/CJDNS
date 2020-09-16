@@ -1,17 +1,14 @@
 [package]
-name = "cjdns-hdr"
+name = "cjdns-ctrl"
 version = "0.1.0"
 authors = [
     "Sabaun Taraki <taraki.sabaun.rl@gmail.com>"
 ]
 edition = "2018"
 license = "GPL-3.0"
-description = "Library for parsing and serializing cjdns route and data headers"
+description = "Library for parsing/serializing CTRL messages"
 
 [dependencies]
-num_enum = "0.5"
 cjdns-bytes = { path = "../cjdns-bytes" }
 cjdns-core = { path = "../cjdns-core" } # cjdns-keys only
-
-[dev-dependencies]
-hex = "0.4"
+cjdns-hdr = { path = "../cjdns-hdr" }

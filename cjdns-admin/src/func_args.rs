@@ -30,9 +30,9 @@ impl ArgValues {
 
     /// Add argument value to list.
     #[inline]
-    pub fn add(&mut self, name: ArgName, value: ArgValue) -> &mut Self {
+    pub fn add<N: Into<ArgName>, V: Into<ArgValue>>(&mut self, name: N, value: V) -> &mut Self {
         let ArgValues(map) = self;
-        map.insert(name, value);
+        map.insert(name.into(), value.into());
         self
     }
 }
@@ -58,8 +58,40 @@ fn test_args_ser() -> Result<(), Box<dyn std::error::Error>> {
     args.add("boo".to_string(), ArgValue::Int(42));
     args.add("zoo".to_string(), ArgValue::Int(-42));
 
-    let benc = String::from_utf8(bendy::serde::to_bytes(&args)?)?;
+    let benc = String::from_utf8(bencode::to_bytes(&args)?)?;
     assert_eq!(benc, "d3:booi42e3:foo3:bar3:zooi-42ee");
 
     Ok(())
+}
+
+impl From<i64> for ArgValue {
+    #[inline]
+    fn from(value: i64) -> Self {
+        ArgValue::Int(value)
+    }
+}
+
+impl From<String> for ArgValue {
+    #[inline]
+    fn from(value: String) -> Self {
+        ArgValue::String(value)
+    }
+}
+
+impl From<&str> for ArgValue {
+    #[inline]
+    fn from(value: &str) -> Self {
+        ArgValue::String(value.to_string())
+    }
+}
+
+#[test]
+fn test_arg_value_conversion() {
+    fn arg<T: Into<ArgValue>>(v: T) -> ArgValue { v.into() }
+
+    assert_eq!(arg(42), ArgValue::Int(42));
+    assert_eq!(arg(-42), ArgValue::Int(-42));
+
+    assert_eq!(arg("foo"), ArgValue::String("foo".to_string()));
+    assert_eq!(arg("bar".to_string()), ArgValue::String("bar".to_string()));
 }
