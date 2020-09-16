@@ -58,7 +58,7 @@ impl CtrlMessage {
             let encoded_checksum = reader.read_u16_be().expect("invalid message size");
             let computed_checksum = netchecksum::cksum_raw(reader.read_all_pure());
             if computed_checksum != encoded_checksum {
-                return Err(ParseError::InvalidData("invalid checksum"));
+                return Err(ParseError::InvalidChecksum(encoded_checksum, computed_checksum));
             }
         }
         let msg_type = {

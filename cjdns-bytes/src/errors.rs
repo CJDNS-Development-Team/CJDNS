@@ -12,6 +12,9 @@ pub enum ParseError {
 
     #[error("Received invalid data: {0}")]
     InvalidData(&'static str),
+
+    #[error("Checksum mismatch: 0x{0:x} vs 0x{1:x}")]
+    InvalidChecksum(u16, u16),
 }
 
 #[derive(Error, Copy, Clone, PartialEq, Eq, Debug)]
