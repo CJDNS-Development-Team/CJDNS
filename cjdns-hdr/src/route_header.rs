@@ -63,10 +63,6 @@ impl RouteHeader {
             let flags = data_reader.read_u8().expect("invalid header data size");
             (flags == CONTROL_FRAME, flags == INCOMING_FRAME)
         };
-        // Flags `is_ctrl` and `is_incoming` are mutually exclusive
-        if is_ctrl == is_incoming {
-            return Err(ParseError::InvalidData("invalid flag: either not control, nor incoming"));
-        }
         let _zeroes = data_reader.take_bytes(3).expect("invalid header data size"); // padding
         let ip6_from_bytes = {
             let ip6_bytes_slice = data_reader.take_bytes(16).expect("invalid header data size");
@@ -112,9 +108,6 @@ impl RouteHeader {
     /// switch header serialization failed, then route header serialization ends up with an error.
     pub fn serialize(&self) -> Result<Vec<u8>, SerializeError> {
         // checking invariants, because `RouteHeader` can be instantiated directly
-        if self.is_ctrl == self.is_incoming {
-            return Err(SerializeError::InvalidInvariant("message must be either control or incoming"));
-        }
         if self.is_ctrl && self.public_key.is_some() {
             return Err(SerializeError::InvalidInvariant("public key can not be defined in control frame"));
         }
@@ -220,8 +213,6 @@ mod tests {
             "a331ebbed8d92ac03b10efed3e389cd0c6ec7331a72dbde198476c5eb4d14a1f0000000000000013004800000000000001000000fc928136dc1fe6e04ef6a6dd7187b85f000111",
             // invalid switch header
             "a331ebbed8d92ac03b10efed3e389cd0c6ec7331a72dbde198476c5eb4d14a1f000000000000001300c800000000000001000000fc928136dc1fe6e04ef6a6dd7187b85f",
-            // invalid flag
-            "a331ebbed8d92ac03b10efed3e389cd0c6ec7331a72dbde198476c5eb4d14a1f0000000000000013004800000000000003000000fc928136dc1fe6e04ef6a6dd7187b85f",
             // invalid invariants
             // public key is some, but the message is "control"
             "a331ebbed8d92ac03b10efed3e389cd0c6ec7331a72dbde198476c5eb4d14a1f0000000000000013004800000000000002000000fc928136dc1fe6e04ef6a6dd7187b85f",
@@ -241,19 +232,6 @@ mod tests {
     #[test]
     fn test_serialize() {
         let invalid_headers = [
-            // flag invariant not met
-            instantiate_header(
-                CJDNSPublicKey::try_from("3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k".to_string()).ok(),
-                CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).ok(),
-                true,
-                true,
-            ),
-            instantiate_header(
-                CJDNSPublicKey::try_from("3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k".to_string()).ok(),
-                CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).ok(),
-                false,
-                false,
-            ),
             // public key is some, but message is control
             instantiate_header(
                 CJDNSPublicKey::try_from("3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k".to_string()).ok(),
@@ -287,13 +265,18 @@ mod tests {
             assert!(header.serialize().is_err());
         }
 
-        // important case
-        let valid_header = instantiate_header(
-            None,
-            CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).ok(),
-            false,
-            true,
-        );
-        assert!(valid_header.serialize().is_ok())
+        // is_ctrl == is_incoming
+        let valid_cases = [
+            instantiate_header(
+                None,
+                CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).ok(),
+                false,
+                false,
+            ),
+            instantiate_header(None, None, true, true),
+        ];
+        for valid_header in valid_cases.iter() {
+            assert!(valid_header.serialize().is_ok());
+        }
     }
 }
