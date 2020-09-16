@@ -41,6 +41,14 @@ impl<'a> Reader<'a> {
         Ok(bytes_32_array)
     }
 
+    pub fn read_all_pure(&self) -> &[u8] {
+        self.0
+    }
+
+    pub fn read_all_mut(&mut self) -> &[u8] {
+        self.take_bytes(self.len()).expect("attempting to read data more than slice have")
+    }
+
     pub fn take_bytes(&mut self, count: usize) -> Result<&[u8]> {
         if self.len() < count {
             return Err(());
@@ -108,7 +116,7 @@ mod tests {
         assert!(reader.take_bytes(20).is_err());
         // reading last bytes
         reader.take_bytes(17).expect("bytes are read out");
-        assert_eq!(reader.len(), 0)
+        assert_eq!(reader.len(), 0);
     }
 
     #[test]
@@ -125,5 +133,18 @@ mod tests {
         let bytes = writer.into_vec();
         assert_eq!(bytes.len(), initial_capacity);
         assert_eq!(bytes, vec![0; initial_capacity]);
+    }
+
+    #[test]
+    fn test_read_all() {
+        let bytes = vec![0; 32];
+        let mut reader = Reader::new(&bytes);
+
+        assert_eq!(bytes.as_slice(), reader.read_all_pure());
+        let _ = reader.read_u16_be();
+        assert_eq!(&bytes[2..], reader.read_all_pure());
+        let _ = reader.read_u16_be();
+        assert_eq!(&bytes[4..], reader.read_all_mut());
+        assert_eq!(0, reader.len())
     }
 }

@@ -10,5 +10,10 @@ description = "Library for parsing/serializing CTRL messages"
 
 [dependencies]
 cjdns-bytes = { path = "../cjdns-bytes" }
-cjdns-core = { path = "../cjdns-core" } # cjdns-keys only
+cjdns-core = { path = "../cjdns-core" }
 cjdns-hdr = { path = "../cjdns-hdr" }
+netchecksum = { path = "../netchecksum" }
+num_enum = "0.5"
+
+[dev-dependencies]
+hex = "0.4.2"

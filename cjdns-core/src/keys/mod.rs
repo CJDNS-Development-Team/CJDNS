@@ -180,6 +180,12 @@ impl BytesRepr for CJDNSPublicKey {
     }
 }
 
+impl std::fmt::Display for CJDNSPublicKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.k)
+    }
+}
+
 impl TryFrom<&CJDNSPublicKey> for CJDNS_IP6 {
     type Error = KeyError;
 
