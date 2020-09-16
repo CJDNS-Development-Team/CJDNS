@@ -2,8 +2,10 @@
 
 members = [
     "cjdns-core",
+    "cjdns-keys",
     "cjdns-bencode",
     "cjdns-bytes",
+    "cjdns-ann",
     "cjdns-hdr",
     "cjdns-ctrl",
     "cjdns-admin",

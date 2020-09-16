@@ -1,13 +1,10 @@
 use std::convert::TryFrom;
 
-use sodiumoxide::crypto::hash::sha512::{hash, Digest};
-use sodiumoxide::crypto::sign::ed25519::{verify_detached, PublicKey, Signature};
+use sodiumoxide::crypto::hash::sha512::{Digest, hash};
+use sodiumoxide::crypto::sign::ed25519::{PublicKey, Signature, verify_detached};
 
-use crate::{
-    deserialize_forms,
-    keys::{CJDNSPublicKey, CJDNS_IP6},
-    EncodingScheme, RoutingLabel,
-};
+use cjdns_core::{deserialize_forms, EncodingScheme, RoutingLabel};
+use cjdns_keys::{CJDNS_IP6, CJDNSPublicKey};
 
 use super::errors::*;
 use super::models::{Announcement, AnnouncementEntities, AnnouncementHeader, Entity, LinkStateSlots};
@@ -87,9 +84,11 @@ pub mod serialized_data {
 
     #[cfg(test)]
     mod tests {
-        use super::*;
-        use crate::EncodingSchemeForm;
         use sodiumoxide::*;
+
+        use cjdns_core::EncodingSchemeForm;
+
+        use super::*;
 
         fn join(slice1: &[u8], slice2: &[u8]) -> Vec<u8> {
             slice1.iter().chain(slice2.iter()).map(|&x| x).collect()
@@ -533,8 +532,9 @@ mod parser {
 
     #[cfg(test)]
     mod tests {
+        use cjdns_keys::{BytesRepr, CJDNSKeysApi};
+
         use super::*;
-        use crate::keys::{BytesRepr, CJDNSKeysApi};
 
         #[test]
         fn test_parse_header() {

@@ -1,5 +1,8 @@
 //! Public and private key types.
 
+#[macro_use]
+extern crate lazy_static;
+
 use std::{
     convert::TryFrom,
     fmt,
@@ -16,10 +19,9 @@ use sodiumoxide::crypto::scalarmult;
 use sodiumoxide::init;
 use sodiumoxide::randombytes::randombytes;
 
-use errors::{KeyError, Result};
+pub use errors::{KeyError, Result};
 
 mod errors;
-pub mod node;
 
 lazy_static! {
     static ref IP6_RE: Regex = Regex::new("^fc[0-9a-f]{2}:(?:[0-9a-f]{4}:){6}[0-9a-f]{4}$").expect("bad regexp");

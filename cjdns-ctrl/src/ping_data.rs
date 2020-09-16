@@ -1,5 +1,5 @@
 use cjdns_bytes::{ParseError, Reader, SerializeError, Writer};
-use cjdns_core::keys::{BytesRepr, CJDNSPublicKey};
+use cjdns_keys::{BytesRepr, CJDNSPublicKey};
 
 use crate::CtrlMessageType;
 
@@ -89,9 +89,7 @@ impl PingData {
 mod tests {
     use std::convert::TryFrom;
 
-    use hex;
-
-    use cjdns_core::keys::CJDNSPublicKey;
+    use cjdns_keys::CJDNSPublicKey;
 
     use super::PingData;
     use crate::control_message::CtrlMessageType;

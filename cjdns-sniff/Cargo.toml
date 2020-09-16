@@ -23,6 +23,6 @@ tokio = { version = "0.2", features = ["fs", "macros", "net", "udp", "time", "si
 cjdns-admin = { path = "../cjdns-admin" }
 cjdns-bencode = { path = "../cjdns-bencode" }
 cjdns-bytes = { path = "../cjdns-bytes" }
-cjdns-core = { path = "../cjdns-core" } # cjdns-keys only
+cjdns-keys = { path = "../cjdns-keys" }
 cjdns-ctrl = { path = "../cjdns-ctrl" }
 cjdns-hdr = { path = "../cjdns-hdr" }

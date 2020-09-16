@@ -109,7 +109,6 @@ mod tests {
     use std::convert::TryFrom;
 
     use cjdns_core::RoutingLabel;
-    use hex;
 
     use super::SwitchHeader;
 

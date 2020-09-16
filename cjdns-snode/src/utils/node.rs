@@ -1,11 +1,8 @@
 use std::convert::TryFrom;
 
+use cjdns_core::RoutingLabel;
+use cjdns_keys::{CJDNSPublicKey, KeyError, Result};
 use regex::Regex;
-
-use crate::RoutingLabel;
-
-use super::CJDNSPublicKey;
-use super::errors::{KeyError, Result};
 
 lazy_static! {
     static ref NODE_NAME_RE: Regex = Regex::new(
@@ -16,6 +13,7 @@ lazy_static! {
 }
 
 /// Gets version, label and public key all together in tuple from `name` argument, if it has valid structure. Otherwise returns error.
+#[allow(dead_code)] // TODO not yet used
 pub fn parse_node_name(name: String) -> Result<(u32, RoutingLabel<u64>, CJDNSPublicKey)> {
     if let Some(c) = NODE_NAME_RE.captures(&name) {
         let str_from_captured_group = |group_num: usize| -> &str { c.get(group_num).expect("bad group index").as_str() };

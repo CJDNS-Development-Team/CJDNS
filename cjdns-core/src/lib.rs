@@ -2,7 +2,6 @@
 
 #[macro_use]
 extern crate lazy_static;
-extern crate regex;
 
 pub use self::encoding::*;
 pub use self::encoding_scheme::*;
@@ -18,5 +17,3 @@ mod routinglabel;
 mod strconv;
 
 pub mod splice;
-pub mod keys;
-pub mod announcement;

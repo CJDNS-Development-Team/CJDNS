@@ -18,4 +18,4 @@ pub enum KeyError {
     CannotParseNodeName,
 }
 
-pub(super) type Result<T> = std::result::Result<T, KeyError>;
+pub type Result<T> = std::result::Result<T, KeyError>;

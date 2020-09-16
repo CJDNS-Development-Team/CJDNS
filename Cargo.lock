@@ -137,6 +137,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cjdns-ann"
+version = "0.1.0"
+dependencies = [
+ "cjdns-core 0.1.0",
+ "cjdns-keys 0.1.0",
+ "hex 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "libsodium-sys 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sodiumoxide 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thiserror 1.0.20 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
 name = "cjdns-bencode"
 version = "0.1.0"
 dependencies = [
@@ -163,13 +175,9 @@ dependencies = [
 name = "cjdns-core"
 version = "0.1.0"
 dependencies = [
- "data-encoding 2.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "hex 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "libsodium-sys 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "rand 0.7.3 (registry+https://github.com/rust-lang/crates.io-index)",
  "regex 1.3.9 (registry+https://github.com/rust-lang/crates.io-index)",
- "sodiumoxide 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "thiserror 1.0.20 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
@@ -180,6 +188,7 @@ dependencies = [
  "cjdns-bytes 0.1.0",
  "cjdns-core 0.1.0",
  "cjdns-hdr 0.1.0",
+ "cjdns-keys 0.1.0",
  "hex 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "netchecksum 0.1.0",
  "num_enum 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -191,8 +200,21 @@ version = "0.1.0"
 dependencies = [
  "cjdns-bytes 0.1.0",
  "cjdns-core 0.1.0",
+ "cjdns-keys 0.1.0",
  "hex 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "num_enum 0.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
+]
+
+[[package]]
+name = "cjdns-keys"
+version = "0.1.0"
+dependencies = [
+ "data-encoding 2.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hex 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "regex 1.3.9 (registry+https://github.com/rust-lang/crates.io-index)",
+ "sodiumoxide 0.2.5 (registry+https://github.com/rust-lang/crates.io-index)",
+ "thiserror 1.0.20 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -203,9 +225,9 @@ dependencies = [
  "cjdns-admin 0.1.0",
  "cjdns-bencode 0.1.0",
  "cjdns-bytes 0.1.0",
- "cjdns-core 0.1.0",
  "cjdns-ctrl 0.1.0",
  "cjdns-hdr 0.1.0",
+ "cjdns-keys 0.1.0",
  "clap 3.0.0-beta.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "hex 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
@@ -221,9 +243,13 @@ name = "cjdns-snode"
 version = "0.1.0"
 dependencies = [
  "anyhow 1.0.32 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cjdns-core 0.1.0",
+ "cjdns-keys 0.1.0",
  "clap 3.0.0-beta.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "log 0.4.11 (registry+https://github.com/rust-lang/crates.io-index)",
+ "regex 1.3.9 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.114 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde_json 1.0.57 (registry+https://github.com/rust-lang/crates.io-index)",
  "tokio 0.2.22 (registry+https://github.com/rust-lang/crates.io-index)",

@@ -4,7 +4,7 @@ use std::convert::TryFrom;
 
 use cjdns_bytes::{ParseError, SerializeError};
 use cjdns_bytes::{Reader, Writer};
-use cjdns_core::keys::{BytesRepr, CJDNS_IP6, CJDNSPublicKey};
+use cjdns_keys::{BytesRepr, CJDNS_IP6, CJDNSPublicKey};
 
 use crate::switch_header::SwitchHeader;
 
@@ -156,14 +156,13 @@ impl RouteHeader {
 mod tests {
     use std::convert::TryFrom;
 
-    use cjdns_core::{
-        keys::{CJDNSPublicKey, CJDNS_IP6},
-        RoutingLabel,
-    };
+    use cjdns_core::RoutingLabel;
+    use cjdns_keys::{CJDNS_IP6, CJDNSPublicKey};
+
+    use crate::route_header::{CONTROL_FRAME, INCOMING_FRAME};
+    use crate::switch_header::SwitchHeader;
 
     use super::RouteHeader;
-    use crate::switch_header::SwitchHeader;
-    use crate::route_header::{CONTROL_FRAME, INCOMING_FRAME};
 
     fn decode_hex(hex: &str) -> Vec<u8> {
         hex::decode(hex).expect("invalid hex string")

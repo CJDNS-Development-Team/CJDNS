@@ -15,6 +15,8 @@
 #[macro_use]
 extern crate anyhow;
 #[macro_use]
+extern crate lazy_static;
+#[macro_use]
 extern crate log;
 
 use anyhow::Result;
@@ -89,3 +91,4 @@ mod config {
 }
 
 mod supernode;
+mod utils;

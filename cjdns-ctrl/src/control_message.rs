@@ -159,9 +159,7 @@ impl CtrlMessageData {
 
 #[cfg(test)]
 mod tests {
-    use hex;
-
-    use cjdns_core::keys::CJDNSPublicKey;
+    use cjdns_keys::CJDNSPublicKey;
     use cjdns_core::RoutingLabel;
     use cjdns_hdr::SwitchHeader;
 

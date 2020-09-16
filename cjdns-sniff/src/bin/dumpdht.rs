@@ -6,7 +6,7 @@ use anyhow::{anyhow, Error};
 use tokio::{select, signal};
 
 use cjdns_bencode::BValue;
-use cjdns_core::keys::CJDNS_IP6;
+use cjdns_keys::CJDNS_IP6;
 use cjdns_hdr::ParseError;
 use cjdns_sniff::{ContentType, Message, ReceiveError, Sniffer};
 

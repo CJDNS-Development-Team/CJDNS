@@ -79,8 +79,6 @@ impl DataHeader {
 
 #[cfg(test)]
 mod tests {
-    use hex;
-
     use super::{ContentType, DataHeader};
 
     fn decode_hex(hex: &str) -> Vec<u8> {

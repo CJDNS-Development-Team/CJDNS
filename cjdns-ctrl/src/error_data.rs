@@ -119,8 +119,6 @@ impl ErrorMessageType {
 mod tests {
     use std::convert::TryFrom;
 
-    use hex;
-
     use cjdns_core::RoutingLabel;
 
     use super::*;

@@ -2,10 +2,8 @@
 
 use sodiumoxide::crypto::hash::sha512::Digest;
 
-use crate::{
-    keys::{CJDNSPublicKey, CJDNS_IP6},
-    EncodingScheme, RoutingLabel,
-};
+use cjdns_core::{EncodingScheme, RoutingLabel};
+use cjdns_keys::{CJDNS_IP6, CJDNSPublicKey};
 
 use super::AnnouncementPacket;
 

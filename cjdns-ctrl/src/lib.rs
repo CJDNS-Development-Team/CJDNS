@@ -29,7 +29,7 @@
 //! ```rust
 //! # use std::convert::TryFrom;
 //! # use hex::decode;
-//! # use cjdns_core::keys::CJDNSPublicKey;
+//! # use cjdns_keys::CJDNSPublicKey;
 //! use cjdns_ctrl::*;
 //! # let hex_to_bytes = |s: &str| -> Vec<u8> { decode(s).expect("invalid hex string") };
 //!

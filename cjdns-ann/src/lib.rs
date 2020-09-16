@@ -1,4 +1,4 @@
-//! Module for parsing cjdns route announcement messages.
+//! Library for parsing cjdns route announcement messages.
 //!
 //! Each cjdns announcement message contains message header, a sequence of entities and some additional data derived from header.
 //! For example, senders auth curve25519 encryption key is derived from the announcement header.
@@ -92,9 +92,10 @@
 //! ```rust
 //! # use std::convert::TryFrom;
 //! # use sodiumoxide::crypto::hash::sha512;
-//! # use hex;
-//! # use cjdns_core::{RoutingLabel, EncodingScheme, EncodingSchemeForm, announcement::{Announcement, AnnouncementHeader, AnnouncementEntities, Entity}, keys::{CJDNS_IP6, CJDNSPublicKey}};
-//! use cjdns_core::announcement::AnnouncementPacket;
+//! # use cjdns_core::{RoutingLabel, EncodingScheme, EncodingSchemeForm};
+//! # use cjdns_keys::{CJDNS_IP6, CJDNSPublicKey};
+//! # use cjdns_ann::{Announcement, AnnouncementHeader, AnnouncementEntities, Entity};
+//! use cjdns_ann::AnnouncementPacket;
 //! #
 //! # let announcement_bytes = {
 //! #     let hexed_announcement = "3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2fc928136dc1fe6e04ef6a6dd7187b85f00001576462f6f69040200120107006114458100200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000015";
