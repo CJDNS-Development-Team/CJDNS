@@ -21,21 +21,30 @@ async fn run() -> Result<(), Error> {
     let mut sniffer = Sniffer::sniff_traffic(cjdns, ContentType::Cjdht).await?;
 
     println!("Started sniffing.");
-    loop {
-        select! {
-            msg = sniffer.receive() => println!("{}", dump_msg(msg?)?), //TODO Problem: exit without proper disconnect. Redesign.
-            _ = signal::ctrl_c() => break,
-        }
-    }
+    let receive_error = receive_loop(&mut sniffer).await.err();
 
     println!("Disconnecting...");
-    sniffer.disconnect().await?;
+    let disconnect_error = sniffer.disconnect().await.err().map(|e| e.into());
+
+    if let Some(error) = receive_error.or(disconnect_error) {
+        return Err(error);
+    }
 
     println!("Done.");
     Ok(())
 }
 
-fn dump_msg(msg: Message) -> Result<String, Error> {
+async fn receive_loop(sniffer: &mut Sniffer) -> Result<(), Error> {
+    loop {
+        select! {
+            msg = sniffer.receive() => dump_msg(msg?)?,
+            _ = signal::ctrl_c() => break,
+        }
+    }
+    Ok(())
+}
+
+fn dump_msg(msg: Message) -> Result<(), Error> {
     let route_header = msg.route_header.as_ref().ok_or_else(|| anyhow!("Bad message: missing route header"))?;
 
     let mut buf = Vec::new();
@@ -48,7 +57,9 @@ fn dump_msg(msg: Message) -> Result<String, Error> {
         dump_bencode(benc, &mut buf).map_err(|_| anyhow!("unrecognized bencoded content"))?;
     }
 
-    Ok(buf.join(" "))
+    let s = buf.join(" ");
+    println!("{}", s);
+    Ok(())
 }
 
 fn dump_bencode(benc: BValue, buf: &mut Vec<String>) -> Result<(), ()> {
