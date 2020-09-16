@@ -21,7 +21,7 @@ async fn run() -> Result<(), Error> {
     let cjdns = cjdns_admin::connect(None).await?;
     let mut sniffer = Sniffer::sniff_traffic(cjdns, ContentType::Cjdht).await?;
 
-    println!("Started sniffing.");
+    println!("Started sniffing. Press Ctrl+C to terminate.");
     let receive_error = receive_loop(&mut sniffer).await.err();
 
     println!("Disconnecting...");

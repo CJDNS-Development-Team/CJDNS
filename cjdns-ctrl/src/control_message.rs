@@ -20,12 +20,12 @@ pub struct CtrlMessage {
 #[repr(u16)]
 pub enum CtrlMessageType {
     Error = 2,
-    Ping,
-    Pong,
-    KeyPing,
-    KeyPong,
-    GetsNodeQ,
-    GetsNodeR,
+    Ping = 3,
+    Pong = 4,
+    KeyPing = 5,
+    KeyPong = 6,
+    GetSuperNodeQuery = 7,
+    GetSuperNodeResponse = 8,
 }
 
 /// Control message serialized body data
@@ -33,6 +33,7 @@ pub enum CtrlMessageType {
 pub enum CtrlMessageData {
     PingData(PingData),
     ErrorData(ErrorData),
+    SuperNodeQueryData(), // Not implemented
 }
 
 impl CtrlMessage {
@@ -58,7 +59,7 @@ impl CtrlMessage {
             let received_checksum = reader.read_u16_be().expect("invalid message size");
             let computed_checksum = netchecksum::cksum_raw(reader.read_all_pure());
             let inverted_checksum = (computed_checksum << 8) | (computed_checksum >> 8);
-            if received_checksum != computed_checksum && received_checksum != inverted_checksum  {
+            if received_checksum != computed_checksum && received_checksum != inverted_checksum {
                 return Err(ParseError::InvalidChecksum(received_checksum, computed_checksum));
             }
         }
@@ -68,10 +69,15 @@ impl CtrlMessage {
         };
         let raw_data = reader.read_all_mut();
         let msg_data = match msg_type {
-            CtrlMessageType::Error => CtrlMessageData::ErrorData(ErrorData::parse(raw_data)?),
-            CtrlMessageType::GetsNodeQ | CtrlMessageType::GetsNodeR => return Err(ParseError::InvalidData("can't parse GetsNode messages")),
-            // Ping | Pong | KeyPing | KeyPong
-            ping_type => CtrlMessageData::PingData(PingData::parse(raw_data, ping_type)?),
+            CtrlMessageType::Error => {
+                CtrlMessageData::ErrorData(ErrorData::parse(raw_data)?)
+            }
+            CtrlMessageType::GetSuperNodeQuery | CtrlMessageType::GetSuperNodeResponse => {
+                CtrlMessageData::SuperNodeQueryData()
+            }
+            CtrlMessageType::Ping | CtrlMessageType::Pong | CtrlMessageType::KeyPing | CtrlMessageType::KeyPong => {
+                CtrlMessageData::PingData(PingData::parse(raw_data, msg_type)?)
+            }
         };
         Ok(CtrlMessage { msg_type, msg_data })
     }
@@ -90,7 +96,7 @@ impl CtrlMessage {
                     .ok_or(SerializeError::InvalidInvariant("message with error header, but ping data body"))?;
                 error_data.serialize()?
             }
-            CtrlMessageType::GetsNodeQ | CtrlMessageType::GetsNodeR => return Err(SerializeError::InvalidData("can't serialize GetsNode messages")),
+            CtrlMessageType::GetSuperNodeQuery | CtrlMessageType::GetSuperNodeResponse => return Err(SerializeError::InvalidData("can't serialize GetsNode messages")),
             // Ping | Pong | KeyPing | KeyPong
             ping_type => {
                 let ping_data = self
@@ -327,20 +333,19 @@ mod tests {
     }
 
     #[test]
-    fn test_get_node_msg() {
-        // GetsNodeQ message
+    fn test_get_snode_msg() {
+        // GetSuperNodeQuery message
         let test_bytes = decode_hex("a2e1000709f91102000000124d160b1eee2929e12e19a3b1");
-        assert!(CtrlMessage::parse(&test_bytes).is_err());
+        let message = CtrlMessage::parse(&test_bytes);
+        assert!(message.is_ok());
+        let message = message.unwrap();
+        assert_eq!(message.msg_type, CtrlMessageType::GetSuperNodeQuery);
+        assert_eq!(message.msg_data, CtrlMessageData::SuperNodeQueryData());
 
         let test_instance = CtrlMessage {
-            msg_type: CtrlMessageType::GetsNodeR,
-            // actually node really important what body is for the test
-            msg_data: CtrlMessageData::PingData(PingData {
-                version: 18,
-                key: None,
-                content: decode_hex("4d160b1eee2929e12e19a3b1"),
-            }),
+            msg_type: CtrlMessageType::GetSuperNodeResponse,
+            msg_data: CtrlMessageData::SuperNodeQueryData(),
         };
-        assert!(test_instance.serialize().is_err());
+        assert!(test_instance.serialize().is_err()); // Not implemented
     }
 }

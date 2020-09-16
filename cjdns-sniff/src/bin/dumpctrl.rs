@@ -18,7 +18,7 @@ async fn run() -> Result<(), Error> {
     let cjdns = cjdns_admin::connect(None).await?;
     let mut sniffer = Sniffer::sniff_traffic(cjdns, ContentType::Ctrl).await?;
 
-    println!("Started sniffing.");
+    println!("Started sniffing. Press Ctrl+C to terminate.");
     let receive_error = receive_loop(&mut sniffer).await.err();
 
     println!("Disconnecting...");
@@ -56,19 +56,25 @@ fn dump_msg(msg: Message) -> Result<(), Error> {
     buf.push((if route_header.is_incoming { ">" } else { "<" }).to_string());
     buf.push(route_header.switch_header.label.to_string());
     buf.push(msg_type_str(content.msg_type).to_string());
-    if content.msg_type == CtrlMessageType::Error {
-        let err_data = content.get_error_data().ok_or_else(|| anyhow!("invalid control error message"))?;
-        buf.push(format!("{}", err_type_str(err_data.err_type)));
-        buf.push(format!("label_at_err_node: {}", err_data.switch_header.label));
-        buf.push(hex::encode(&err_data.additional));
-    } else {
-        let ping_data = content.get_ping_data().ok_or_else(|| anyhow!("invalid control ping message"))?;
-        if content.msg_type == CtrlMessageType::Ping || content.msg_type == CtrlMessageType::Pong {
-            buf.push(format!("v{}", ping_data.version));
+    match content.msg_type {
+        CtrlMessageType::Error => {
+            let err_data = content.get_error_data().ok_or_else(|| anyhow!("invalid control error message"))?;
+            buf.push(format!("{}", err_type_str(err_data.err_type)));
+            buf.push(format!("label_at_err_node: {}", err_data.switch_header.label));
+            buf.push(hex::encode(&err_data.additional));
         }
-        if content.msg_type == CtrlMessageType::KeyPing || content.msg_type == CtrlMessageType::KeyPong {
-            let key = ping_data.key.as_ref().ok_or_else(|| anyhow!("Bad message: missing key"))?;
-            buf.push(format!("{}", key));
+        CtrlMessageType::Ping | CtrlMessageType::Pong | CtrlMessageType::KeyPing | CtrlMessageType::KeyPong => {
+            let ping_data = content.get_ping_data().ok_or_else(|| anyhow!("invalid control ping message"))?;
+            if content.msg_type == CtrlMessageType::Ping || content.msg_type == CtrlMessageType::Pong {
+                buf.push(format!("v{}", ping_data.version));
+            }
+            if content.msg_type == CtrlMessageType::KeyPing || content.msg_type == CtrlMessageType::KeyPong {
+                let key = ping_data.key.as_ref().ok_or_else(|| anyhow!("Bad message: missing key"))?;
+                buf.push(format!("{}", key));
+            }
+        }
+        CtrlMessageType::GetSuperNodeQuery | CtrlMessageType::GetSuperNodeResponse => {
+            buf.push("<UNSUPPORTED MESSAGE>".to_string());
         }
     }
 
@@ -84,8 +90,8 @@ fn msg_type_str(t: CtrlMessageType) -> &'static str {
         CtrlMessageType::Pong => "PONG",
         CtrlMessageType::KeyPing => "KEYPING",
         CtrlMessageType::KeyPong => "KEYPONG",
-        CtrlMessageType::GetsNodeQ => "GETSNODEQ",
-        CtrlMessageType::GetsNodeR => "GETSNODER",
+        CtrlMessageType::GetSuperNodeQuery => "GETSNODEQ",
+        CtrlMessageType::GetSuperNodeResponse => "GETSNODER",
     }
 }
 
