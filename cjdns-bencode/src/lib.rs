@@ -4,6 +4,10 @@ pub use bendy::serde::Error;
 pub use bendy::serde::from_bytes;
 pub use bendy::serde::to_bytes;
 
+pub use crate::value::{BencodeError, BValue};
+
+mod value;
+
 #[cfg(test)]
 mod tests {
     use bendy::decoding::FromBencode;
