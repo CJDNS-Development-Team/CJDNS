@@ -6,9 +6,9 @@ use anyhow::{anyhow, Error};
 use tokio::{select, signal};
 
 use cjdns_bencode::BValue;
-use cjdns_keys::CJDNS_IP6;
 use cjdns_hdr::ParseError;
-use cjdns_sniff::{ContentType, Message, ReceiveError, Sniffer};
+use cjdns_keys::CJDNS_IP6;
+use cjdns_sniff::{Content, ContentType, Message, ReceiveError, Sniffer};
 
 #[tokio::main]
 async fn main() {
@@ -52,15 +52,13 @@ async fn receive_loop(sniffer: &mut Sniffer) -> Result<(), Error> {
 }
 
 fn dump_msg(msg: Message) -> Result<(), Error> {
-    let route_header = msg.route_header.as_ref().ok_or_else(|| anyhow!("Bad message: missing route header"))?;
-
     let mut buf = Vec::new();
-    buf.push((if route_header.is_incoming { ">" } else { "<" }).to_string());
-    buf.push(format!("v{}", route_header.version));
-    buf.push(route_header.switch_header.label.to_string());
-    buf.push(route_header.ip6.as_ref().map(|s| s.to_string()).unwrap_or_default());
+    buf.push((if msg.route_header.is_incoming { ">" } else { "<" }).to_string());
+    buf.push(format!("v{}", msg.route_header.version));
+    buf.push(msg.route_header.switch_header.label.to_string());
+    buf.push(msg.route_header.ip6.as_ref().map(|s| s.to_string()).unwrap_or_default());
 
-    if let Some(benc) = msg.content_benc {
+    if let Content::Benc(benc) = msg.content {
         dump_bencode(benc, &mut buf).map_err(|_| anyhow!("unrecognized bencoded content"))?;
     }
 

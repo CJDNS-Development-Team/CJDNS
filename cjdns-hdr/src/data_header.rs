@@ -77,6 +77,15 @@ impl DataHeader {
     }
 }
 
+impl Default for DataHeader {
+    fn default() -> Self {
+        DataHeader {
+            version: Self::CURRENT_VERSION,
+            content_type: ContentType::Other,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{ContentType, DataHeader};

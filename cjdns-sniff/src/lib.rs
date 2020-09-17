@@ -52,20 +52,29 @@ pub struct Sniffer {
 }
 
 /// Message that is being sent or received by cjdns router.
-#[derive(Clone, Default, Debug)]
+#[derive(Clone, Debug)]
 pub struct Message {
     /// Route header
-    pub route_header: Option<RouteHeader>,
-    /// Data header
-    pub data_header: Option<DataHeader>,
-    /// Raw binary of the content, if it cannot be decoded into neither `content_benc` nor `content`
-    pub content_bytes: Option<Vec<u8>>,
+    pub route_header: RouteHeader,
+    /// Data header - content type
+    pub content_type: ContentType,
+    /// Message content (parsed accordingly to the `content_type`)
+    pub content: Content,
     /// The whole message's serialized representation
     pub raw_bytes: Option<Vec<u8>>,
+}
+
+/// Message content enum.
+#[derive(Clone, Debug)]
+pub enum Content {
+    /// Empty content
+    Empty,
+    /// Raw binary of the content, if it cannot be decoded into neither `content_benc` nor `content`
+    Bytes(Vec<u8>),
     /// If the `content_type` is `ContentType::Cjdht` this is the b-decoded content
-    pub content_benc: Option<BValue>,
+    Benc(BValue),
     /// If the message is control message (`route_header.is_ctrl == true`) this is the decoded control message
-    pub content: Option<CtrlMessage>,
+    Ctrl(CtrlMessage),
 }
 
 impl Sniffer {
@@ -144,26 +153,26 @@ impl Sniffer {
 
         let mut buf = Vec::new();
 
-        if let Some(ref route_header) = msg.route_header {
-            let route_header_bytes = route_header.serialize().map_err(|e| SendError::SerializeError(e))?;
-            buf.extend_from_slice(&route_header_bytes);
-        }
+        // Route header
+        let route_header_bytes = msg.route_header.serialize().map_err(|e| SendError::SerializeError(e))?;
+        buf.extend_from_slice(&route_header_bytes);
 
-        if let Some(ref data_header) = msg.data_header {
-            let data_header_bytes = data_header.serialize().map_err(|e| SendError::SerializeError(e))?;
-            buf.extend_from_slice(&data_header_bytes);
-        }
+        // Data header
+        let data_header = DataHeader { content_type: msg.content_type, .. DataHeader::default() };
+        let data_header_bytes = data_header.serialize().map_err(|e| SendError::SerializeError(e))?;
+        buf.extend_from_slice(&data_header_bytes);
 
+        // Content
         let content_bytes = match &msg {
-            Message { data_header: Some(data_header), content_benc: Some(content_benc), .. } if data_header.content_type == ContentType::Cjdht => {
+            Message { content_type, content: Content::Benc(content_benc), .. } if *content_type == ContentType::Cjdht => {
                 let bytes = content_benc.encode().map_err(|e| SendError::BencodeError(e))?;
                 Some(bytes)
             }
-            Message { route_header: Some(route_header), content: Some(content), .. } if route_header.is_ctrl => {
+            Message { route_header, content: Content::Ctrl(content), .. } if route_header.is_ctrl => {
                 let content_bytes = content.serialize().map_err(|e| SendError::SerializeError(e))?;
                 Some(content_bytes)
             }
-            Message { content_bytes: Some(content_bytes), .. } => {
+            Message { content: Content::Bytes(content_bytes), .. } => {
                 Some(content_bytes.clone())
             }
             _ => None,
@@ -233,38 +242,45 @@ impl Sniffer {
         } else {
             None
         };
+        let content_type = if let Some(data_header) = data_header {
+            data_header.content_type
+        } else {
+            ContentType::Ctrl
+        };
 
         // Data itself
         let data_bytes = if bytes.len() > 0 { Some(bytes) } else { None };
 
-        // Bencoded content
-        let content_benc = match (&data_header, data_bytes) {
-            (Some(data_header), Some(data_bytes)) if data_header.content_type == ContentType::Cjdht => {
+        // Content
+        let content = match (content_type, data_bytes, is_ctrl) {
+            // Bencoded content
+            (ContentType::Cjdht, Some(data_bytes), false) => {
                 let content = BValue::decode(data_bytes).map_err(|_| ParseError::InvalidData("failed to decode bencoded content"))?;
-                Some(content)
+                Content::Benc(content)
             }
-            _ => None
-        };
 
-        // Control message content
-        let content = if content_benc.is_none() && is_ctrl {
-            if let Some(data_bytes) = data_bytes {
-                Some(CtrlMessage::parse(data_bytes)?)
-            } else {
-                None
+            // Control message content
+            (_, Some(data_bytes), true) => {
+                let ctrl = CtrlMessage::parse(data_bytes)?;
+                Content::Ctrl(ctrl)
             }
-        } else {
-            None
+
+            // Raw data (unrecognized) content
+            (_, Some(data_bytes), _) => {
+                let content_bytes = Vec::from(data_bytes);
+                Content::Bytes(content_bytes)
+            }
+
+            // Empty content
+            _ => Content::Empty
         };
 
         // Resulting message
         let msg = Message {
-            route_header: Some(route_header),
-            data_header,
-            content_bytes: data_bytes.map(Vec::from),
-            raw_bytes: Some(raw_bytes),
-            content_benc,
+            route_header,
+            content_type,
             content,
+            raw_bytes: Some(raw_bytes),
         };
 
         Ok(msg)
