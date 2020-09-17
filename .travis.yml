@@ -1,0 +1,19 @@
+language: rust
+rust:
+- stable
+cache: cargo
+after_success: |
+  [ $TRAVIS_BRANCH = master ] &&
+  [ $TRAVIS_PULL_REQUEST = false ] &&
+  cargo doc --no-deps &&
+  echo "<meta http-equiv=refresh content=0;url=${DOC_ENTRY_MODULE}/index.html>" > target/doc/index.html &&
+  git clone https://${TOKEN_OWNER}:${GH_TOKEN}@github.com/CJDNS-Development-Team/docs.git ./docs &&
+  sudo pip install ghp-import &&
+  cd docs/ &&
+  ghp-import -b master -n ../target/doc && 
+  git push -fq https://${GH_TOKEN}@github.com/CJDNS-Development-Team/docs master
+env:
+  global:
+    - TOKEN_OWNER=SabaunT
+    - DOC_ENTRY_MODULE=cjdns_core      
+    - secure: XgR4VylMcjqPvlrjLtLZB5iw4HfJhtjXjiTjztpm4BhGdbpXvp/QCziLkdq5tQtXgCFe/zFcEKv/AAL/h/vSumDUmIbEP4GsB/NiOctex1oTwRFDQwu4bWR59fXGlUKxl6cUqVdS6s0QuNysJhNEE1Dv5S5yqO75UZkYBPe3zXp0myA/yGV5x4ykLFwvnTdQBP6ZnL3C5yN2CbxvBEy9tRVrwf/dW2+SerP6mPeBYEfT+RBoFPvNkt2rg3KAmf5uS16wkLtfRdUv9s+wCaFKnCduEA/v/Gv7UPl77Y5th1aBA4ZS8qyAZ6EfmG5sJ5EJqltOP5OvZgQ2gzc070o49ngSaF4H1dwvdJYl6i7NAQR7pfqhNlfiLsSYoopt2Oo8FCZ2xfenEvr752t8RZyOZcC8KdBCyaraZOPAs77iYzmgN4dy4/ffSFQZX6QJ/Jo9uEytTPaR5DU+cIpDu7GYSMxe2jC9FASGvDyNX6adjYysyd1NtoDrHLAbVQJk1OZuL/GVqb9L13Ra+nOx/E+d/WsJjMu2o5XPWkwwAXuCG+DA72cCNSK/ad+Wy1gykkSXr5i+JsnEKqbnYTB3UyV33rkG6GE2/t/YkfnwPG15tNyX1YkBbJfNsJXKuIhMXunwTlkhaZK4p0lqWHw3CiPcyd94AkIoFYH08SmEpeibdaM=
