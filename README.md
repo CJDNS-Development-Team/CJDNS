@@ -1,5 +1,7 @@
 # Open source high performance cjdns Route Server
 
+[![Build Status](https://travis-ci.org/CJDNS-Development-Team/CJDNS.svg?branch=master)](https://travis-ci.org/CJDNS-Development-Team/CJDNS)
+
 ## Build & test
 
 Debug build:
