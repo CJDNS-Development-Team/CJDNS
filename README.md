@@ -17,10 +17,11 @@ cargo build --release
 ```
 
 ## Docs
-
+To build docs yourself use command:
 ```bash
 cargo doc --no-deps
 ```
+To read docs online visit https://cjdns-development-team.github.io/docs/
 
 ### Individual crates
 
