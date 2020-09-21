@@ -5,7 +5,7 @@ authors = [
     "Alex Kordys <a.kordys@mixbytes.io>"
 ]
 edition = "2018"
-license = "GPL-3.0"
+license = "GPL-3.0-or-later"
 description = "Tools for dumping and injecting cjdns traffic"
 
 [dependencies]

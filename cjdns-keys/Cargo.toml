@@ -6,7 +6,7 @@ authors = [
     "Alex Kordys <a.kordys@mixbytes.io>"
 ]
 edition = "2018"
-license = "GPL-3.0"
+license = "GPL-3.0-or-later"
 description = "Library for working with cjdns keys"
 
 [dependencies]
