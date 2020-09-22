@@ -12,12 +12,25 @@ description = "cjdns supernode"
 anyhow = "1.0"
 clap = { version = "3.0.0-beta.1", default-features = false, features = [ "std", "derive" ] }
 env_logger = "0.7"
+futures = "0.3"
+hex = "0.4"
+http = "0.2"
 lazy_static = "1.4"
 log = { version = "0.4", features = ["max_level_trace", "release_max_level_info"] }
+parking_lot = "0.11"
 regex = "1.3"
+rmp = "0.8" # msgpack encoding
+rmp-serde = "0.14" # msgpack encoding serde support
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-tokio = { version = "0.2", features = ["fs", "net", "macros", "time"] }
+thiserror = "1.0"
+tokio = { version = "0.2", features = ["fs", "net", "macros", "time", "sync"] }
+tokio-tungstenite = "0.11"
+warp = "0.2"
 
 cjdns-core = { path = "../cjdns-core" }
 cjdns-keys = { path = "../cjdns-keys" }
+cjdns-ann = { path = "../cjdns-ann" }
+
+[dev-dependencies]
+chrono = "0.4"

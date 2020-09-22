@@ -21,6 +21,7 @@ extern crate log;
 
 use anyhow::Result;
 
+/// Program entry point.
 #[tokio::main]
 async fn main() {
     if let Err(e) = run().await {
@@ -28,6 +29,7 @@ async fn main() {
     }
 }
 
+/// Main function.
 async fn run() -> Result<()> {
     // Initialize logger
     env_logger::init();
@@ -41,7 +43,7 @@ async fn run() -> Result<()> {
     debug!("{:?}", config);
 
     // Run the application
-    supernode::run(config).await
+    server::main(config).await
 }
 
 /// Command-line arguments parsing.
@@ -90,5 +92,7 @@ mod config {
     }
 }
 
-mod supernode;
+mod message;
+mod peer;
+mod server;
 mod utils;
