@@ -1,4 +1,4 @@
-//! CJDNS API. Used for easy, fast and safe initialization of random key pair.
+//! CJDNS API. Used for easy, fast and safe creation of random key pair.
 
 use std::convert::TryFrom;
 use std::sync::{
@@ -10,20 +10,41 @@ use sodiumoxide::init;
 
 use crate::{CJDNSPrivateKey, CJDNSPublicKey, CJDNS_IP6};
 
-// Type that encapsulates library functions making it safer for its users: ensures thread-safety in runtime and meeting keys invariants.
+/// Type that encapsulates some crate functions making it safer for its users to work with randomly created keys.
+///
+/// The struct initialization ensures thread-safety in runtime. If you don't need to work with randomly created keys, you can use appropriate key types directly.
 #[derive(Debug, Clone, Copy)]
 pub struct CJDNSKeysApi;
 
-/// Convenience type for managing all CJDNS key types in one variable. Fields of the struct are public, so
-/// it's possible to create invalid key pair. For safe key pair initialization use `CJDNSKeysApi` struct.
+/// Convenience type for managing all CJDNS key types in one variable.
+///
+/// Fields of the struct are public, so it's possible to create invalid key pair. For example: there is a contract between ip6 and public key, which requires successful initialization of ip6 from public key.
+/// `CJDNSKeys` doesn't control the contract, so it's possible to have valid keys on their own, but invalid in "pair". So if you wrap your keys with `CJDNSKeys`,
+/// make sure that the contract requirements are met. For safe random keys initialization use `CJDNSKeysApi` struct methods.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CJDNSKeys {
+    /// CJDNS private key.
     pub private_key: CJDNSPrivateKey,
+
+    /// CJDNS public key
     pub public_key: CJDNSPublicKey,
+
+    /// CJDNS ip6
     pub ip6: CJDNS_IP6,
 }
 
 impl CJDNSKeysApi {
+    /// Initialization function, which guarantees on success that it will be safe to call methods, which use "randomize" logic (i.e. `key_pair`, `gen_private_key`).
+    ///
+    /// If you want to work with randomly created cjdns keys, it's recommended to first initialize `CJDNSKeysApi`.
+    /// For example:
+    /// ```rust
+    /// use cjdns_keys::CJDNSKeysApi;
+    ///
+    /// let keys_api = CJDNSKeysApi::new().expect("thread-safe initialization failed");
+    /// // valid random key pair
+    /// let keys = keys_api.key_pair();
+    /// ```
     pub fn new() -> std::result::Result<Self, ()> {
         if Self::init_sodiumoxide() {
             return Ok(Self);
@@ -46,7 +67,9 @@ impl CJDNSKeysApi {
         INITIALIZED.load(Ordering::Relaxed)
     }
 
-    /// Convenience function that generates valid private, public keys and ip6. Returns `CJDNSKeys` struct with corresponding keys as its fields.
+    /// Convenience method that generates safely valid key "pair". Returns `CJDNSKeys` struct with corresponding keys as its fields.
+    ///
+    /// `CJDNSKeys` doc states presence of a contract between ip6 and public key. The contract is met within the method.
     pub fn key_pair(&self) -> CJDNSKeys {
         loop {
             let private_key = self.gen_private_key();
@@ -59,6 +82,9 @@ impl CJDNSKeysApi {
         }
     }
 
+    /// Safely generates private key.
+    ///
+    /// Considered safe, because the method takes immutable reference of the successfully initialized api type instance.
     pub fn gen_private_key(&self) -> CJDNSPrivateKey {
         CJDNSPrivateKey::new()
     }

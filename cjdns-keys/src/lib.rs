@@ -17,7 +17,4 @@ mod utils;
 
 /*
 1. Ошибки ключей раскидать по разным enum
-2. TryFrom<&str>
-3. #![deny(missing_docs)]
-
 */
