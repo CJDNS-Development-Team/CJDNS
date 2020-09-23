@@ -280,7 +280,7 @@ mod parser {
         let pub_signing_key = hex::encode(signing_key_data);
 
         let (super_node_data, rest_header) = header_without_sign_n_key.split_at(IP_SIZE);
-        let super_node_ip = CJDNS_IP6::try_from(super_node_data.to_vec()).or(Err(ParserError::CannotParseHeader("failed ip6 creation from bytes data")))?;
+        let super_node_ip = CJDNS_IP6::try_from(super_node_data).or(Err(ParserError::CannotParseHeader("failed ip6 creation from bytes data")))?;
 
         assert_eq!(rest_header.len(), 8, "Header size != 120 bytes");
         let last_byte = rest_header[7];
@@ -427,7 +427,7 @@ mod parser {
         };
         let peer_num = u16::from_be_bytes(<[u8; 2]>::try_from(take_peer_bytes(2).as_slice()).expect("peer_num slice size != 2"));
         let unused = u32::from_be_bytes(<[u8; 4]>::try_from(take_peer_bytes(4).as_slice()).expect("unused slice size != 4"));
-        let ip6 = CJDNS_IP6::try_from(take_peer_bytes(16)).or(Err(ParserError::CannotParseEntity("failed ip6 creation from entity bytes")))?;
+        let ip6 = CJDNS_IP6::try_from(take_peer_bytes(16).as_slice()).or(Err(ParserError::CannotParseEntity("failed ip6 creation from entity bytes")))?;
         let label = {
             let label_bits = u32::from_be_bytes(<[u8; 4]>::try_from(take_peer_bytes(4).as_slice()).expect("label slice size != 4"));
             // A label of 0 indicates that the route is being withdrawn and it is no longer usable. Handling of zero label is not a job for parser
@@ -532,7 +532,7 @@ mod parser {
 
     #[cfg(test)]
     mod tests {
-        use cjdns_keys::{BytesRepr, CJDNSKeysApi};
+        use cjdns_keys::CJDNSKeysApi;
 
         use super::*;
 
@@ -554,8 +554,8 @@ mod parser {
             let header_bytes = {
                 let mut header_bytes = Vec::with_capacity(120);
                 header_bytes.extend_from_slice(random_signature);
-                header_bytes.extend_from_slice(&keys.public_key.bytes());
-                header_bytes.extend_from_slice(&keys.ip6.bytes());
+                header_bytes.extend_from_slice(&keys.public_key);
+                header_bytes.extend_from_slice(&keys.ip6);
                 header_bytes.extend_from_slice(random_timestamp);
                 header_bytes
             };
@@ -565,7 +565,7 @@ mod parser {
                 parsed_header,
                 AnnouncementHeader {
                     signature: hex::encode(random_signature),
-                    pub_signing_key: hex::encode(keys.public_key.bytes()),
+                    pub_signing_key: hex::encode(&*keys.public_key),
                     super_node_ip6: keys.ip6,
                     timestamp: ann_timestamp,
                     version,

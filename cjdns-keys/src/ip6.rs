@@ -1,32 +1,36 @@
 //! CJDNS IP6
 
 use std::convert::TryFrom;
+use std::ops::Deref;
 
 use regex::Regex;
 use sodiumoxide::crypto::hash::sha512::hash;
 
 use crate::{
     errors::{KeyError, Result},
-    BytesRepr, CJDNSPublicKey,
+    utils::{slice_to_array16, vec_to_array16},
+    CJDNSPublicKey,
 };
 
 lazy_static! {
     static ref IP6_RE: Regex = Regex::new("^fc[0-9a-f]{2}:(?:[0-9a-f]{4}:){6}[0-9a-f]{4}$").expect("bad regexp");
 }
 
+const IP6_BYTES_SIZE: usize = 16;
+
 /// CJDNS IP6 type
 #[allow(non_camel_case_types)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CJDNS_IP6 {
-    k: String,
+    k: [u8; 16],
 }
 
 impl TryFrom<&CJDNSPublicKey> for CJDNS_IP6 {
     type Error = KeyError;
 
     fn try_from(value: &CJDNSPublicKey) -> Result<Self> {
-        let pub_key_double_hash = hash(&hash(&value.bytes()).0);
-        let ip6_candidate = Self::try_from(pub_key_double_hash.0.to_vec());
+        let pub_key_double_hash = hash(&hash(&value).0);
+        let ip6_candidate = Self::try_from(&pub_key_double_hash[..IP6_BYTES_SIZE]);
         if ip6_candidate.is_ok() {
             return ip6_candidate;
         }
@@ -34,12 +38,27 @@ impl TryFrom<&CJDNSPublicKey> for CJDNS_IP6 {
     }
 }
 
-impl TryFrom<Vec<u8>> for CJDNS_IP6 {
+// todo tmp
+impl TryFrom<[u8; IP6_BYTES_SIZE]> for CJDNS_IP6 {
     type Error = KeyError;
 
-    fn try_from(bytes: Vec<u8>) -> Result<Self> {
-        let mut ip6_template = hex::encode(bytes)[..32].to_string();
-        ip6_template = ip6_template
+    fn try_from(bytes: [u8; IP6_BYTES_SIZE]) -> Result<Self> {
+        let ip6_candidate = Self::try_from(bytes.as_ref());
+        if ip6_candidate.is_ok() {
+            return ip6_candidate;
+        }
+        Err(KeyError::CannotCreateFromBytes)
+    }
+}
+
+impl TryFrom<&[u8]> for CJDNS_IP6 {
+    type Error = KeyError;
+
+    fn try_from(bytes: &[u8]) -> Result<Self> {
+        if bytes.len() != IP6_BYTES_SIZE {
+            return Err(KeyError::CannotCreateFromBytes);
+        }
+        let ip6_template = hex::encode(bytes)
             .chars()
             .collect::<Vec<char>>()
             .chunks(4)
@@ -48,7 +67,7 @@ impl TryFrom<Vec<u8>> for CJDNS_IP6 {
             .join(":");
 
         if IP6_RE.is_match(&ip6_template) {
-            return Ok(CJDNS_IP6 { k: ip6_template });
+            return Ok(CJDNS_IP6 { k: slice_to_array16(bytes) });
         }
 
         Err(KeyError::CannotCreateFromBytes)
@@ -60,22 +79,33 @@ impl TryFrom<String> for CJDNS_IP6 {
 
     fn try_from(value: String) -> Result<Self> {
         if IP6_RE.is_match(&value) {
-            return Ok(CJDNS_IP6 { k: value });
+            let ip6_joined = value.split(":").collect::<String>();
+            let ip6_bytes = hex::decode(ip6_joined).expect("broken invariant");
+            return Ok(CJDNS_IP6 { k: vec_to_array16(ip6_bytes) });
         }
         Err(KeyError::CannotCreateFromString)
     }
 }
 
-impl std::fmt::Display for CJDNS_IP6 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.k)
+impl Deref for CJDNS_IP6 {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        &self.k
     }
 }
 
-impl BytesRepr for CJDNS_IP6 {
-    fn bytes(&self) -> Vec<u8> {
-        let ip6_joined = self.k.split(":").collect::<String>();
-        hex::decode(ip6_joined).expect("broken invariant")
+impl std::fmt::Display for CJDNS_IP6 {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let ip6_string = hex::encode(self.k)
+            .chars()
+            .collect::<Vec<char>>()
+            .chunks(4)
+            .map(|x| x.iter().collect::<String>())
+            .collect::<Vec<String>>()
+            .join(":");
+
+        f.write_str(&ip6_string)
     }
 }
 
@@ -115,24 +145,18 @@ mod tests {
     #[test]
     fn to_from_bytes_ip6() {
         let ip6 = ipv6("fc32:6a5d:e235:7057:e990:6398:5d7a:aa58");
-        let ip6_bytes = ip6.bytes();
-        assert_eq!(ip6_bytes.len(), 16);
+        let ip6_bytes = ip6.k;
+        assert_eq!(&*ip6, &ip6_bytes);
         assert_eq!(Ok(ip6), CJDNS_IP6::try_from(ip6_bytes));
 
         // notice, that such key creation is impossible for library users
         let invalid_ip6_bytes = vec![
-            CJDNS_IP6 {
-                k: "e4c5:3a4a:a8f2:9325:b94a:74c3:26fd:40de".to_string(),
-            }
-            .bytes(),
-            CJDNS_IP6 {
-                k: "7e41:3a71:c767:573f:6127:7956:b69a:b700".to_string(),
-            }
-            .bytes(),
+            hex::decode("e4c53a4aa8f29325b94a74c326fd40de").expect("invalid hex string"),
+            hex::decode("7e413a71c767573f61277956b69ab700").expect("invalid hex string"),
         ];
 
         for i in invalid_ip6_bytes {
-            assert!(CJDNS_IP6::try_from(i).is_err())
+            assert!(CJDNS_IP6::try_from(i.as_slice()).is_err())
         }
     }
 }

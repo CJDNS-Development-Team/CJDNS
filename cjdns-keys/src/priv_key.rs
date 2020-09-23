@@ -1,6 +1,7 @@
 //! CJDNS private key
 
 use std::convert::TryFrom;
+use std::ops::Deref;
 
 use regex::Regex;
 use sodiumoxide::crypto::scalarmult;
@@ -8,7 +9,7 @@ use sodiumoxide::randombytes::randombytes;
 
 use crate::{
     errors::{KeyError, Result},
-    BytesRepr,
+    utils::vec_to_array32,
 };
 
 lazy_static! {
@@ -18,7 +19,7 @@ lazy_static! {
 /// CJDNS private key type
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CJDNSPrivateKey {
-    k: String,
+    k: [u8; 32],
 }
 
 impl TryFrom<String> for CJDNSPrivateKey {
@@ -26,7 +27,8 @@ impl TryFrom<String> for CJDNSPrivateKey {
 
     fn try_from(value: String) -> Result<Self> {
         if PRIVATE_KEY_RE.is_match(&value) {
-            return Ok(CJDNSPrivateKey { k: value });
+            let bytes = hex::decode(value).expect("invalid hex string");
+            return Ok(CJDNSPrivateKey { k: vec_to_array32(bytes) });
         }
         Err(KeyError::CannotCreateFromString)
     }
@@ -34,32 +36,26 @@ impl TryFrom<String> for CJDNSPrivateKey {
 
 impl From<[u8; 32]> for CJDNSPrivateKey {
     fn from(bytes: [u8; 32]) -> Self {
-        CJDNSPrivateKey { k: hex::encode(bytes) }
+        CJDNSPrivateKey { k: bytes }
     }
 }
 
-impl BytesRepr for CJDNSPrivateKey {
-    fn bytes(&self) -> Vec<u8> {
-        hex::decode(&self.k).expect("broken invariant")
+impl Deref for CJDNSPrivateKey {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        &self.k
     }
 }
 
 impl CJDNSPrivateKey {
     pub(crate) fn new() -> Self {
-        let random_bytes_for_key = randombytes(32);
-        CJDNSPrivateKey {
-            k: hex::encode(random_bytes_for_key),
-        }
+        let bytes = randombytes(32);
+        CJDNSPrivateKey { k: vec_to_array32(bytes) }
     }
 
     pub(crate) fn to_scalar(&self) -> scalarmult::Scalar {
-        scalarmult::Scalar(self.bytes_32())
-    }
-
-    fn bytes_32(&self) -> [u8; 32] {
-        let mut private_key_bytes_array = [0u8; 32];
-        private_key_bytes_array.copy_from_slice(&self.bytes());
-        private_key_bytes_array
+        scalarmult::Scalar(self.k)
     }
 }
 
@@ -92,9 +88,7 @@ mod tests {
     #[test]
     fn test_to_from_bytes() {
         let priv_key = priv_key("90a66780a0dc2ca735bc0c161d3e92c876935981e8658c32a846f79947a923bd");
-
-        let mut private_key_bytes_array = [0u8; 32];
-        private_key_bytes_array.copy_from_slice(&priv_key.bytes());
-        assert_eq!(priv_key, CJDNSPrivateKey::from(private_key_bytes_array));
+        let priv_key_bytes = priv_key.k;
+        assert_eq!(&(*priv_key), &priv_key_bytes);
     }
 }

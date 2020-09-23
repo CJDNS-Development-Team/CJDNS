@@ -1,5 +1,5 @@
 use cjdns_bytes::{ParseError, Reader, SerializeError, Writer};
-use cjdns_keys::{BytesRepr, CJDNSPublicKey};
+use cjdns_keys::CJDNSPublicKey;
 
 use crate::CtrlMessageType;
 
@@ -67,7 +67,7 @@ impl PingData {
         writer.write_u32_be(ping_magic);
         writer.write_u32_be(self.version);
         if let Some(key) = &self.key {
-            writer.write_slice(&key.bytes());
+            writer.write_slice(key);
         }
         writer.write_slice(&self.content);
 

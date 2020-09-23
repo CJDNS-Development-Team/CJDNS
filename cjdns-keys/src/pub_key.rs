@@ -1,6 +1,7 @@
 //! CJDNS public key
 
 use std::convert::TryFrom;
+use std::ops::Deref;
 
 use data_encoding::BASE32_DNSCURVE;
 use regex::Regex;
@@ -8,7 +9,8 @@ use sodiumoxide::crypto::scalarmult;
 
 use crate::{
     errors::{KeyError, Result},
-    BytesRepr, CJDNSPrivateKey,
+    utils::vec_to_array32,
+    CJDNSPrivateKey,
 };
 
 lazy_static! {
@@ -21,15 +23,18 @@ const BASE32_ENCODED_STRING_LEN: usize = 52;
 /// CJDNS public key type
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CJDNSPublicKey {
-    k: String,
+    k: [u8; 32],
 }
 
 impl TryFrom<String> for CJDNSPublicKey {
     type Error = KeyError;
 
     fn try_from(value: String) -> Result<Self> {
-        if PUBLIC_KEY_RE.is_match(&value) && BASE32_DNSCURVE.decode(&value[..BASE32_ENCODED_STRING_LEN].as_bytes()).is_ok() {
-            return Ok(CJDNSPublicKey { k: value });
+        if PUBLIC_KEY_RE.is_match(&value) {
+            let bytes = BASE32_DNSCURVE
+                .decode(&value[..BASE32_ENCODED_STRING_LEN].as_bytes())
+                .or(Err(KeyError::CannotDecode))?;
+            return Ok(CJDNSPublicKey { k: vec_to_array32(bytes) });
         }
         Err(KeyError::CannotCreateFromString)
     }
@@ -44,22 +49,21 @@ impl From<&CJDNSPrivateKey> for CJDNSPublicKey {
 
 impl From<[u8; 32]> for CJDNSPublicKey {
     fn from(bytes: [u8; 32]) -> Self {
-        let pub_key = BASE32_DNSCURVE.encode(&bytes) + ".k";
-        CJDNSPublicKey { k: pub_key }
+        CJDNSPublicKey { k: bytes }
     }
 }
 
-impl BytesRepr for CJDNSPublicKey {
-    fn bytes(&self) -> Vec<u8> {
-        BASE32_DNSCURVE
-            .decode(&self.k[..BASE32_ENCODED_STRING_LEN].as_bytes())
-            .expect("broken invariant")
+impl Deref for CJDNSPublicKey {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        &self.k
     }
 }
 
 impl std::fmt::Display for CJDNSPublicKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.k)
+        write!(f, "{}", BASE32_DNSCURVE.encode(&self.k) + ".k")
     }
 }
 
@@ -101,9 +105,7 @@ mod tests {
     #[test]
     fn test_to_from_bytes() {
         let pub_key = pub_key("xpr2z2s3hnr0qzpk2u121uqjv15dc335v54pccqlqj6c5p840yy0.k");
-
-        let mut public_key_bytes_array = [0u8; 32];
-        public_key_bytes_array.copy_from_slice(&pub_key.bytes());
-        assert_eq!(pub_key, CJDNSPublicKey::from(public_key_bytes_array));
+        let pub_key_bytes = pub_key.k;
+        assert_eq!(&*pub_key, &pub_key_bytes)
     }
 }

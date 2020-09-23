@@ -13,9 +13,6 @@ pub enum KeyError {
 
     #[error("Can not create from bytes")]
     CannotCreateFromBytes,
-
-    #[error("Can not parse node name")]
-    CannotParseNodeName,
 }
 
 pub type Result<T> = std::result::Result<T, KeyError>;

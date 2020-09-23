@@ -67,7 +67,6 @@ impl CJDNSKeysApi {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::BytesRepr;
 
     fn priv_key(s: &'static str) -> CJDNSPrivateKey {
         CJDNSPrivateKey::try_from(s.to_string()).expect("bad test private key")
@@ -89,12 +88,11 @@ mod tests {
             ip6: ipv6("fcf5:c1ec:be67:9ad5:1f6c:f31b:5d74:37b0"),
         };
 
-        let pub_key_bytes = key_pair.public_key.bytes();
+        let pub_key_bytes = &*key_pair.public_key;
         let mut pub_key_bytes_array = [0u8; 32];
         pub_key_bytes_array.copy_from_slice(&pub_key_bytes);
         assert_eq!(CJDNSPublicKey::from(pub_key_bytes_array), key_pair.public_key);
 
-        let ip6_bytes = key_pair.ip6.bytes();
-        assert_eq!(CJDNS_IP6::try_from(ip6_bytes).expect("broken bytes()"), key_pair.ip6);
+        assert_eq!(CJDNS_IP6::try_from(&*key_pair.ip6).expect("broken bytes()"), key_pair.ip6);
     }
 }

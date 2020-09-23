@@ -13,8 +13,11 @@ mod errors;
 mod ip6;
 mod priv_key;
 mod pub_key;
+mod utils;
 
-/// Vec<u8> representation for type instance. Implemented for `CJDNSPrivateKey`, `CJDNSPublicKey`, `CJDNS_IP6`.
-pub trait BytesRepr {
-    fn bytes(&self) -> Vec<u8>;
-}
+/*
+1. Ошибки ключей раскидать по разным enum
+2. TryFrom<&str>
+3. #![deny(missing_docs)]
+
+*/
