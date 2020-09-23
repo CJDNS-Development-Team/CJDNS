@@ -26,13 +26,13 @@ pub struct CJDNSPublicKey {
     k: [u8; 32],
 }
 
-impl TryFrom<String> for CJDNSPublicKey {
+impl TryFrom<&str> for CJDNSPublicKey {
     type Error = KeyError;
 
-    fn try_from(value: String) -> Result<Self> {
-        if PUBLIC_KEY_RE.is_match(&value) {
+    fn try_from(value: &str) -> Result<Self> {
+        if PUBLIC_KEY_RE.is_match(value) {
             let bytes = BASE32_DNSCURVE
-                .decode(&value[..BASE32_ENCODED_STRING_LEN].as_bytes())
+                .decode(value[..BASE32_ENCODED_STRING_LEN].as_bytes())
                 .or(Err(KeyError::CannotDecode))?;
             return Ok(CJDNSPublicKey { k: vec_to_array32(bytes) });
         }
@@ -72,7 +72,7 @@ mod tests {
     use super::*;
 
     fn pub_key_r(s: &'static str) -> Result<CJDNSPublicKey> {
-        CJDNSPublicKey::try_from(s.to_string())
+        CJDNSPublicKey::try_from(s)
     }
 
     fn pub_key(s: &'static str) -> CJDNSPublicKey {

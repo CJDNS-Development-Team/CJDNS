@@ -181,7 +181,7 @@ pub mod serialized_data {
                             "3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09"
                                 .to_string(),
                         pub_signing_key: "f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2".to_string(),
-                        super_node_ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("failed ip6 creation"),
+                        super_node_ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
                         version: 1,
                         is_reset: true,
                         timestamp: 1474857989878
@@ -209,7 +209,7 @@ pub mod serialized_data {
                             ])
                         },
                         Entity::Peer {
-                            ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("failed ip6 creation"),
+                            ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
                             label: Some(RoutingLabel::<u32>::try_new(21).expect("zero routing label bits")),
                             mtu: 0,
                             peer_num: 65535,
@@ -218,9 +218,9 @@ pub mod serialized_data {
                             flags: 0
                         }
                     ],
-                    node_encryption_key: CJDNSPublicKey::try_from("z15pzyd9wgzs2g5np7d3swrqc1533yb7xx9dq0pvrqrqs42uwgq0.k".to_string())
+                    node_encryption_key: CJDNSPublicKey::try_from("z15pzyd9wgzs2g5np7d3swrqc1533yb7xx9dq0pvrqrqs42uwgq0.k")
                         .expect("failed pub key creation"),
-                    node_ip6: CJDNS_IP6::try_from("fc49:11cb:38c2:8d42:9865:7b8e:0d67:11b3".to_string()).expect("failed ip6 creation"),
+                    node_ip6: CJDNS_IP6::try_from("fc49:11cb:38c2:8d42:9865:7b8e:0d67:11b3").expect("failed ip6 creation"),
                     binary: AnnouncementPacket(test_data_bytes),
                     binary_hash: test_bytes_hash
                 }
@@ -631,7 +631,7 @@ mod parser {
                 (
                     "200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000003",
                     vec![Entity::Peer {
-                        ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("failed ip6 creation"),
+                        ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
                         label: Some(RoutingLabel::<u32>::try_new(3).expect("zero label bits")),
                         mtu: 0,
                         peer_num: 65535,
@@ -645,7 +645,7 @@ mod parser {
                     vec![
                         Entity::NodeProtocolVersion(2),
                         Entity::Peer {
-                            ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("failed ip6 creation"),
+                            ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
                             label: Some(RoutingLabel::<u32>::try_new(32).expect("zero label bits")),
                             mtu: 0,
                             peer_num: 65535,
@@ -661,7 +661,7 @@ mod parser {
                     vec![
                         Entity::NodeProtocolVersion(2),
                         Entity::Peer {
-                            ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("failed ip6 creation"),
+                            ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
                             label: Some(RoutingLabel::<u32>::try_new(19).expect("zero label bits")),
                             mtu: 0,
                             peer_num: 65535,
@@ -675,7 +675,7 @@ mod parser {
                     // with unrecognised entities at the beginning and at the end
                     "020701200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000003030510",
                     vec![Entity::Peer {
-                        ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("failed ip6 creation"),
+                        ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
                         label: Some(RoutingLabel::<u32>::try_new(3).expect("zero label bits")),
                         mtu: 0,
                         peer_num: 65535,
@@ -706,7 +706,7 @@ mod parser {
             let entities_data_vec = hex::decode(multiple_peer_entity_hex).expect("invalid hex string");
 
             let parsed_peer = Entity::Peer {
-                ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).expect("failed ip6 creation"),
+                ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
                 label: Some(RoutingLabel::<u32>::try_new(21).expect("zero label bits")),
                 mtu: 0,
                 peer_num: 65535,

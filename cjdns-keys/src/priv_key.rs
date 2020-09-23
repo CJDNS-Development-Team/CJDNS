@@ -22,11 +22,11 @@ pub struct CJDNSPrivateKey {
     k: [u8; 32],
 }
 
-impl TryFrom<String> for CJDNSPrivateKey {
+impl TryFrom<&str> for CJDNSPrivateKey {
     type Error = KeyError;
 
-    fn try_from(value: String) -> Result<Self> {
-        if PRIVATE_KEY_RE.is_match(&value) {
+    fn try_from(value: &str) -> Result<Self> {
+        if PRIVATE_KEY_RE.is_match(value) {
             let bytes = hex::decode(value).expect("invalid hex string");
             return Ok(CJDNSPrivateKey { k: vec_to_array32(bytes) });
         }
@@ -64,7 +64,7 @@ mod tests {
     use super::*;
 
     fn priv_key_r(s: &'static str) -> Result<CJDNSPrivateKey> {
-        CJDNSPrivateKey::try_from(s.to_string())
+        CJDNSPrivateKey::try_from(s)
     }
 
     fn priv_key(s: &'static str) -> CJDNSPrivateKey {

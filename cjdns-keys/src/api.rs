@@ -69,15 +69,15 @@ mod tests {
     use super::*;
 
     fn priv_key(s: &'static str) -> CJDNSPrivateKey {
-        CJDNSPrivateKey::try_from(s.to_string()).expect("bad test private key")
+        CJDNSPrivateKey::try_from(s).expect("bad test private key")
     }
 
     fn pub_key(s: &'static str) -> CJDNSPublicKey {
-        CJDNSPublicKey::try_from(s.to_string()).expect("bad test public key")
+        CJDNSPublicKey::try_from(s).expect("bad test public key")
     }
 
     fn ipv6(s: &'static str) -> CJDNS_IP6 {
-        CJDNS_IP6::try_from(s.to_string()).expect("bad test ipv6")
+        CJDNS_IP6::try_from(s).expect("bad test ipv6")
     }
 
     #[test]

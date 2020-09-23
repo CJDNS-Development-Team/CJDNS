@@ -39,7 +39,7 @@
 //!     msg_data: CtrlMessageData::PingData(PingData {
 //!         version: 18,
 //!         key: Some(
-//!             CJDNSPublicKey::try_from("3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k".to_string()).expect("invalid key string")
+//!             CJDNSPublicKey::try_from("3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k").expect("invalid key string")
 //!         ),
 //!         content: hex_to_bytes("02e29842b42aedb6bce2ead3"),
 //!     }),

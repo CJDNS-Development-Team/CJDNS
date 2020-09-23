@@ -38,19 +38,6 @@ impl TryFrom<&CJDNSPublicKey> for CJDNS_IP6 {
     }
 }
 
-// todo tmp
-impl TryFrom<[u8; IP6_BYTES_SIZE]> for CJDNS_IP6 {
-    type Error = KeyError;
-
-    fn try_from(bytes: [u8; IP6_BYTES_SIZE]) -> Result<Self> {
-        let ip6_candidate = Self::try_from(bytes.as_ref());
-        if ip6_candidate.is_ok() {
-            return ip6_candidate;
-        }
-        Err(KeyError::CannotCreateFromBytes)
-    }
-}
-
 impl TryFrom<&[u8]> for CJDNS_IP6 {
     type Error = KeyError;
 
@@ -74,11 +61,11 @@ impl TryFrom<&[u8]> for CJDNS_IP6 {
     }
 }
 
-impl TryFrom<String> for CJDNS_IP6 {
+impl TryFrom<&str> for CJDNS_IP6 {
     type Error = KeyError;
 
-    fn try_from(value: String) -> Result<Self> {
-        if IP6_RE.is_match(&value) {
+    fn try_from(value: &str) -> Result<Self> {
+        if IP6_RE.is_match(value) {
             let ip6_joined = value.split(":").collect::<String>();
             let ip6_bytes = hex::decode(ip6_joined).expect("broken invariant");
             return Ok(CJDNS_IP6 { k: vec_to_array16(ip6_bytes) });
@@ -114,7 +101,7 @@ mod tests {
     use super::*;
 
     fn ipv6_r(s: &'static str) -> Result<CJDNS_IP6> {
-        CJDNS_IP6::try_from(s.to_string())
+        CJDNS_IP6::try_from(s)
     }
 
     fn ipv6(s: &'static str) -> CJDNS_IP6 {
@@ -147,7 +134,6 @@ mod tests {
         let ip6 = ipv6("fc32:6a5d:e235:7057:e990:6398:5d7a:aa58");
         let ip6_bytes = ip6.k;
         assert_eq!(&*ip6, &ip6_bytes);
-        assert_eq!(Ok(ip6), CJDNS_IP6::try_from(ip6_bytes));
 
         // notice, that such key creation is impossible for library users
         let invalid_ip6_bytes = vec![

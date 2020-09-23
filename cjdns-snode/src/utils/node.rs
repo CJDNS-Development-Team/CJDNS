@@ -19,7 +19,7 @@ pub fn parse_node_name(name: String) -> Result<(u32, RoutingLabel<u64>, CJDNSPub
         let str_from_captured_group = |group_num: usize| -> &str { c.get(group_num).expect("bad group index").as_str() };
         let version = str_from_captured_group(1).parse::<u32>().expect("bad regexp - version");
         let label = RoutingLabel::try_from(str_from_captured_group(2)).expect("bad regexp - label");
-        let public_key = CJDNSPublicKey::try_from(str_from_captured_group(3).to_string()).or(Err(()))?;
+        let public_key = CJDNSPublicKey::try_from(str_from_captured_group(3)).or(Err(()))?;
         Ok((version, label, public_key))
     } else {
         Err(())

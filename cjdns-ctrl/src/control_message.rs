@@ -220,7 +220,7 @@ mod tests {
                 msg_type: CtrlMessageType::KeyPing,
                 msg_data: CtrlMessageData::PingData(PingData {
                     version: 18,
-                    key: CJDNSPublicKey::try_from("3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k".to_string()).ok(),
+                    key: CJDNSPublicKey::try_from("3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k").ok(),
                     content: decode_hex("02e29842b42aedb6bce2ead3")
                 }),
             }
@@ -239,7 +239,7 @@ mod tests {
                 msg_type: CtrlMessageType::KeyPong,
                 msg_data: CtrlMessageData::PingData(PingData {
                     version: 18,
-                    key: CJDNSPublicKey::try_from("cmnkylz1dx8mx3bdxku80yw20gqmg0s9nsrusdv0psnxnfhqfmu0.k".to_string()).ok(),
+                    key: CJDNSPublicKey::try_from("cmnkylz1dx8mx3bdxku80yw20gqmg0s9nsrusdv0psnxnfhqfmu0.k").ok(),
                     content: decode_hex("02e29842b42aedb6bce2ead3")
                 }),
             }
