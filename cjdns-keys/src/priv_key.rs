@@ -8,7 +8,7 @@ use sodiumoxide::crypto::scalarmult;
 use sodiumoxide::randombytes::randombytes;
 
 use crate::{
-    errors::{KeyError, Result},
+    errors::{KeyCreationError, Result},
     utils::vec_to_array32,
 };
 
@@ -23,14 +23,14 @@ pub struct CJDNSPrivateKey {
 }
 
 impl TryFrom<&str> for CJDNSPrivateKey {
-    type Error = KeyError;
+    type Error = KeyCreationError;
 
     fn try_from(value: &str) -> Result<Self> {
         if PRIVATE_KEY_RE.is_match(value) {
             let bytes = hex::decode(value).expect("invalid hex string");
             return Ok(CJDNSPrivateKey { k: vec_to_array32(bytes) });
         }
-        Err(KeyError::CannotCreateFromString)
+        Err(KeyCreationError::BadString)
     }
 }
 

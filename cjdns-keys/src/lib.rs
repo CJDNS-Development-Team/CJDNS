@@ -15,6 +15,7 @@ mod priv_key;
 mod pub_key;
 mod utils;
 
-/*
-1. Ошибки ключей раскидать по разным enum
+/* TODO
+2. Поменяй тесты
+3. Потесть ToString
 */

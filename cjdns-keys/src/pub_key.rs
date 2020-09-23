@@ -8,7 +8,7 @@ use regex::Regex;
 use sodiumoxide::crypto::scalarmult;
 
 use crate::{
-    errors::{KeyError, Result},
+    errors::{KeyCreationError, Result},
     utils::vec_to_array32,
     CJDNSPrivateKey,
 };
@@ -17,7 +17,7 @@ lazy_static! {
     static ref PUBLIC_KEY_RE: Regex = Regex::new(r"[a-z0-9]{52}\.k").expect("bad regexp");
 }
 
-/// Pub key len is 54, where last two characters are `.k`. So first 52 are the encoded ones.
+// Pub key len is 54, where last two characters are `.k`. So first 52 are the encoded ones.
 const BASE32_ENCODED_STRING_LEN: usize = 52;
 
 /// CJDNS public key type
@@ -27,16 +27,16 @@ pub struct CJDNSPublicKey {
 }
 
 impl TryFrom<&str> for CJDNSPublicKey {
-    type Error = KeyError;
+    type Error = KeyCreationError;
 
     fn try_from(value: &str) -> Result<Self> {
         if PUBLIC_KEY_RE.is_match(value) {
             let bytes = BASE32_DNSCURVE
                 .decode(value[..BASE32_ENCODED_STRING_LEN].as_bytes())
-                .or(Err(KeyError::CannotDecode))?;
+                .or(Err(KeyCreationError::NotDecodableString))?;
             return Ok(CJDNSPublicKey { k: vec_to_array32(bytes) });
         }
-        Err(KeyError::CannotCreateFromString)
+        Err(KeyCreationError::BadString)
     }
 }
 

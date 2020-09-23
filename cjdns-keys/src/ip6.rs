@@ -7,7 +7,7 @@ use regex::Regex;
 use sodiumoxide::crypto::hash::sha512::hash;
 
 use crate::{
-    errors::{KeyError, Result},
+    errors::{KeyCreationError, Result},
     utils::{slice_to_array16, vec_to_array16},
     CJDNSPublicKey,
 };
@@ -17,6 +17,8 @@ lazy_static! {
 }
 
 const IP6_BYTES_SIZE: usize = 16;
+// Valid Ip6 is in range of "fc.." values. So the first byte must 252u8, which in hex format is "fc". For more info look at ip6 regexp.
+const IP6_FIRST_BYTE: u8 = 252;
 
 /// CJDNS IP6 type
 #[allow(non_camel_case_types)]
@@ -26,51 +28,39 @@ pub struct CJDNS_IP6 {
 }
 
 impl TryFrom<&CJDNSPublicKey> for CJDNS_IP6 {
-    type Error = KeyError;
+    type Error = KeyCreationError;
 
     fn try_from(value: &CJDNSPublicKey) -> Result<Self> {
         let pub_key_double_hash = hash(&hash(&value).0);
-        let ip6_candidate = Self::try_from(&pub_key_double_hash[..IP6_BYTES_SIZE]);
-        if ip6_candidate.is_ok() {
-            return ip6_candidate;
-        }
-        Err(KeyError::CannotCreateFromPublicKey)
+        let ip6_res = Self::try_from(&pub_key_double_hash[..IP6_BYTES_SIZE]);
+        ip6_res
     }
 }
 
 impl TryFrom<&[u8]> for CJDNS_IP6 {
-    type Error = KeyError;
+    type Error = KeyCreationError;
 
     fn try_from(bytes: &[u8]) -> Result<Self> {
         if bytes.len() != IP6_BYTES_SIZE {
-            return Err(KeyError::CannotCreateFromBytes);
+            return Err(KeyCreationError::InvalidLength);
         }
-        let ip6_template = hex::encode(bytes)
-            .chars()
-            .collect::<Vec<char>>()
-            .chunks(4)
-            .map(|x| x.iter().collect::<String>())
-            .collect::<Vec<String>>()
-            .join(":");
-
-        if IP6_RE.is_match(&ip6_template) {
+        if bytes[0] == IP6_FIRST_BYTE {
             return Ok(CJDNS_IP6 { k: slice_to_array16(bytes) });
         }
-
-        Err(KeyError::CannotCreateFromBytes)
+        Err(KeyCreationError::ResultingIp6OutOfValidRange)
     }
 }
 
 impl TryFrom<&str> for CJDNS_IP6 {
-    type Error = KeyError;
+    type Error = KeyCreationError;
 
     fn try_from(value: &str) -> Result<Self> {
         if IP6_RE.is_match(value) {
             let ip6_joined = value.split(":").collect::<String>();
-            let ip6_bytes = hex::decode(ip6_joined).expect("broken invariant");
+            let ip6_bytes = hex::decode(ip6_joined).expect("invalid hex string");
             return Ok(CJDNS_IP6 { k: vec_to_array16(ip6_bytes) });
         }
-        Err(KeyError::CannotCreateFromString)
+        Err(KeyCreationError::BadString)
     }
 }
 
@@ -84,14 +74,12 @@ impl Deref for CJDNS_IP6 {
 
 impl std::fmt::Display for CJDNS_IP6 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let ip6_string = hex::encode(self.k)
-            .chars()
-            .collect::<Vec<char>>()
-            .chunks(4)
-            .map(|x| x.iter().collect::<String>())
-            .collect::<Vec<String>>()
-            .join(":");
-
+        let mut ip6_string = hex::encode(self.k);
+        // putting : after every 4th symbol
+        for i in 1usize..8 {
+            let pos = 4 * i + i - 1;
+            ip6_string.insert(pos, ':');
+        }
         f.write_str(&ip6_string)
     }
 }
