@@ -82,7 +82,7 @@ mod tests {
         assert!(priv_key_r("378813HfIcc62185jfab4d00030b55f50b54e515bfcea8b41f2bd1c2511bae03").is_err()); // wrong alphabet
         assert!(priv_key_r("378813dfecc62185ffab4d00030b55f50ba8b41f2bd1c2511bae03").is_err()); // wrong len - too small
         assert!(priv_key_r("378813dfecc62185ffAb4d00030b55f50b54e515bfceA8b41f2bd1c2511Bae0").is_err());
-        // wrong len - too big
+        // wrong len - too small
     }
 
     #[test]
@@ -90,5 +90,6 @@ mod tests {
         let priv_key = priv_key("90a66780a0dc2ca735bc0c161d3e92c876935981e8658c32a846f79947a923bd");
         let priv_key_bytes = priv_key.k;
         assert_eq!(&(*priv_key), &priv_key_bytes);
+        assert_eq!(CJDNSPrivateKey::from(priv_key_bytes), priv_key);
     }
 }

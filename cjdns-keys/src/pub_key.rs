@@ -106,6 +106,8 @@ mod tests {
     fn test_to_from_bytes() {
         let pub_key = pub_key("xpr2z2s3hnr0qzpk2u121uqjv15dc335v54pccqlqj6c5p840yy0.k");
         let pub_key_bytes = pub_key.k;
-        assert_eq!(&*pub_key, &pub_key_bytes)
+        assert_eq!(&*pub_key, &pub_key_bytes);
+        assert_eq!(CJDNSPublicKey::from(pub_key_bytes), pub_key);
+        assert_eq!(pub_key.to_string(), "xpr2z2s3hnr0qzpk2u121uqjv15dc335v54pccqlqj6c5p840yy0.k".to_string());
     }
 }

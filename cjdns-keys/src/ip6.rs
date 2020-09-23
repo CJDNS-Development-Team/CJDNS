@@ -122,6 +122,8 @@ mod tests {
         let ip6 = ipv6("fc32:6a5d:e235:7057:e990:6398:5d7a:aa58");
         let ip6_bytes = ip6.k;
         assert_eq!(&*ip6, &ip6_bytes);
+        assert_eq!(CJDNS_IP6::try_from(ip6_bytes.as_ref()).expect("invalid ip6 bytes"), ip6);
+        assert_eq!(ip6.to_string(), "fc32:6a5d:e235:7057:e990:6398:5d7a:aa58".to_string());
 
         // notice, that such key creation is impossible for library users
         let invalid_ip6_bytes = vec![
