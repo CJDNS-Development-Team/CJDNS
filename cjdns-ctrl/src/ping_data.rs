@@ -42,7 +42,7 @@ impl PingData {
             }
             _ => None,
         };
-        let content = reader.read_all_mut().to_vec();
+        let content = reader.read_remainder().to_vec();
         Ok(PingData { version, key, content })
     }
 

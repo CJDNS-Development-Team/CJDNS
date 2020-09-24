@@ -57,7 +57,7 @@ impl CtrlMessage {
         // Validating message checksum
         {
             let received_checksum = reader.read_u16_be().expect("invalid message size");
-            let computed_checksum = netchecksum::cksum_raw(reader.read_all_pure());
+            let computed_checksum = netchecksum::cksum_raw(reader.pick_remainder());
             let inverted_checksum = (computed_checksum << 8) | (computed_checksum >> 8);
             if received_checksum != computed_checksum && received_checksum != inverted_checksum {
                 return Err(ParseError::InvalidChecksum(received_checksum, computed_checksum));
@@ -67,7 +67,7 @@ impl CtrlMessage {
             let type_code = reader.read_u16_be().expect("invalid message size");
             CtrlMessageType::from_u16(type_code).or(Err(ParseError::InvalidData("unknown ctrl packet")))?
         };
-        let raw_data = reader.read_all_mut();
+        let raw_data = reader.read_remainder();
         let msg_data = match msg_type {
             CtrlMessageType::Error => {
                 CtrlMessageData::ErrorData(ErrorData::parse(raw_data)?)

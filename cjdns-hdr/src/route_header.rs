@@ -55,7 +55,7 @@ impl RouteHeader {
             }
         };
         let switch_header = {
-            let header_bytes = data_reader.take_bytes(SwitchHeader::SIZE).expect("invalid header data size");
+            let header_bytes = data_reader.read_bytes(SwitchHeader::SIZE).expect("invalid header data size");
             SwitchHeader::parse(header_bytes)?
         };
         let version = data_reader.read_u32_be().expect("invalid header data size");
@@ -63,9 +63,9 @@ impl RouteHeader {
             let flags = data_reader.read_u8().expect("invalid header data size");
             (flags & CONTROL_FRAME != 0, flags & INCOMING_FRAME != 0)
         };
-        let _zeroes = data_reader.take_bytes(3).expect("invalid header data size"); // padding
+        let _zeroes = data_reader.read_bytes(3).expect("invalid header data size"); // padding
         let ip6_from_bytes = {
-            let ip6_bytes_slice = data_reader.take_bytes(16).expect("invalid header data size");
+            let ip6_bytes_slice = data_reader.read_bytes(16).expect("invalid header data size");
             if ip6_bytes_slice == &ZERO_IP6_BYTES {
                 None
             } else {
@@ -142,7 +142,7 @@ impl RouteHeader {
 
         let mut data_writer = Writer::with_capacity(Self::SIZE);
         data_writer.write_slice(public_key_bytes);
-        data_writer.write_slice(switch_header_bytes.as_slice());
+        data_writer.write_slice(&switch_header_bytes);
         data_writer.write_u32_be(self.version);
         data_writer.write_u8(flags);
         data_writer.write_slice(pad_bytes);

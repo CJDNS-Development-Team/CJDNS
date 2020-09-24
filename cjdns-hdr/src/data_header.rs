@@ -28,23 +28,19 @@ impl DataHeader {
     /// If content number is not defined in `ContentType`, default `ContentType` variant will be used.
     /// *Note*: default `ContentType` variant is a temporary solution.
     pub fn parse(data: &[u8]) -> Result<Self, ParseError> {
-        if data.len() != Self::SIZE {
-            return Err(ParseError::InvalidPacketSize);
-        }
         let mut data_reader = Reader::new(data);
-        let version = {
-            let version_with_flags = data_reader.read_u8().expect("invalid header data size");
-            version_with_flags >> 4
-        };
+        let (version_with_flags, pad, content_type_code) = data_reader.read(Self::SIZE, |r| {
+            let version_with_flags = r.read_u8()?;
+            let pad = r.read_u8()?;
+            let content_type_code = r.read_u16_be()?;
+            Ok((version_with_flags, pad, content_type_code))
+        }).or(Err(ParseError::InvalidPacketSize))?;
+        let version = version_with_flags >> 4;
         // Zero-padding
-        let pad = data_reader.read_u8().expect("invalid header data size");
         if pad != 0 {
             return Err(ParseError::InvalidData("non-zero padding"));
         }
-        let content_type = {
-            let content_type_code = data_reader.read_u16_be().expect("invalid header data size");
-            ContentType::from_u16(content_type_code)
-        };
+        let content_type = ContentType::from_u16(content_type_code);
         Ok(DataHeader { version, content_type })
     }
 
