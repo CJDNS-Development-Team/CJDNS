@@ -23,8 +23,8 @@ mod reader {
             if self.len() != count {
                 return Err(ReaderError)
             }
-            // actually never fails because of len check upper
-            // could be Ok(work(self).expect("invalid reading data size"))
+            // actually never fails because of upper len check
+            // so, for clarity, return can be Ok(work(self).expect("invalid reading data size"))
             work(self)
         }
 
@@ -65,7 +65,7 @@ mod reader {
             self.read_bytes(self.len()).expect("attempting to read data more than slice have")
         }
 
-        pub fn read_bytes(&mut self, count: usize) -> Result<&[u8]> {
+        pub fn read_bytes(&mut self, count: usize) -> Result<&'a [u8]> {
             if self.len() < count {
                 return Err(ReaderError);
             }
@@ -116,6 +116,18 @@ mod reader {
             let _ = reader.read_u16_be();
             assert_eq!(&bytes[4..], reader.read_remainder());
             assert_eq!(0, reader.len())
+        }
+
+        #[test]
+        fn test_custom_read() {
+            let bytes = vec![0; 32];
+            let mut reader = Reader::new(&bytes);
+
+            assert!(reader.read(35, |_| Ok(())).is_err());
+            assert!(reader.read(32, |r| {
+                Ok(r.read_bytes())
+            }).is_err());
+
         }
     }
 }

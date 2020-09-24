@@ -29,12 +29,15 @@ impl DataHeader {
     /// *Note*: default `ContentType` variant is a temporary solution.
     pub fn parse(data: &[u8]) -> Result<Self, ParseError> {
         let mut data_reader = Reader::new(data);
-        let (version_with_flags, pad, content_type_code) = data_reader.read(Self::SIZE, |r| {
-            let version_with_flags = r.read_u8()?;
-            let pad = r.read_u8()?;
-            let content_type_code = r.read_u16_be()?;
-            Ok((version_with_flags, pad, content_type_code))
-        }).or(Err(ParseError::InvalidPacketSize))?;
+        let (version_with_flags, pad, content_type_code) = data_reader
+            .read(Self::SIZE, |r| {
+                let version_with_flags = r.read_u8()?;
+                let pad = r.read_u8()?;
+                let content_type_code = r.read_u16_be()?;
+                Ok((version_with_flags, pad, content_type_code))
+            })
+            .map_err(|_| ParseError::InvalidPacketSize)?;
+
         let version = version_with_flags >> 4;
         // Zero-padding
         if pad != 0 {
@@ -124,10 +127,8 @@ mod tests {
     fn test_parse_unknown_content_type() {
         let hex_data = [
             // content type number out of IP6 range - 32000
-            "10007d00",
-            // content type number in IP6 range - 100
-            "10000064",
-            // content type out of available range (greater than 0x8000)
+            "10007d00", // content type number in IP6 range - 100
+            "10000064", // content type out of available range (greater than 0x8000)
             "10008001", "1000fff0",
         ];
         for data in hex_data.iter() {

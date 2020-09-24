@@ -10,7 +10,7 @@ pub struct SwitchHeader {
     pub label: RoutingLabel<u64>,
     pub congestion: u8, // 7 bits
     pub suppress_errors: bool,
-    pub version: u8, // 2 bits
+    pub version: u8,     // 2 bits
     pub label_shift: u8, // 6 bits
     pub penalty: u16,
 }
@@ -33,28 +33,27 @@ impl SwitchHeader {
     /// for version and label shift values and 2 bytes for penalty value. Congestion value always takes 7 bits. Last bit of congestion byte is suppress error flag.
     /// Version value takes last 2 bits of a sharing with label shift value byte. First 6 bits of the byte "belong" to `label_shift`.
     pub fn parse(data: &[u8]) -> Result<Self, ParseError> {
-        if data.len() != Self::SIZE {
-            return Err(ParseError::InvalidPacketSize);
-        }
         let mut data_reader = Reader::new(data);
-        let label = {
-            let label_num = data_reader.read_u64_be().expect("invalid header data size");
-            RoutingLabel::<u64>::try_new(label_num).ok_or(ParseError::InvalidData("zero label bytes"))?
-        };
-        let (congestion, suppress_errors) = {
-            let congestion_and_suppress_errors = data_reader.read_u8().expect("invalid header data size");
-            (congestion_and_suppress_errors >> 1, (congestion_and_suppress_errors & 1) == 1)
-        };
-        let (version, label_shift) = {
-            let version_and_label_shift = data_reader.read_u8().expect("invalid header data size");
-            // version in encoded in last 2 bits, label shift is encoded in first 6 bits
-            (version_and_label_shift >> 6, version_and_label_shift & 0x3f)
-        };
+        let (label_num, congestion_and_suppress_errors, version_and_label_shift, penalty) = data_reader
+            .read(Self::SIZE, |r| {
+                let label_num = r.read_u64_be()?;
+                let congestion_and_suppress_errors = r.read_u8()?;
+                let version_and_label_shift = r.read_u8()?;
+                let penalty = r.read_u16_be()?;
+                Ok((label_num, congestion_and_suppress_errors, version_and_label_shift, penalty))
+            })
+            .map_err(|_| ParseError::InvalidPacketSize)?;
+
+        let label = RoutingLabel::<u64>::try_new(label_num).ok_or(ParseError::InvalidData("zero label bytes"))?;
+        let congestion = congestion_and_suppress_errors >> 1;
+        let suppress_errors = (congestion_and_suppress_errors & 1) == 1;
+        // version in encoded in last 2 bits, label shift is encoded in first 6 bits
+        let version = version_and_label_shift >> 6;
+        let label_shift = version_and_label_shift & 0x3f;
         // version parsed is either `Self::CURRENT_VERSION` or 0
         if version != Self::CURRENT_VERSION && version != 0 {
             return Err(ParseError::InvalidData("unrecognized switch header version"));
         }
-        let penalty = data_reader.read_u16_be().expect("invalid header data size");
         Ok(SwitchHeader {
             label,
             congestion,
