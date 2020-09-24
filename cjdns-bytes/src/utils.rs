@@ -1,5 +1,5 @@
 //! Parsing and serialization helpers.
-pub use reader::Reader;
+pub use reader::{Reader, SizePredicate};
 pub use writer::Writer;
 
 mod reader {
@@ -12,21 +12,37 @@ mod reader {
     pub struct InsufficientBuffer;
     pub struct ReadError;
 
+    pub enum SizePredicate {
+        Exact(usize),
+        NotLessThan(usize),
+    }
+
     impl<'a> Reader<'a> {
         pub fn new(data: &'a [u8]) -> Self {
             Reader(data)
         }
 
         // Reads bytes in accordance to logic implemented in `work`.
-        // Panics if `work` tries to read more/less than `count`.
-        pub fn read<R, F: FnOnce(&mut Self) -> Result<R>>(&mut self, count: usize, job: F) -> std::result::Result<R, ReadError> {
-            if self.len() != count {
-                return Err(ReadError);
+        pub fn read<R, F: FnOnce(&mut Self) -> Result<R>>(&mut self, size_predicate: SizePredicate, job: F) -> std::result::Result<R, ReadError> {
+            let len_before_read = self.len();
+            match size_predicate {
+                SizePredicate::Exact(count) => {
+                    if self.len() != count {
+                        return Err(ReadError);
+                    }
+                    let res = job(self).expect("reading data more than could be");
+                    assert_eq!(self.len(), len_before_read - count, "reading data less than stated");
+                    Ok(res)
+                },
+                SizePredicate::NotLessThan(count) => {
+                    if self.len() < count {
+                        return Err(ReadError);
+                    }
+                    let res = job(self).expect("reading data more than could be");
+                    assert!(len_before_read - count >= self.len(), "reading data less than stated");
+                    Ok(res)
+                },
             }
-
-            let res = job(self).expect("reading data more than count");
-            assert_eq!(self.len(), 0, "reading data less than count");
-            Ok(res)
         }
 
         pub fn read_u8(&mut self) -> Result<u8> {
@@ -58,11 +74,11 @@ mod reader {
             Ok(bytes_32_array)
         }
 
-        pub fn pick_remainder(&self) -> &[u8] {
+        pub fn pick_remainder(&self) -> &'a [u8] {
             self.0
         }
 
-        pub fn read_remainder(&mut self) -> &[u8] {
+        pub fn read_remainder(&mut self) -> &'a [u8] {
             self.read_slice(self.len()).expect("attempting to read data more than slice have")
         }
 
@@ -125,17 +141,29 @@ mod reader {
             let bytes = vec![0; 32];
             let mut reader = Reader::new(&bytes);
 
-            assert!(reader.read(35, |_| Ok(())).is_err());
+            assert!(reader.read(SizePredicate::Exact(35), |_| Ok(())).is_err());
+            assert!(reader.read(SizePredicate::NotLessThan(35), |_| Ok(())).is_err());
             // panics: trying to read more than stated
-            let _ = reader.read(32, |r| {
+            let _ = reader.read(SizePredicate::Exact(32), |r| {
                 let invalid_res = r.read_slice(35)?;
                 Ok(invalid_res)
             });
             // panics: trying to read less than stated
-            let _ = reader.read(32, |r| {
+            let _ = reader.read(SizePredicate::Exact(32), |r| {
                 let invalid_res = r.read_slice(20)?;
                 Ok(invalid_res)
             });
+            // panics: trying to read less than stated
+            let _ = reader.read(SizePredicate::NotLessThan(32), |r| {
+                let invalid_res = r.read_slice(20)?;
+                Ok(invalid_res)
+            });
+            // panics: trying to read more than stated
+            let _ = reader.read(SizePredicate::NotLessThan(32), |r| {
+                let invalid_res = r.read_slice(35)?;
+                Ok(invalid_res)
+            });
+
         }
     }
 }

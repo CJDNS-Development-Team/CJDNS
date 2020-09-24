@@ -1,6 +1,6 @@
 //! Logic for parsing and serializing the data header, providing type of content
 
-use cjdns_bytes::{ParseError, SerializeError};
+use cjdns_bytes::{ParseError, SerializeError, SizePredicate};
 use cjdns_bytes::{Reader, Writer};
 
 use crate::content_type::ContentType;
@@ -30,7 +30,7 @@ impl DataHeader {
     pub fn parse(data: &[u8]) -> Result<Self, ParseError> {
         let mut data_reader = Reader::new(data);
         let (version_with_flags, pad, content_type_code) = data_reader
-            .read(Self::SIZE, |r| {
+            .read(SizePredicate::Exact(Self::SIZE), |r| {
                 let version_with_flags = r.read_u8()?;
                 let pad = r.read_u8()?;
                 let content_type_code = r.read_u16_be()?;

@@ -1,6 +1,6 @@
 //! Logic for cjdns switch header parsing and serialization
 
-use cjdns_bytes::{ParseError, SerializeError};
+use cjdns_bytes::{ParseError, SerializeError, SizePredicate};
 use cjdns_bytes::{Reader, Writer};
 use cjdns_core::RoutingLabel;
 
@@ -35,7 +35,7 @@ impl SwitchHeader {
     pub fn parse(data: &[u8]) -> Result<Self, ParseError> {
         let mut data_reader = Reader::new(data);
         let (label_num, congestion_and_suppress_errors, version_and_label_shift, penalty) = data_reader
-            .read(Self::SIZE, |r| {
+            .read(SizePredicate::Exact(Self::SIZE), |r| {
                 let label_num = r.read_u64_be()?;
                 let congestion_and_suppress_errors = r.read_u8()?;
                 let version_and_label_shift = r.read_u8()?;

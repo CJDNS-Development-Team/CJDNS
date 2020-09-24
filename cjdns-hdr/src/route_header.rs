@@ -3,7 +3,7 @@
 use std::convert::TryFrom;
 
 use cjdns_bytes::{ParseError, SerializeError};
-use cjdns_bytes::{Reader, Writer};
+use cjdns_bytes::{Reader, Writer, SizePredicate};
 use cjdns_keys::{CJDNSPublicKey, CJDNS_IP6};
 
 use crate::switch_header::SwitchHeader;
@@ -44,7 +44,7 @@ impl RouteHeader {
     pub fn parse(data: &[u8]) -> Result<Self, ParseError> {
         let mut data_reader = Reader::new(data);
         let (pk_bytes, header_bytes, version, flags, _zeroes, ip6_bytes) = data_reader
-            .read(Self::SIZE, |r| {
+            .read(SizePredicate::Exact(Self::SIZE), |r| {
                 let pk_bytes = r.read_array_32()?;
                 let header_bytes = r.read_slice(SwitchHeader::SIZE)?;
                 let version = r.read_u32_be()?;

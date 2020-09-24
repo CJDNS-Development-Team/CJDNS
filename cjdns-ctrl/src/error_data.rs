@@ -2,7 +2,7 @@ use std::mem::size_of_val;
 
 use num_enum::{FromPrimitive, IntoPrimitive};
 
-use cjdns_bytes::{ParseError, Reader, SerializeError, Writer};
+use cjdns_bytes::{ParseError, Reader, SerializeError, SizePredicate, Writer};
 use cjdns_hdr::SwitchHeader;
 
 /// Body data for error type messages
@@ -57,25 +57,23 @@ impl ErrorData {
     /// * switch header parsing failed
     /// * received error type has zero code, which is considered as `None` error.
     pub fn parse(bytes: &[u8]) -> Result<Self, ParseError> {
-        if bytes.len() < Self::MIN_SIZE {
-            return Err(ParseError::InvalidPacketSize);
-        }
         let mut reader = Reader::new(bytes);
-        let err_type = {
-            let error_type_code = reader.read_u32_be().expect("invalid message size");
-            let err_type = ErrorMessageType::from_u32(error_type_code);
-            if err_type == ErrorMessageType::None {
-                return Err(ParseError::InvalidData("control message has None body error type"));
-            }
-            err_type
-        };
-        let switch_header = {
-            let switch_header_bytes = reader.read_slice(SwitchHeader::SIZE).expect("invalid message size");
-            SwitchHeader::parse(switch_header_bytes)?
-        };
-        // Originally nonce was parsed after switch header, but some protocol changes were applied in 2014.
-        // We live additional as raw data to be parsed into nonce or other stuff later.
-        let additional = reader.read_remainder().to_vec();
+        let (err_type_code, header_bytes, additional) = reader
+            .read(SizePredicate::NotLessThan(Self::MIN_SIZE), |r| {
+                let err_type_code = r.read_u32_be()?;
+                let header_bytes = r.read_slice(SwitchHeader::SIZE)?;
+                // Originally nonce was parsed after switch header, but some protocol changes were applied in 2014.
+                // We leave additional as raw data to be parsed into nonce or other stuff later.
+                let additional = r.read_remainder().to_vec();
+                Ok((err_type_code, header_bytes, additional))
+            })
+            .map_err(|_| ParseError::InvalidPacketSize)?;
+
+        let err_type = ErrorMessageType::from_u32(err_type_code);
+        if err_type == ErrorMessageType::None {
+            return Err(ParseError::InvalidData("control message has None body error type"));
+        }
+        let switch_header = SwitchHeader::parse(header_bytes)?;
         Ok(ErrorData {
             err_type,
             switch_header,

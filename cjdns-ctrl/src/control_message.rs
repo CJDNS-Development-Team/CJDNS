@@ -3,7 +3,7 @@ use std::mem::size_of_val;
 
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
-use cjdns_bytes::{ParseError, Reader, SerializeError, Writer};
+use cjdns_bytes::{ParseError, Reader, SerializeError, SizePredicate, Writer};
 use netchecksum;
 
 use crate::{ErrorData, PingData};
@@ -50,31 +50,28 @@ impl CtrlMessage {
     /// * unrecognized control message type code was parsed
     /// * control message body parsing methods failed. For more information about this read documentation for corresponding message data structs (i.e. `PingData`, `ErrorData`)
     pub fn parse(bytes: &[u8]) -> Result<Self, ParseError> {
-        if bytes.len() < Self::HEADER_SIZE {
-            return Err(ParseError::InvalidPacketSize);
-        }
         let mut reader = Reader::new(bytes);
+        let (received_checksum, data, type_code, raw_data) = reader
+            .read(SizePredicate::NotLessThan(Self::HEADER_SIZE), |r| {
+                let received_checksum = r.read_u16_be()?;
+                let after_checksum_data = r.pick_remainder();
+                let type_code = r.read_u16_be()?;
+                let raw_data = r.read_remainder();
+                Ok((received_checksum, after_checksum_data, type_code, raw_data))
+            })
+            .map_err(|_| ParseError::InvalidPacketSize)?;
         // Validating message checksum
         {
-            let received_checksum = reader.read_u16_be().expect("invalid message size");
-            let computed_checksum = netchecksum::cksum_raw(reader.pick_remainder());
+            let computed_checksum = netchecksum::cksum_raw(data);
             let inverted_checksum = (computed_checksum << 8) | (computed_checksum >> 8);
             if received_checksum != computed_checksum && received_checksum != inverted_checksum {
                 return Err(ParseError::InvalidChecksum(received_checksum, computed_checksum));
             }
         }
-        let msg_type = {
-            let type_code = reader.read_u16_be().expect("invalid message size");
-            CtrlMessageType::from_u16(type_code).or(Err(ParseError::InvalidData("unknown ctrl packet")))?
-        };
-        let raw_data = reader.read_remainder();
+        let msg_type = CtrlMessageType::from_u16(type_code).or(Err(ParseError::InvalidData("unknown ctrl packet")))?;
         let msg_data = match msg_type {
-            CtrlMessageType::Error => {
-                CtrlMessageData::ErrorData(ErrorData::parse(raw_data)?)
-            }
-            CtrlMessageType::GetSuperNodeQuery | CtrlMessageType::GetSuperNodeResponse => {
-                CtrlMessageData::SuperNodeQueryData()
-            }
+            CtrlMessageType::Error => CtrlMessageData::ErrorData(ErrorData::parse(raw_data)?),
+            CtrlMessageType::GetSuperNodeQuery | CtrlMessageType::GetSuperNodeResponse => CtrlMessageData::SuperNodeQueryData(),
             CtrlMessageType::Ping | CtrlMessageType::Pong | CtrlMessageType::KeyPing | CtrlMessageType::KeyPong => {
                 CtrlMessageData::PingData(PingData::parse(raw_data, msg_type)?)
             }
