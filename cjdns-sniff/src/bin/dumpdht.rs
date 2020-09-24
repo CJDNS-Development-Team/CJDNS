@@ -75,7 +75,7 @@ fn dump_bencode(benc: BValue, buf: &mut Vec<String>) -> Result<(), ()> {
         if is_fn {
             if let Some(tar) = benc.get_dict_value("tar")? {
                 let tar = tar.as_bytes()?;
-                let tar = CJDNS_IP6::try_from(tar).map_err(|_| ())?;
+                let tar = CJDNS_IP6::try_from(tar.as_slice()).map_err(|_| ())?;
                 buf.push(tar.to_string());
             }
         }

@@ -4,7 +4,7 @@ use std::convert::TryFrom;
 
 use cjdns_bytes::{ParseError, SerializeError};
 use cjdns_bytes::{Reader, Writer};
-use cjdns_keys::{BytesRepr, CJDNS_IP6, CJDNSPublicKey};
+use cjdns_keys::{CJDNS_IP6, CJDNSPublicKey};
 
 use crate::switch_header::SwitchHeader;
 
@@ -69,7 +69,7 @@ impl RouteHeader {
             if ip6_bytes_slice == &ZERO_IP6_BYTES {
                 None
             } else {
-                let ip6 = CJDNS_IP6::try_from(ip6_bytes_slice.to_vec()).or(Err(ParseError::InvalidData("can't create ip6 from received bytes")))?;
+                let ip6 = CJDNS_IP6::try_from(ip6_bytes_slice).or(Err(ParseError::InvalidData("can't create ip6 from received bytes")))?;
                 Some(ip6)
             }
         };
@@ -125,7 +125,7 @@ impl RouteHeader {
                 }
             }
         }
-        let public_key_bytes = self.public_key.as_ref().map(|key| key.bytes()).unwrap_or_else(|| ZERO_PUBLIC_KEY_BYTES.into());
+        let public_key_bytes = self.public_key.as_ref().map(|key| &*(*key)).unwrap_or_else(|| ZERO_PUBLIC_KEY_BYTES.as_ref());
         let switch_header_bytes = self.switch_header.serialize()?;
         let flags = {
             let mut ret_flag = 0;
@@ -138,15 +138,15 @@ impl RouteHeader {
             ret_flag
         };
         let pad_bytes = &[0u8; 3];
-        let ip6_bytes = self.ip6.as_ref().map(|ip6| ip6.bytes()).unwrap_or_else(|| ZERO_IP6_BYTES.into());
+        let ip6_bytes = self.ip6.as_ref().map(|ip6| &*(*ip6)).unwrap_or_else(|| ZERO_IP6_BYTES.as_ref());
 
         let mut data_writer = Writer::with_capacity(Self::SIZE);
-        data_writer.write_slice(public_key_bytes.as_slice());
+        data_writer.write_slice(public_key_bytes);
         data_writer.write_slice(switch_header_bytes.as_slice());
         data_writer.write_u32_be(self.version);
         data_writer.write_u8(flags);
         data_writer.write_slice(pad_bytes);
-        data_writer.write_slice(ip6_bytes.as_slice());
+        data_writer.write_slice(ip6_bytes);
 
         Ok(data_writer.into_vec())
     }
@@ -196,8 +196,8 @@ mod tests {
         assert_eq!(
             parsed_header,
             RouteHeader {
-                public_key: CJDNSPublicKey::try_from("3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k".to_string()).ok(),
-                ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).ok(),
+                public_key: CJDNSPublicKey::try_from("3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k").ok(),
+                ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").ok(),
                 version: 0,
                 switch_header: SwitchHeader {
                     label: RoutingLabel::try_from("0000.0000.0000.0013").expect("invalid label string"),
@@ -243,29 +243,29 @@ mod tests {
         let invalid_headers = [
             // public key is some, but message is control
             instantiate_header(
-                CJDNSPublicKey::try_from("3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k".to_string()).ok(),
-                CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).ok(),
+                CJDNSPublicKey::try_from("3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k").ok(),
+                CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").ok(),
                 true,
                 false,
             ),
             // ip6 is some but message is control
             instantiate_header(
                 None,
-                CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).ok(),
+                CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").ok(),
                 true,
                 false,
             ),
             // message is incoming, but ip6 is none
             instantiate_header(
-                CJDNSPublicKey::try_from("3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k".to_string()).ok(),
+                CJDNSPublicKey::try_from("3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k").ok(),
                 None,
                 false,
                 true,
             ),
             // ip6 from public_key != ip6 from bytes
             instantiate_header(
-                CJDNSPublicKey::try_from("xpr2z2s3hnr0qzpk2u121uqjv15dc335v54pccqlqj6c5p840yy0.k".to_string()).ok(),
-                CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).ok(),
+                CJDNSPublicKey::try_from("xpr2z2s3hnr0qzpk2u121uqjv15dc335v54pccqlqj6c5p840yy0.k").ok(),
+                CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").ok(),
                 false,
                 true,
             ),
@@ -278,7 +278,7 @@ mod tests {
         let valid_cases = [
             instantiate_header(
                 None,
-                CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f".to_string()).ok(),
+                CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").ok(),
                 false,
                 false,
             ),

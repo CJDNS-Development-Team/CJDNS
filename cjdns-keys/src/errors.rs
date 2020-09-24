@@ -1,21 +1,18 @@
 use thiserror::Error;
 
 #[derive(Error, Copy, Clone, PartialEq, Eq, Debug)]
-pub enum KeyError {
-    #[error("Can not decode key string")]
-    CannotDecode,
+pub enum KeyCreationError {
+    #[error("Base32 string must encode exactly 255 bits integer in little-endian")]
+    NotDecodableString,
 
-    #[error("Can not create from string")]
-    CannotCreateFromString,
+    #[error("Wrong key string format")]
+    BadString,
 
-    #[error("Can not create ip6 from public key")]
-    CannotCreateFromPublicKey,
+    #[error("Resulting IP6 address must start with 0xFC byte")]
+    ResultingIp6OutOfValidRange,
 
-    #[error("Can not create from bytes")]
-    CannotCreateFromBytes,
-
-    #[error("Can not parse node name")]
-    CannotParseNodeName,
+    #[error("Byte array must be exactly 16 bytes long")]
+    InvalidLength,
 }
 
-pub type Result<T> = std::result::Result<T, KeyError>;
+pub type Result<T> = std::result::Result<T, KeyCreationError>;
