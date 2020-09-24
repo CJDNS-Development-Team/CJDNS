@@ -68,7 +68,7 @@ impl CtrlMessage {
                 return Err(ParseError::InvalidChecksum(received_checksum, computed_checksum));
             }
         }
-        let msg_type = CtrlMessageType::from_u16(type_code).or(Err(ParseError::InvalidData("unknown ctrl packet")))?;
+        let msg_type = CtrlMessageType::from_u16(type_code).map_err(|_| ParseError::InvalidData("unknown ctrl packet"))?;
         let msg_data = match msg_type {
             CtrlMessageType::Error => CtrlMessageData::ErrorData(ErrorData::parse(raw_data)?),
             CtrlMessageType::GetSuperNodeQuery | CtrlMessageType::GetSuperNodeResponse => CtrlMessageData::SuperNodeQueryData(),

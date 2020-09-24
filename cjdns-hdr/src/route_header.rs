@@ -116,7 +116,7 @@ impl RouteHeader {
         }
         if let Some(public_key) = self.public_key.as_ref() {
             if let Some(ip6) = self.ip6.as_ref() {
-                let ip6_from_key = CJDNS_IP6::try_from(public_key).or(Err(SerializeError::InvalidData("can't create ip6 from public key")))?;
+                let ip6_from_key = CJDNS_IP6::try_from(public_key).map_err(|_| SerializeError::InvalidData("can't create ip6 from public key"))?;
                 if ip6_from_key != *ip6 {
                     return Err(SerializeError::InvalidData("ip6 derived from public key is not equal to ip6 from header bytes"));
                 }
