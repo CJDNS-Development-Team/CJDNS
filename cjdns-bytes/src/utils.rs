@@ -5,54 +5,55 @@ pub use writer::Writer;
 mod reader {
     use std::convert::TryFrom;
 
-    type Result<T> = std::result::Result<T, ReaderError>;
+    type Result<T> = std::result::Result<T, InsufficientBuffer>;
 
     pub struct Reader<'a>(&'a [u8]);
     #[derive(Debug)]
-    pub struct ReaderError;
+    pub struct InsufficientBuffer;
+    pub struct ReadError;
 
     impl<'a> Reader<'a> {
         pub fn new(data: &'a [u8]) -> Self {
             Reader(data)
         }
 
-        // Reads bytes in accordance to logic implemented in `work`. The `work` closure calls
-        // `Reader` methods reading bytes safely without getting out of bounds. That is because
-        // `read` method compares reading bytes array size with `count`, which is intended to read amount of bytes.
-        pub fn read<R, C: FnOnce(&mut Self) -> Result<R>>(&mut self, count: usize, work: C) -> Result<R> {
+        // Reads bytes in accordance to logic implemented in `work`.
+        // Panics if `work` tries to read more/less than `count`.
+        pub fn read<R, F: FnOnce(&mut Self) -> Result<R>>(&mut self, count: usize, job: F) -> std::result::Result<R, ReadError> {
             if self.len() != count {
-                return Err(ReaderError)
+                return Err(ReadError);
             }
-            // actually never fails because of upper len check
-            // so, for clarity, return can be Ok(work(self).expect("invalid reading data size"))
-            work(self)
+
+            let res = job(self).expect("reading data more than count");
+            assert_eq!(self.len(), 0, "reading data less than count");
+            Ok(res)
         }
 
         pub fn read_u8(&mut self) -> Result<u8> {
-            let bytes = self.read_bytes(1)?;
+            let bytes = self.read_slice(1)?;
             Ok(bytes[0])
         }
 
         pub fn read_u16_be(&mut self) -> Result<u16> {
-            let bytes = self.read_bytes(2)?;
+            let bytes = self.read_slice(2)?;
             let bytes_array = <[u8; 2]>::try_from(bytes).expect("invalid slice size");
             Ok(u16::from_be_bytes(bytes_array))
         }
 
         pub fn read_u32_be(&mut self) -> Result<u32> {
-            let bytes = self.read_bytes(4)?;
+            let bytes = self.read_slice(4)?;
             let bytes_array = <[u8; 4]>::try_from(bytes).expect("invalid slice size");
             Ok(u32::from_be_bytes(bytes_array))
         }
 
         pub fn read_u64_be(&mut self) -> Result<u64> {
-            let bytes = self.read_bytes(8)?;
+            let bytes = self.read_slice(8)?;
             let bytes_array = <[u8; 8]>::try_from(bytes).expect("invalid slice size");
             Ok(u64::from_be_bytes(bytes_array))
         }
 
         pub fn read_array_32(&mut self) -> Result<[u8; 32]> {
-            let bytes_32_slice = self.read_bytes(32)?;
+            let bytes_32_slice = self.read_slice(32)?;
             let bytes_32_array = <[u8; 32]>::try_from(bytes_32_slice).expect("invalid slice size");
             Ok(bytes_32_array)
         }
@@ -62,12 +63,12 @@ mod reader {
         }
 
         pub fn read_remainder(&mut self) -> &[u8] {
-            self.read_bytes(self.len()).expect("attempting to read data more than slice have")
+            self.read_slice(self.len()).expect("attempting to read data more than slice have")
         }
 
-        pub fn read_bytes(&mut self, count: usize) -> Result<&'a [u8]> {
+        pub fn read_slice(&mut self, count: usize) -> Result<&'a [u8]> {
             if self.len() < count {
-                return Err(ReaderError);
+                return Err(InsufficientBuffer);
             }
             let (ret_bytes, rest_bytes) = self.0.split_at(count);
             self.0 = rest_bytes;
@@ -99,9 +100,9 @@ mod reader {
             let num8 = reader.read_u8().expect("bytes are read out");
             assert_eq!(num8, 0);
             // checking read out of bounds
-            assert!(reader.read_bytes(20).is_err());
+            assert!(reader.read_slice(20).is_err());
             // reading last bytes
-            reader.read_bytes(17).expect("bytes are read out");
+            reader.read_slice(17).expect("bytes are read out");
             assert_eq!(reader.len(), 0);
         }
 
@@ -119,15 +120,22 @@ mod reader {
         }
 
         #[test]
+        #[should_panic]
         fn test_custom_read() {
             let bytes = vec![0; 32];
             let mut reader = Reader::new(&bytes);
 
             assert!(reader.read(35, |_| Ok(())).is_err());
-            assert!(reader.read(32, |r| {
-                Ok(r.read_bytes())
-            }).is_err());
-
+            // panics: trying to read more than stated
+            let _ = reader.read(32, |r| {
+                let invalid_res = r.read_slice(35)?;
+                Ok(invalid_res)
+            });
+            // panics: trying to read less than stated
+            let _ = reader.read(32, |r| {
+                let invalid_res = r.read_slice(20)?;
+                Ok(invalid_res)
+            });
         }
     }
 }

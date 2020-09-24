@@ -46,12 +46,12 @@ impl RouteHeader {
         let (pk_bytes, header_bytes, version, flags, _zeroes, ip6_bytes) = data_reader
             .read(Self::SIZE, |r| {
                 let pk_bytes = r.read_array_32()?;
-                let header_bytes = r.read_bytes(SwitchHeader::SIZE)?;
+                let header_bytes = r.read_slice(SwitchHeader::SIZE)?;
                 let version = r.read_u32_be()?;
                 let flags = r.read_u8()?;
                 // padding
-                let zeroes = r.read_bytes(3)?;
-                let ip6_bytes = r.read_bytes(16)?;
+                let zeroes = r.read_slice(3)?;
+                let ip6_bytes = r.read_slice(16)?;
                 Ok((pk_bytes, header_bytes, version, flags, zeroes, ip6_bytes))
             })
             .map_err(|_| ParseError::InvalidPacketSize)?;

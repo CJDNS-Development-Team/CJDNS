@@ -70,7 +70,7 @@ impl ErrorData {
             err_type
         };
         let switch_header = {
-            let switch_header_bytes = reader.read_bytes(SwitchHeader::SIZE).expect("invalid message size");
+            let switch_header_bytes = reader.read_slice(SwitchHeader::SIZE).expect("invalid message size");
             SwitchHeader::parse(switch_header_bytes)?
         };
         // Originally nonce was parsed after switch header, but some protocol changes were applied in 2014.
