@@ -2,16 +2,16 @@ use thiserror::Error;
 
 #[derive(Error, Copy, Clone, PartialEq, Eq, Debug)]
 pub enum KeyCreationError {
-    #[error("Strings with non-zero trailing bit are not decodable")]
+    #[error("Base32 string must encode exactly 255 bits integer in little-endian")]
     NotDecodableString,
 
-    #[error("String doesn't apply keys regex")]
+    #[error("Wrong key string format")]
     BadString,
 
-    #[error("Resulting ip6 doesn't apply start with 'fc' hex byte value")]
+    #[error("Resulting IP6 address must start with 0xFC byte")]
     ResultingIp6OutOfValidRange,
 
-    #[error("Bytes array has invalid length for key creation")]
+    #[error("Byte array must be exactly 16 bytes long")]
     InvalidLength,
 }
 

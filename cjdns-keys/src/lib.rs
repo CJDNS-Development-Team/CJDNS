@@ -14,8 +14,3 @@ mod ip6;
 mod priv_key;
 mod pub_key;
 mod utils;
-
-/* TODO
-2. Поменяй тесты
-3. Потесть ToString
-*/
