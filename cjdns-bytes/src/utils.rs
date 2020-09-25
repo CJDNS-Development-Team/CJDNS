@@ -109,7 +109,7 @@ mod reader {
             Ok(())
         }
 
-        /// Reads data to slice with `count` length.
+        /// Reads `count` values.
         pub fn read_slice(&mut self, count: usize) -> Result<&'a [u8]> {
             if self.len() < count {
                 return Err(InsufficientBuffer);
