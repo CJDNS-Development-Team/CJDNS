@@ -1,6 +1,6 @@
 //! Logic for parsing and serializing the data header, providing type of content
 
-use cjdns_bytes::{ParseError, SerializeError, SizePredicate};
+use cjdns_bytes::{ParseError, SerializeError, ExpectedSize};
 use cjdns_bytes::{Reader, Writer};
 
 use crate::content_type::ContentType;
@@ -29,20 +29,16 @@ impl DataHeader {
     /// *Note*: default `ContentType` variant is a temporary solution.
     pub fn parse(data: &[u8]) -> Result<Self, ParseError> {
         let mut data_reader = Reader::new(data);
-        let (version_with_flags, pad, content_type_code) = data_reader
-            .read(SizePredicate::Exact(Self::SIZE), |r| {
+        let (version_with_flags, content_type_code) = data_reader
+            .read(ExpectedSize::Exact(Self::SIZE), |r| {
                 let version_with_flags = r.read_u8()?;
-                let pad = r.read_u8()?;
+                let _padding = r.skip(1)?;
                 let content_type_code = r.read_u16_be()?;
-                Ok((version_with_flags, pad, content_type_code))
+                Ok((version_with_flags, content_type_code))
             })
             .map_err(|_| ParseError::InvalidPacketSize)?;
 
         let version = version_with_flags >> 4;
-        // Zero-padding
-        if pad != 0 {
-            return Err(ParseError::InvalidData("non-zero padding"));
-        }
         let content_type = ContentType::from_u16(content_type_code);
         Ok(DataHeader { version, content_type })
     }
@@ -127,8 +123,10 @@ mod tests {
     fn test_parse_unknown_content_type() {
         let hex_data = [
             // content type number out of IP6 range - 32000
-            "10007d00", // content type number in IP6 range - 100
-            "10000064", // content type out of available range (greater than 0x8000)
+            "10007d00",
+            // content type number in IP6 range - 100
+            "10000064",
+            // content type out of available range (greater than 0x8000)
             "10008001", "1000fff0",
         ];
         for data in hex_data.iter() {

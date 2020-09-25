@@ -3,7 +3,7 @@ use std::mem::size_of_val;
 
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
-use cjdns_bytes::{ParseError, Reader, SerializeError, SizePredicate, Writer};
+use cjdns_bytes::{ParseError, Reader, SerializeError, ExpectedSize, Writer};
 use netchecksum;
 
 use crate::{ErrorData, PingData};
@@ -52,9 +52,9 @@ impl CtrlMessage {
     pub fn parse(bytes: &[u8]) -> Result<Self, ParseError> {
         let mut reader = Reader::new(bytes);
         let (received_checksum, data, type_code, raw_data) = reader
-            .read(SizePredicate::NotLessThan(Self::HEADER_SIZE), |r| {
+            .read(ExpectedSize::NotLessThan(Self::HEADER_SIZE), |r| {
                 let received_checksum = r.read_u16_be()?;
-                let after_checksum_data = r.pick_remainder();
+                let after_checksum_data = r.peek_remainder();
                 let type_code = r.read_u16_be()?;
                 let raw_data = r.read_remainder();
                 Ok((received_checksum, after_checksum_data, type_code, raw_data))
@@ -70,8 +70,10 @@ impl CtrlMessage {
         }
         let msg_type = CtrlMessageType::from_u16(type_code).map_err(|_| ParseError::InvalidData("unknown ctrl packet"))?;
         let msg_data = match msg_type {
-            CtrlMessageType::Error => CtrlMessageData::ErrorData(ErrorData::parse(raw_data)?),
-            CtrlMessageType::GetSuperNodeQuery | CtrlMessageType::GetSuperNodeResponse => CtrlMessageData::SuperNodeQueryData(),
+            CtrlMessageType::Error =>
+                CtrlMessageData::ErrorData(ErrorData::parse(raw_data)?),
+            CtrlMessageType::GetSuperNodeQuery | CtrlMessageType::GetSuperNodeResponse =>
+                CtrlMessageData::SuperNodeQueryData(),
             CtrlMessageType::Ping | CtrlMessageType::Pong | CtrlMessageType::KeyPing | CtrlMessageType::KeyPong => {
                 CtrlMessageData::PingData(PingData::parse(raw_data, msg_type)?)
             }

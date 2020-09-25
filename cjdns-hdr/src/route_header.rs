@@ -3,7 +3,7 @@
 use std::convert::TryFrom;
 
 use cjdns_bytes::{ParseError, SerializeError};
-use cjdns_bytes::{Reader, Writer, SizePredicate};
+use cjdns_bytes::{Reader, Writer, ExpectedSize};
 use cjdns_keys::{CJDNSPublicKey, CJDNS_IP6};
 
 use crate::switch_header::SwitchHeader;
@@ -43,16 +43,15 @@ impl RouteHeader {
     /// * if flag for message type states not control, nor incoming frame.
     pub fn parse(data: &[u8]) -> Result<Self, ParseError> {
         let mut data_reader = Reader::new(data);
-        let (pk_bytes, header_bytes, version, flags, _zeroes, ip6_bytes) = data_reader
-            .read(SizePredicate::Exact(Self::SIZE), |r| {
+        let (pk_bytes, header_bytes, version, flags, ip6_bytes) = data_reader
+            .read(ExpectedSize::Exact(Self::SIZE), |r| {
                 let pk_bytes = r.read_array_32()?;
                 let header_bytes = r.read_slice(SwitchHeader::SIZE)?;
                 let version = r.read_u32_be()?;
                 let flags = r.read_u8()?;
-                // padding
-                let zeroes = r.read_slice(3)?;
+                let _padding = r.skip(3)?;
                 let ip6_bytes = r.read_slice(16)?;
-                Ok((pk_bytes, header_bytes, version, flags, zeroes, ip6_bytes))
+                Ok((pk_bytes, header_bytes, version, flags, ip6_bytes))
             })
             .map_err(|_| ParseError::InvalidPacketSize)?;
 

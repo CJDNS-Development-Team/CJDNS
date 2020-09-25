@@ -2,7 +2,7 @@ use std::mem::size_of_val;
 
 use num_enum::{FromPrimitive, IntoPrimitive};
 
-use cjdns_bytes::{ParseError, Reader, SerializeError, SizePredicate, Writer};
+use cjdns_bytes::{ParseError, Reader, SerializeError, ExpectedSize, Writer};
 use cjdns_hdr::SwitchHeader;
 
 /// Body data for error type messages
@@ -59,7 +59,7 @@ impl ErrorData {
     pub fn parse(bytes: &[u8]) -> Result<Self, ParseError> {
         let mut reader = Reader::new(bytes);
         let (err_type_code, header_bytes, additional) = reader
-            .read(SizePredicate::NotLessThan(Self::MIN_SIZE), |r| {
+            .read(ExpectedSize::NotLessThan(Self::MIN_SIZE), |r| {
                 let err_type_code = r.read_u32_be()?;
                 let header_bytes = r.read_slice(SwitchHeader::SIZE)?;
                 // Originally nonce was parsed after switch header, but some protocol changes were applied in 2014.

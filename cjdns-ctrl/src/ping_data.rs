@@ -1,4 +1,4 @@
-use cjdns_bytes::{ParseError, Reader, SerializeError, SizePredicate, Writer};
+use cjdns_bytes::{ParseError, Reader, SerializeError, ExpectedSize, Writer};
 use cjdns_keys::CJDNSPublicKey;
 
 use crate::CtrlMessageType;
@@ -24,7 +24,7 @@ impl PingData {
     pub fn parse(bytes: &[u8], ping: CtrlMessageType) -> Result<Self, ParseError> {
         let mut reader = Reader::new(bytes);
         let (encoded_magic, version, pk_bytes, content) = reader
-            .read(SizePredicate::NotLessThan(Self::MIN_SIZE), |r| {
+            .read(ExpectedSize::NotLessThan(Self::MIN_SIZE), |r| {
                 let encoded_magic = r.read_u32_be()?;
                 let version = r.read_u32_be()?;
                 let key_bytes = r.read_array_32();
