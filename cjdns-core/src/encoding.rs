@@ -36,6 +36,8 @@ pub use encoding_serde::{deserialize_forms, serialize_forms};
 pub use encoding_scheme::*;
 
 mod encoding_serde {
+    //! Serialization and deserialization logic
+
     use super::errors::EncodingSerDeError;
     use crate::EncodingSchemeForm;
 
@@ -118,7 +120,7 @@ mod encoding_serde {
 
             // if prefix_len == 0 we simply read 0 bits from current position, receiving prefix = 0
             let prefix = read_bits(form_bytes, cur_pos, prefix_len as u8);
-            
+
             result.push(
                 EncodingSchemeForm::try_new(
                     bit_count as u8,
@@ -370,87 +372,6 @@ mod encoding_scheme {
         prefix: u32,
     }
 
-    pub mod schemes {
-        use super::{EncodingSchemeForm, EncodingScheme};
-
-        fn encoding_scheme(forms: &[EncodingSchemeForm]) -> EncodingScheme {
-            EncodingScheme::try_new(forms).expect("invalid form")
-        }
-
-        lazy_static! {
-
-            /// Fixed-length 4 bit scheme.
-            pub static ref F4: EncodingScheme = encoding_scheme(&[EncodingSchemeForm {
-                bit_count: 4,
-                prefix_len: 0,
-                prefix: 0,
-            }]);
-
-            /// Fixed-length 8 bit scheme.
-            pub static ref F8: EncodingScheme = encoding_scheme(&[EncodingSchemeForm {
-                bit_count: 8,
-                prefix_len: 0,
-                prefix: 0,
-            }]);
-
-            /// Variable-length 4 or 8 bit scheme.
-            pub static ref V48: EncodingScheme = encoding_scheme(&[
-                EncodingSchemeForm {
-                    bit_count: 4,
-                    prefix_len: 1,
-                    prefix: 0b01,
-                },
-                EncodingSchemeForm {
-                    bit_count: 8,
-                    prefix_len: 1,
-                    prefix: 0b00,
-                },
-            ]);
-
-            /// **Special case scheme.** An encoding scheme consisting of 3, 5 or 8 bit data spaces.
-            /// This encoding scheme is special because it encodes strangely (a bug) and thus
-            /// conversion from one form to another is non-standard.
-            pub static ref V358: EncodingScheme = encoding_scheme(&[
-                EncodingSchemeForm {
-                    bit_count: 3,
-                    prefix_len: 1,
-                    prefix: 0b01,
-                },
-                EncodingSchemeForm {
-                    bit_count: 5,
-                    prefix_len: 2,
-                    prefix: 0b10,
-                },
-                EncodingSchemeForm {
-                    bit_count: 8,
-                    prefix_len: 2,
-                    prefix: 0b00,
-                },
-            ]);
-
-            /// Variable-length 3 or 7 bit scheme.
-            pub static ref V37: EncodingScheme = encoding_scheme(&[
-                EncodingSchemeForm {
-                    bit_count: 3,
-                    prefix_len: 1,
-                    prefix: 0b01,
-                },
-                EncodingSchemeForm {
-                    bit_count: 7,
-                    prefix_len: 1,
-                    prefix: 0b00,
-                },
-            ]);
-        }
-
-        pub fn all() -> impl Iterator<Item=&'static EncodingScheme> + 'static {
-            lazy_static! {
-                static ref ALL: [EncodingScheme; 5] = [F4.clone(), F8.clone(), V48.clone(), V358.clone(), V37.clone()];
-            }
-            ALL.iter()
-        }
-    }
-
     impl EncodingSchemeForm {
         // todo what should I validate here?!
         pub fn try_new(bit_count: u8, prefix_len: u8, prefix: u32) -> Result<Self, ()> {
@@ -549,6 +470,89 @@ mod encoding_scheme {
 
         fn into_iter(self) -> Self::IntoIter {
             (&self.0).into_iter()
+        }
+    }
+
+    pub mod schemes {
+        //! Well-known encoding schemes
+
+        use super::{EncodingSchemeForm, EncodingScheme};
+
+        lazy_static! {
+
+            /// Fixed-length 4 bit scheme.
+            pub static ref F4: EncodingScheme = encoding_scheme(&[EncodingSchemeForm {
+                bit_count: 4,
+                prefix_len: 0,
+                prefix: 0,
+            }]);
+
+            /// Fixed-length 8 bit scheme.
+            pub static ref F8: EncodingScheme = encoding_scheme(&[EncodingSchemeForm {
+                bit_count: 8,
+                prefix_len: 0,
+                prefix: 0,
+            }]);
+
+            /// Variable-length 4 or 8 bit scheme.
+            pub static ref V48: EncodingScheme = encoding_scheme(&[
+                EncodingSchemeForm {
+                    bit_count: 4,
+                    prefix_len: 1,
+                    prefix: 0b01,
+                },
+                EncodingSchemeForm {
+                    bit_count: 8,
+                    prefix_len: 1,
+                    prefix: 0b00,
+                },
+            ]);
+
+            /// **Special case scheme.** An encoding scheme consisting of 3, 5 or 8 bit data spaces.
+            /// This encoding scheme is special because it encodes strangely (a bug) and thus
+            /// conversion from one form to another is non-standard.
+            pub static ref V358: EncodingScheme = encoding_scheme(&[
+                EncodingSchemeForm {
+                    bit_count: 3,
+                    prefix_len: 1,
+                    prefix: 0b01,
+                },
+                EncodingSchemeForm {
+                    bit_count: 5,
+                    prefix_len: 2,
+                    prefix: 0b10,
+                },
+                EncodingSchemeForm {
+                    bit_count: 8,
+                    prefix_len: 2,
+                    prefix: 0b00,
+                },
+            ]);
+
+            /// Variable-length 3 or 7 bit scheme.
+            pub static ref V37: EncodingScheme = encoding_scheme(&[
+                EncodingSchemeForm {
+                    bit_count: 3,
+                    prefix_len: 1,
+                    prefix: 0b01,
+                },
+                EncodingSchemeForm {
+                    bit_count: 7,
+                    prefix_len: 1,
+                    prefix: 0b00,
+                },
+            ]);
+        }
+
+        pub fn all() -> impl Iterator<Item=&'static EncodingScheme> + 'static {
+            lazy_static! {
+                static ref ALL: [EncodingScheme; 5] = [F4.clone(), F8.clone(), V48.clone(), V358.clone(), V37.clone()];
+            }
+            ALL.iter()
+        }
+
+        fn encoding_scheme(forms: &[EncodingSchemeForm]) -> EncodingScheme {
+            EncodingScheme::try_new(forms).expect("invalid form")
         }
     }
 
