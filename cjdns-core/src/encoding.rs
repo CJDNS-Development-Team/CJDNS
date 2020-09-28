@@ -127,7 +127,7 @@ mod encoding_serde {
                     prefix_len as u8,
                     prefix
                 )
-                .expect("TODO msg") // todo
+                .expect("invalid encoding scheme form")
             );
             if cur_pos < (5 + 5) { // minimum size of scheme from (prefix_len == 0)
                 break;
@@ -323,7 +323,7 @@ mod encoding_serde {
         }
 
         #[test]
-        fn test_forms_pack_with_sequental_parameters() {
+        fn test_forms_pack_with_sequential_parameters() {
             // test of forms pack with different parameters
             let mut pack: Vec<EncodingSchemeForm> = [].to_vec();
             let mut prefix = 1_u32;
@@ -335,7 +335,6 @@ mod encoding_serde {
                 prefix = prefix << 1;
             }
 
-            // println!("[DEBUG] Forms pack: {:?}", pack);
             assert!(validate(&pack).is_ok());
             let serialized = serialize_forms(&pack).expect("failed to serialize");
             let deserialized = deserialize_forms(&serialized).expect("failed to deserialize");
@@ -347,7 +346,7 @@ mod encoding_serde {
 mod encoding_scheme {
     //! Routing label encoding scheme.
 
-    use std::slice;
+    use std::ops::Deref;
     use std::collections::HashSet;
 
     use crate::encoding::errors::SchemeValidationError;
@@ -397,10 +396,6 @@ mod encoding_scheme {
         pub fn try_new(forms: &[EncodingSchemeForm]) -> Result<Self, SchemeValidationError> {
             let _ = Self::validate(forms)?;
             Ok(Self(forms.to_vec()))
-        }
-
-        pub fn forms(&self) -> &[EncodingSchemeForm] {
-            &self.0
         }
 
         /// Validates encoding scheme. Returned value in case of error describes the problem.
@@ -464,12 +459,11 @@ mod encoding_scheme {
         }
     }
 
-    impl<'a> IntoIterator for &'a EncodingScheme {
-        type Item = &'a EncodingSchemeForm;
-        type IntoIter = slice::Iter<'a, EncodingSchemeForm>;
+    impl Deref for EncodingScheme {
+        type Target = [EncodingSchemeForm];
 
-        fn into_iter(self) -> Self::IntoIter {
-            (&self.0).into_iter()
+        fn deref(&self) -> &Self::Target {
+            &self.0
         }
     }
 
@@ -585,11 +579,11 @@ mod encoding_scheme {
 
         #[test]
         fn schemes() {
-            assert_eq!(schemes::F8.forms(), &[encoding_form(8, 0, 0)]);
+            assert_eq!(&**schemes::F8, &[encoding_form(8, 0, 0)]);
 
             // smallest to biggest
-            assert_eq!(schemes::V358.forms()[0].bit_count, 3);
-            assert_eq!(schemes::V358.forms()[2].bit_count, 8);
+            assert_eq!(schemes::V358[0].bit_count, 3);
+            assert_eq!(schemes::V358[2].bit_count, 8);
         }
     }
 }

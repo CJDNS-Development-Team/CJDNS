@@ -88,7 +88,7 @@ pub fn splice<L: LabelBits>(labels: &[RoutingLabel<L>]) -> Result<RoutingLabel<L
 ///
 /// See: [EncodingScheme_getFormNum()](https://github.com/cjdelisle/cjdns/blob/cjdns-v20.2/switch/EncodingScheme.c#L23)
 pub fn get_encoding_form<L: LabelBits>(label: RoutingLabel<L>, scheme: &EncodingScheme) -> Result<(EncodingSchemeForm, usize)> {
-    for (i, form) in scheme.forms().iter().enumerate() {
+    for (i, form) in scheme.iter().enumerate() {
         let (_, prefix_len, prefix) = form.params();
         if 0 == prefix_len {
             return Ok((*form, i));
@@ -161,7 +161,6 @@ fn find_shortest_form<L: LabelBits>(dir: L, scheme: &EncodingScheme) -> Result<E
     let dir_bits = director_bit_length(dir);
 
     scheme
-        .forms()
         .iter()
         .filter(|&form| (form.params().0 as u32) >= dir_bits)
         .min_by_key(|&form| form.params().0)
@@ -203,10 +202,10 @@ pub fn re_encode<L: LabelBits>(label: RoutingLabel<L>, scheme: &EncodingScheme, 
     let mut dir = get_director(label, form);
 
     let mut desired_form = if let Some(num) = desired_form_num {
-        if num >= scheme.forms().len() {
+        if num >= scheme.len() {
             return Err(SpliceError::BadArgument);
         }
-        scheme.forms()[num]
+        scheme[num]
     } else {
         find_shortest_form(dir, scheme)?
     };
@@ -215,11 +214,11 @@ pub fn re_encode<L: LabelBits>(label: RoutingLabel<L>, scheme: &EncodingScheme, 
     if *scheme == *schemes::V358 {
         // Special magic for SCHEME_358 legacy.
         fn is_358_zero_form(f: EncodingSchemeForm) -> bool {
-            f == schemes::V358.forms()[0]
+            f == schemes::V358[0]
         }
 
         if is_358_zero_form(desired_form) && dir == 0b111_u32.into() {
-            desired_form = schemes::V358.forms()[1];
+            desired_form = schemes::V358[1];
         }
 
         if is_358_zero_form(form) {
@@ -631,8 +630,8 @@ mod tests {
     #[test]
     fn test_reencode_big() {
         fn test_scheme(scheme: &EncodingScheme) {
-            let biggest_form = *(scheme.forms().last().expect("bad test"));
-            let biggest_form_num = scheme.forms().len() - 1;
+            let biggest_form = *(scheme.last().expect("bad test"));
+            let biggest_form_num = scheme.len() - 1;
             let (bit_count, prefix_len, prefix) = biggest_form.params();
             let max = ((1u64 << (bit_count as u64)) - 1) as u32;
 
