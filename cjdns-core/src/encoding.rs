@@ -73,7 +73,6 @@ mod encoding_serde {
             acc = acc | prefix_len as u64;
 
             let bits_needed = 5 + 5 + prefix_len;
-            // println!("[DEBUG] accum: {:064b}", accum64);
 
             for _ in 0..bits_needed {
                 if pos % 8 == 0 {
@@ -95,6 +94,45 @@ mod encoding_serde {
         }
 
         Ok(result_vec)
+    }
+
+    /// Parse byte vector array (bits sequence) and transform it to encoding scheme.
+    ///
+    /// Accepts bytes array, parses it and returns vector of `EncodingSchemeForm`s.
+    pub fn deserialize_forms(form_bytes: &[u8]) -> Result<Vec<EncodingSchemeForm>, EncodingSerDeError> {
+        if form_bytes.len() < 2 {
+            return Err(EncodingSerDeError::BadSerializedData);
+        }
+
+        let mut result = Vec::new();
+        let mut cur_pos = (form_bytes.len() * 8) as u32;
+
+        loop {
+            cur_pos = cur_pos - 5;
+            let prefix_len = read_bits(form_bytes, cur_pos, 5);
+
+            cur_pos = cur_pos - 5;
+            let bit_count = read_bits(form_bytes, cur_pos, 5);
+
+            cur_pos = cur_pos - prefix_len;
+
+            // if prefix_len == 0 we simply read 0 bits from current position, receiving prefix = 0
+            let prefix = read_bits(form_bytes, cur_pos, prefix_len as u8);
+            
+            result.push(
+                EncodingSchemeForm::try_new(
+                    bit_count as u8,
+                    prefix_len as u8,
+                    prefix
+                )
+                .expect("TODO msg") // todo
+            );
+            if cur_pos < (5 + 5) { // minimum size of scheme from (prefix_len == 0)
+                break;
+            }
+        }
+
+        Ok(result)
     }
 
     fn read_bits(data: &[u8], position: u32, bits_amount: u8) -> u32 {
@@ -131,46 +169,6 @@ mod encoding_serde {
             bits_left = bits_left - 1;
         }
         acc
-    }
-
-    /// Parse byte vector array (bits sequence) and transform it to encoding scheme.
-    ///
-    /// Accepts bytes array, parses it and returns vector of `EncodingSchemeForm`s.
-    pub fn deserialize_forms(form_bytes: &[u8]) -> Result<Vec<EncodingSchemeForm>, EncodingSerDeError> {
-        if form_bytes.len() < 2 {
-            return Err(EncodingSerDeError::BadSerializedData);
-        }
-
-        let mut result = Vec::new();
-        let mut cur_pos = (form_bytes.len() * 8) as u32;
-
-        loop {
-            cur_pos = cur_pos - 5;
-            let prefix_len = read_bits(form_bytes, cur_pos, 5);
-
-            cur_pos = cur_pos - 5;
-            let bit_count = read_bits(form_bytes, cur_pos, 5);
-
-            cur_pos = cur_pos - prefix_len;
-
-            // if prefix_len == 0 we simply read 0 bits from current position, receiving prefix = 0
-            let prefix = read_bits(form_bytes, cur_pos, prefix_len as u8);
-
-            // println!("[DEBUG] prefix: {:b}, bit_count: {:05b}, prefix_len: {:05b}", prefix, bit_count, prefix_len);
-            result.push(
-                EncodingSchemeForm::try_new(
-                    bit_count as u8,
-                    prefix_len as u8,
-                    prefix
-                )
-                .expect("TODO msg") // todo
-            );
-            if cur_pos < (5 + 5) { // minimum size of scheme from (prefix_len == 0)
-                break;
-            }
-        }
-
-        Ok(result)
     }
 
     #[cfg(test)]
