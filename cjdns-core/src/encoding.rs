@@ -32,81 +32,12 @@
 //! assert_eq!(deserialized, input);
 //! ```
 
-pub use encoding_serde::{deserialize_forms, serialize_forms, form_size, validate};
+pub use encoding_serde::{deserialize_forms, serialize_forms};
 pub use encoding_scheme::*;
 
 mod encoding_serde {
-    use std::collections::HashSet;
-
-    use super::errors::{SchemeValidationError, EncodingSerDeError};
+    use super::errors::EncodingSerDeError;
     use crate::EncodingSchemeForm;
-
-    /// As a scheme is represented as an array of **forms**, this function will tell you how many bits of
-    /// label space is occupied by a representation of a given form.
-    pub fn form_size(form: &EncodingSchemeForm) -> u8 {
-        let (bit_count, prefix_len, _) = form.params();
-        return bit_count + prefix_len;
-    }
-
-    /// Validates encoding scheme. Returned value in case of error describes the problem.
-    pub fn validate(forms: &[EncodingSchemeForm]) -> Result<(), SchemeValidationError> {
-        if forms.len() == 0 {
-            return Err(SchemeValidationError::NoEncodingForms);
-        }
-
-        if forms.len() > 31 {
-            // each form must have a different prefix_len and bit_count;
-            // can only be expressed in 5 bits limiting it to 31 bits max and a form
-            // using zero bits is not allowed so there are only 31 max possibilities.
-            return Err(SchemeValidationError::TooManyEncodingForms);
-        }
-
-        if forms.len() == 1 {
-            // if single form - prefix must be empty
-            let form = forms[0];
-            let (bit_count, prefix_len, prefix) = form.params();
-            if prefix_len != 0 || prefix != 0 {
-                return Err(SchemeValidationError::SingleFormWithPrefix);
-            }
-            if bit_count == 0 || bit_count > 31 {
-                return Err(SchemeValidationError::BadBitCount);
-            }
-            return Ok(());
-        }
-
-        let mut last_bit_count = 0;
-        let mut used_prefixes = HashSet::new();
-
-        for form in forms {
-            let (bit_count, prefix_len, prefix) = form.params();
-            // when multiple forms - prefixes must be non-empty
-            if prefix_len == 0 || prefix_len > 31 {
-                return Err(SchemeValidationError::MultiFormBadPrefix);
-            }
-
-            if bit_count == 0 || bit_count > 31 {
-                return Err(SchemeValidationError::BadBitCount);
-            }
-
-            // forms must have bit_count in ascending order
-            if last_bit_count > bit_count {
-                return Err(SchemeValidationError::BitCountNotSorted);
-            }
-            last_bit_count = bit_count;
-
-            // bit_count + prefix_len must be < 59 bits
-            if form_size(form) > 59 {
-                return Err(SchemeValidationError::TooBigForm);
-            }
-
-            // forms must be distinguishable by their prefix
-            if used_prefixes.contains(&prefix) {
-                return Err(SchemeValidationError::DuplicatePrefix);
-            }
-            used_prefixes.insert(prefix);
-        }
-        Ok(())
-    }
 
     /// Store encoding scheme (array of `EncodingSchemeForm`) into a byte vector array (bits sequence).
     ///
@@ -226,10 +157,13 @@ mod encoding_serde {
             let prefix = read_bits(form_bytes, cur_pos, prefix_len as u8);
 
             // println!("[DEBUG] prefix: {:b}, bit_count: {:05b}, prefix_len: {:05b}", prefix, bit_count, prefix_len);
-            result.push(EncodingSchemeForm::try_new(
-                bit_count as u8,
-                prefix_len as u8,
-                prefix).expect("TODO msg") // todo
+            result.push(
+                EncodingSchemeForm::try_new(
+                    bit_count as u8,
+                    prefix_len as u8,
+                    prefix
+                )
+                .expect("TODO msg") // todo
             );
             if cur_pos < (5 + 5) { // minimum size of scheme from (prefix_len == 0)
                 break;
@@ -242,9 +176,14 @@ mod encoding_serde {
     #[cfg(test)]
     mod tests {
         use super::*;
+        use crate::{EncodingScheme, encoding::errors::SchemeValidationError};
 
         fn encoding_form(bit_count: u8, prefix_len: u8, prefix: u32) -> EncodingSchemeForm {
             EncodingSchemeForm::try_new(bit_count, prefix_len, prefix).expect("invalid form")
+        }
+
+        fn validate(forms: &[EncodingSchemeForm]) -> Result<(), SchemeValidationError> {
+            EncodingScheme::validate(forms)
         }
 
         #[test]
@@ -409,6 +348,9 @@ mod encoding_scheme {
     //! Routing label encoding scheme.
 
     use std::slice;
+    use std::collections::HashSet;
+
+    use crate::encoding::errors::SchemeValidationError;
 
     /// Encoding scheme - an iterable list of scheme forms.
     ///
@@ -432,23 +374,29 @@ mod encoding_scheme {
 
     pub mod schemes {
         use super::{EncodingSchemeForm, EncodingScheme};
+
+        fn encoding_scheme(forms: &[EncodingSchemeForm]) -> EncodingScheme {
+            EncodingScheme::try_new(forms).expect("invalid form")
+        }
+
         lazy_static! {
+
             /// Fixed-length 4 bit scheme.
-            pub static ref F4: EncodingScheme = EncodingScheme::new(&[EncodingSchemeForm {
+            pub static ref F4: EncodingScheme = encoding_scheme(&[EncodingSchemeForm {
                 bit_count: 4,
                 prefix_len: 0,
                 prefix: 0,
             }]);
 
             /// Fixed-length 8 bit scheme.
-            pub static ref F8: EncodingScheme = EncodingScheme::new(&[EncodingSchemeForm {
+            pub static ref F8: EncodingScheme = encoding_scheme(&[EncodingSchemeForm {
                 bit_count: 8,
                 prefix_len: 0,
                 prefix: 0,
             }]);
 
             /// Variable-length 4 or 8 bit scheme.
-            pub static ref V48: EncodingScheme = EncodingScheme::new(&[
+            pub static ref V48: EncodingScheme = encoding_scheme(&[
                 EncodingSchemeForm {
                     bit_count: 4,
                     prefix_len: 1,
@@ -464,7 +412,7 @@ mod encoding_scheme {
             /// **Special case scheme.** An encoding scheme consisting of 3, 5 or 8 bit data spaces.
             /// This encoding scheme is special because it encodes strangely (a bug) and thus
             /// conversion from one form to another is non-standard.
-            pub static ref V358: EncodingScheme = EncodingScheme::new(&[
+            pub static ref V358: EncodingScheme = encoding_scheme(&[
                 EncodingSchemeForm {
                     bit_count: 3,
                     prefix_len: 1,
@@ -483,7 +431,7 @@ mod encoding_scheme {
             ]);
 
             /// Variable-length 3 or 7 bit scheme.
-            pub static ref V37: EncodingScheme = EncodingScheme::new(&[
+            pub static ref V37: EncodingScheme = encoding_scheme(&[
                 EncodingSchemeForm {
                     bit_count: 3,
                     prefix_len: 1,
@@ -506,8 +454,7 @@ mod encoding_scheme {
     }
 
     impl EncodingSchemeForm {
-
-        // todo Err type
+        // todo what should I validate here?!
         pub fn try_new(bit_count: u8, prefix_len: u8, prefix: u32) -> Result<Self, ()> {
             Ok(EncodingSchemeForm { bit_count, prefix_len, prefix })
         }
@@ -519,18 +466,82 @@ mod encoding_scheme {
         pub fn params(&self) -> (u8, u8, u32) {
             (self.bit_count, self.prefix_len, self.prefix)
         }
+
+        /// As a scheme is represented as an array of **forms**, this function will tell you how many bits of
+        /// label space is occupied by a representation of a given form.
+        pub fn size_bits(&self) -> u8 {
+            self.bit_count + self.prefix_len
+        }
     }
 
     impl EncodingScheme {
-        pub fn new(forms: &[EncodingSchemeForm]) -> Self {
-            let mut v = forms.to_vec();
-            v.sort(); // schemes are comparable; order of forms doesn't matter
-            v.dedup();
-            Self(v)
+        pub fn try_new(forms: &[EncodingSchemeForm]) -> Result<Self, SchemeValidationError> {
+            let _ = Self::validate(forms)?;
+            Ok(Self(forms.to_vec()))
         }
 
         pub fn forms(&self) -> &[EncodingSchemeForm] {
             &self.0
+        }
+
+        /// Validates encoding scheme. Returned value in case of error describes the problem.
+        pub fn validate(forms: &[EncodingSchemeForm]) -> Result<(), SchemeValidationError> {
+            if forms.len() == 0 {
+                return Err(SchemeValidationError::NoEncodingForms);
+            }
+
+            if forms.len() > 31 {
+                // each form must have a different prefix_len and bit_count;
+                // can only be expressed in 5 bits limiting it to 31 bits max and a form
+                // using zero bits is not allowed so there are only 31 max possibilities.
+                return Err(SchemeValidationError::TooManyEncodingForms);
+            }
+
+            if forms.len() == 1 {
+                // if single form - prefix must be empty
+                let form = forms[0];
+                let (bit_count, prefix_len, prefix) = form.params();
+                if prefix_len != 0 || prefix != 0 {
+                    return Err(SchemeValidationError::SingleFormWithPrefix);
+                }
+                if bit_count == 0 || bit_count > 31 {
+                    return Err(SchemeValidationError::BadBitCount);
+                }
+                return Ok(());
+            }
+
+            let mut last_bit_count = 0;
+            let mut used_prefixes = HashSet::new();
+
+            for form in forms {
+                let (bit_count, prefix_len, prefix) = form.params();
+                // when multiple forms - prefixes must be non-empty
+                if prefix_len == 0 || prefix_len > 31 {
+                    return Err(SchemeValidationError::MultiFormBadPrefix);
+                }
+
+                if bit_count == 0 || bit_count > 31 {
+                    return Err(SchemeValidationError::BadBitCount);
+                }
+
+                // forms must have bit_count in ascending order
+                if last_bit_count > bit_count {
+                    return Err(SchemeValidationError::BitCountNotSorted);
+                }
+                last_bit_count = bit_count;
+
+                // bit_count + prefix_len must be < 59 bits
+                if form.size_bits() > 59 {
+                    return Err(SchemeValidationError::TooBigForm);
+                }
+
+                // forms must be distinguishable by their prefix
+                if used_prefixes.contains(&prefix) {
+                    return Err(SchemeValidationError::DuplicatePrefix);
+                }
+                used_prefixes.insert(prefix);
+            }
+            Ok(())
         }
     }
 
@@ -546,6 +557,10 @@ mod encoding_scheme {
     #[cfg(test)]
     mod tests {
         use super::{EncodingScheme, EncodingSchemeForm, schemes};
+        
+        fn encoding_scheme(forms: &[EncodingSchemeForm]) -> EncodingScheme {
+            EncodingScheme::try_new(forms).expect("invalid scheme")
+        }
 
         fn encoding_form(bit_count: u8, prefix_len: u8, prefix: u32) -> EncodingSchemeForm {
             EncodingSchemeForm {
@@ -556,42 +571,9 @@ mod encoding_scheme {
         }
 
         #[test]
-        fn encoding_scheme_comparison() {
-            assert_eq!(
-                EncodingScheme::new(&[encoding_form(4, 2, 0b00)]),
-                EncodingScheme::new(&[encoding_form(4, 2, 0b00)])
-            );
-            assert_eq!(
-                EncodingScheme::new(&[encoding_form(4, 2, 0b00)]),
-                EncodingScheme::new(&[encoding_form(4, 2, 0b00), encoding_form(4, 2, 0b00)])
-            );
-            assert_eq!(
-                EncodingScheme::new(&[encoding_form(4, 2, 0b00), encoding_form(4, 2, 0b01)]),
-                EncodingScheme::new(&[encoding_form(4, 2, 0b00), encoding_form(4, 2, 0b01), encoding_form(4, 2, 0b00)])
-            );
-
-            assert_ne!(
-                EncodingScheme::new(&[encoding_form(4, 2, 0b00)]),
-                EncodingScheme::new(&[encoding_form(4, 2, 0b01)])
-            );
-            assert_ne!(
-                EncodingScheme::new(&[encoding_form(4, 2, 0b00)]),
-                EncodingScheme::new(&[encoding_form(4, 2, 0b10)])
-            );
-            assert_ne!(
-                EncodingScheme::new(&[encoding_form(4, 2, 0b00)]),
-                EncodingScheme::new(&[encoding_form(3, 2, 0b00)])
-            );
-            assert_ne!(
-                EncodingScheme::new(&[encoding_form(4, 2, 0b00)]),
-                EncodingScheme::new(&[encoding_form(4, 2, 0b00), encoding_form(4, 2, 0b01)])
-            );
-        }
-
-        #[test]
         fn encoding_scheme_iteration() {
             assert_eq!(
-                EncodingScheme::new(&[encoding_form(4, 2, 0b00), encoding_form(4, 2, 0b01)])
+                encoding_scheme(&[encoding_form(4, 2, 0b00), encoding_form(4, 2, 0b01)])
                     .into_iter()
                     .cloned()
                     .collect::<Vec<EncodingSchemeForm>>(),

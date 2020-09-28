@@ -98,6 +98,10 @@ pub mod serialized_data {
             hex::decode(hex_string).expect("invalid hex string")
         }
 
+        fn encoding_scheme(forms: &[EncodingSchemeForm]) -> EncodingScheme {
+            EncodingScheme::try_new(forms).expect("invalid scheme")
+        }
+
         fn encoding_form(bit_count: u8, prefix_len: u8, prefix: u32) -> EncodingSchemeForm {
             EncodingSchemeForm::try_new(bit_count, prefix_len, prefix).expect("invalid form")
         }
@@ -194,7 +198,7 @@ pub mod serialized_data {
                         Entity::NodeProtocolVersion(18),
                         Entity::EncodingScheme {
                             hex: "6114458100".to_string(),
-                            scheme: EncodingScheme::new(&vec![
+                            scheme: encoding_scheme(&vec![
                                 encoding_form(3, 1, 1),
                                 encoding_form(5, 2, 2),
                                 encoding_form(8, 2, 0),
@@ -391,7 +395,7 @@ mod parser {
     fn parse_encoding_scheme(encoding_scheme_data: &[u8]) -> Result<Entity> {
         let hex = hex::encode(encoding_scheme_data);
         let scheme_forms = deserialize_forms(encoding_scheme_data).or(Err(ParserError::CannotParseEntity("encoding scheme deserialization failed")))?;
-        let scheme = EncodingScheme::new(&scheme_forms);
+        let scheme = EncodingScheme::try_new(&scheme_forms).or(Err(ParserError::CannotParseEntity("invalid encoding scheme")))?;
         Ok(Entity::EncodingScheme { hex, scheme })
     }
 

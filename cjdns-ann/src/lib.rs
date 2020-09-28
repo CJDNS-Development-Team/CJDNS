@@ -97,6 +97,7 @@
 //! # use cjdns_ann::{Announcement, AnnouncementHeader, AnnouncementEntities, Entity};
 //! use cjdns_ann::AnnouncementPacket;
 //! #
+//! # let encoding_scheme = |forms| EncodingScheme::try_new(forms).expect("invalid scheme");
 //! # let encoding_form = |bit_count, prefix_len, prefix| EncodingSchemeForm::try_new(bit_count, prefix_len, prefix).expect("invalid encoding form");
 //! # let announcement_bytes = {
 //! #     let hexed_announcement = "3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2fc928136dc1fe6e04ef6a6dd7187b85f00001576462f6f69040200120107006114458100200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000015";
@@ -130,7 +131,7 @@
 //! #             Entity::NodeProtocolVersion(18),
 //! #             Entity::EncodingScheme {
 //! #                 hex: "6114458100".to_string(),
-//! #                 scheme: EncodingScheme::new(&vec![
+//! #                 scheme: encoding_scheme(&vec![
 //! #                     encoding_form(3, 1, 1),
 //! #                     encoding_form(5, 2, 2),
 //! #                     encoding_form(8, 2, 0),

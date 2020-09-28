@@ -433,6 +433,10 @@ mod tests {
         RoutingLabel::<u128>::try_from(v).ok()
     }
 
+    fn encoding_scheme(forms: &[EncodingSchemeForm]) -> EncodingScheme {
+        EncodingScheme::try_new(forms).expect("invalid scheme")
+    }
+
     fn encoding_form(bit_count: u8, prefix_len: u8, prefix: u32) -> EncodingSchemeForm {
         EncodingSchemeForm::try_new(bit_count, prefix_len, prefix).expect("invalid form")
     }
@@ -553,7 +557,7 @@ mod tests {
 
         assert!(get_encoding_form(
             l("0000.0000.0000.1113"),
-            &EncodingScheme::new(&[
+            &encoding_scheme(&[
                 encoding_form(5, 2, 2),
                 encoding_form(8, 2, 0),
             ])
@@ -609,7 +613,7 @@ mod tests {
 
         assert!(re_encode(
             l("0000.0000.0000.1113"),
-            &EncodingScheme::new(&[
+            &encoding_scheme(&[
                 encoding_form(5, 2, 2),
                 encoding_form(8, 2, 0),
             ]),
@@ -1239,17 +1243,10 @@ mod tests {
         assert_eq!(
             is_one_hop(
                 l("0000.0000.0000.1113"),
-                &EncodingScheme::new(&[
+                &encoding_scheme(&[
                     encoding_form(5, 2, 2),
                     encoding_form(8, 2, 0),
                 ])
-            ),
-            Err(SpliceError::CannotFindForm)
-        );
-        assert_eq!(
-            is_one_hop(
-                l("0000.0000.0000.0200"),
-                &EncodingScheme::new(&[encoding_form(4, 1, 1),])
             ),
             Err(SpliceError::CannotFindForm)
         );
