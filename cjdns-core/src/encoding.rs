@@ -202,22 +202,9 @@ mod encoding_serde {
             ].to_vec();
             assert_eq!(validate(&input), Err(SchemeValidationError::SingleFormWithPrefix));
 
-            // test non-valid bit_count single form
-            input = [
-                encoding_form(34, 0, 0),
-            ].to_vec();
-            assert_eq!(validate(&input), Err(SchemeValidationError::BadBitCount));
-
-            // test non-valid bit_count multiple forms
-            input = [
-                encoding_form(30, 1, 1),
-                encoding_form(34, 2, 2),
-            ].to_vec();
-            assert_eq!(validate(&input), Err(SchemeValidationError::BadBitCount));
-
             // test non valid prefix_len
             input = [
-                encoding_form(3, 32, 111),
+                encoding_form(4, 0, 0),
                 encoding_form(4, 4, 2),
             ].to_vec();
             assert_eq!(validate(&input), Err(SchemeValidationError::MultiFormBadPrefix));
@@ -350,7 +337,7 @@ mod encoding_scheme {
     use std::ops::Deref;
     use std::collections::HashSet;
 
-    use crate::encoding::errors::SchemeValidationError;
+    use crate::encoding::errors::{SchemeValidationError, FormValidationError};
 
     /// Encoding scheme - an iterable list of scheme forms.
     ///
@@ -376,10 +363,15 @@ mod encoding_scheme {
         /// Instantiates `EncodingSchemeForm`.
         ///
         /// Returns an error in several situations:
-        /// *
-        /// *
-        // todo what should I validate here?!
-        pub fn try_new(bit_count: u8, prefix_len: u8, prefix: u32) -> Result<Self, ()> {
+        /// * encoding `bit_count` value is out of valid range, which is 1..32
+        /// * `prefix_len` is too small for the provided `prefix`
+        pub fn try_new(bit_count: u8, prefix_len: u8, prefix: u32) -> Result<Self, FormValidationError> {
+            if bit_count == 0 || bit_count > 31 {
+                return Err(FormValidationError::BadBitCount);
+            }
+            if 2u32.pow(prefix_len as u32) <= 32 - prefix.leading_zeros() {
+                return Err(FormValidationError::InvalidPrefixData);
+            }
             Ok(EncodingSchemeForm { bit_count, prefix_len, prefix })
         }
 
@@ -429,12 +421,9 @@ mod encoding_scheme {
             if forms.len() == 1 {
                 // if single form - prefix must be empty
                 let form = forms[0];
-                let (bit_count, prefix_len, prefix) = form.params();
+                let (_, prefix_len, prefix) = form.params();
                 if prefix_len != 0 || prefix != 0 {
                     return Err(SchemeValidationError::SingleFormWithPrefix);
-                }
-                if bit_count == 0 || bit_count > 31 {
-                    return Err(SchemeValidationError::BadBitCount);
                 }
                 return Ok(());
             }
@@ -447,10 +436,6 @@ mod encoding_scheme {
                 // when multiple forms - prefixes must be non-empty
                 if prefix_len == 0 || prefix_len > 31 {
                     return Err(SchemeValidationError::MultiFormBadPrefix);
-                }
-
-                if bit_count == 0 || bit_count > 31 {
-                    return Err(SchemeValidationError::BadBitCount);
                 }
 
                 // forms must have bit_count in ascending order
@@ -618,10 +603,6 @@ mod errors {
         #[error("Invalid encoding scheme: single form has non-empty prefix")]
         SingleFormWithPrefix,
 
-        /// Scheme bit count value out of valid range (which is 1..32)
-        #[error("Invalid encoding scheme: form has `bit_count` out of bounds (1..32)")]
-        BadBitCount,
-
         /// Scheme with multiple forms must have non-empty prefix value
         #[error("Invalid encoding scheme: multiple forms - prefix length is out of bounds (1..32)")]
         MultiFormBadPrefix,
@@ -637,6 +618,17 @@ mod errors {
         /// Form bit size should be less than 59 for multiple form schemes
         #[error("Invalid encoding scheme: form size too big (bit_count + prefix_len > 59)")]
         TooBigForm,
+    }
+
+    #[derive(Error, Debug, PartialEq, Eq)]
+    pub enum FormValidationError {
+        /// Scheme bit count value out of valid range (which is 1..32)
+        #[error("Invalid encoding form: `bit_count` out of bounds (1..32)")]
+        BadBitCount,
+
+        /// Encoded prefix length is insufficient for the provided prefix
+        #[error("Invalid encoding form: `prefix_len` is to little for provided `prefix`")]
+        InvalidPrefixData
     }
 
     /// Error returned when encoding scheme for serialization/deserialization fails
