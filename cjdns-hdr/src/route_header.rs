@@ -3,8 +3,8 @@
 use std::convert::TryFrom;
 
 use cjdns_bytes::{ParseError, SerializeError};
-use cjdns_bytes::{Reader, Writer};
-use cjdns_keys::{CJDNS_IP6, CJDNSPublicKey};
+use cjdns_bytes::{Reader, Writer, ExpectedSize};
+use cjdns_keys::{CJDNSPublicKey, CJDNS_IP6};
 
 use crate::switch_header::SwitchHeader;
 
@@ -42,36 +42,32 @@ impl RouteHeader {
     /// * if "[is_ctrl](struct.RouteHeader.html#structfield.is_ctrl) - [public_key](struct.RouteHeader.html#structfield.public_key) - [ip6](struct.RouteHeader.html#structfield.ip6)" invariant is not met;
     /// * if flag for message type states not control, nor incoming frame.
     pub fn parse(data: &[u8]) -> Result<Self, ParseError> {
-        if data.len() != Self::SIZE {
-            return Err(ParseError::InvalidPacketSize);
-        }
         let mut data_reader = Reader::new(data);
-        let public_key = {
-            let public_key_array = data_reader.read_array_32().expect("invalid header data size");
-            if ZERO_PUBLIC_KEY_BYTES == public_key_array {
-                None
-            } else {
-                Some(CJDNSPublicKey::from(public_key_array))
-            }
+        let (pk_bytes, header_bytes, version, flags, ip6_bytes) = data_reader
+            .read(ExpectedSize::Exact(Self::SIZE), |r| {
+                let pk_bytes = r.read_array_32()?;
+                let header_bytes = r.read_slice(SwitchHeader::SIZE)?;
+                let version = r.read_u32_be()?;
+                let flags = r.read_u8()?;
+                let _padding = r.skip(3)?;
+                let ip6_bytes = r.read_slice(16)?;
+                Ok((pk_bytes, header_bytes, version, flags, ip6_bytes))
+            })
+            .map_err(|_| ParseError::InvalidPacketSize)?;
+
+        let public_key = if ZERO_PUBLIC_KEY_BYTES == pk_bytes {
+            None
+        } else {
+            Some(CJDNSPublicKey::from(pk_bytes))
         };
-        let switch_header = {
-            let header_bytes = data_reader.take_bytes(SwitchHeader::SIZE).expect("invalid header data size");
-            SwitchHeader::parse(header_bytes)?
-        };
-        let version = data_reader.read_u32_be().expect("invalid header data size");
-        let (is_ctrl, is_incoming) = {
-            let flags = data_reader.read_u8().expect("invalid header data size");
-            (flags & CONTROL_FRAME != 0, flags & INCOMING_FRAME != 0)
-        };
-        let _zeroes = data_reader.take_bytes(3).expect("invalid header data size"); // padding
-        let ip6_from_bytes = {
-            let ip6_bytes_slice = data_reader.take_bytes(16).expect("invalid header data size");
-            if ip6_bytes_slice == &ZERO_IP6_BYTES {
-                None
-            } else {
-                let ip6 = CJDNS_IP6::try_from(ip6_bytes_slice).or(Err(ParseError::InvalidData("can't create ip6 from received bytes")))?;
-                Some(ip6)
-            }
+        let switch_header = SwitchHeader::parse(header_bytes)?;
+        let is_ctrl = flags & CONTROL_FRAME != 0;
+        let is_incoming = flags & INCOMING_FRAME != 0;
+        let ip6_from_bytes = if ip6_bytes == &ZERO_IP6_BYTES {
+            None
+        } else {
+            let ip6 = CJDNS_IP6::try_from(ip6_bytes).map_err(|_| ParseError::InvalidData("can't create ip6 from received bytes"))?;
+            Some(ip6)
         };
         // checking invariants
         if is_ctrl && public_key.is_some() {
@@ -85,7 +81,7 @@ impl RouteHeader {
         }
         if let Some(public_key) = public_key.as_ref() {
             if let Some(ip6_from_bytes) = ip6_from_bytes.as_ref() {
-                let ip6_from_key = CJDNS_IP6::try_from(public_key).or(Err(ParseError::InvalidData("can't create ip6 from public key")))?;
+                let ip6_from_key = CJDNS_IP6::try_from(public_key).map_err(|_| ParseError::InvalidData("can't create ip6 from public key"))?;
                 if ip6_from_key != *ip6_from_bytes {
                     return Err(ParseError::InvalidData("ip6 derived from public key is not equal to ip6 from header bytes"));
                 }
@@ -119,7 +115,7 @@ impl RouteHeader {
         }
         if let Some(public_key) = self.public_key.as_ref() {
             if let Some(ip6) = self.ip6.as_ref() {
-                let ip6_from_key = CJDNS_IP6::try_from(public_key).or(Err(SerializeError::InvalidData("can't create ip6 from public key")))?;
+                let ip6_from_key = CJDNS_IP6::try_from(public_key).map_err(|_| SerializeError::InvalidData("can't create ip6 from public key"))?;
                 if ip6_from_key != *ip6 {
                     return Err(SerializeError::InvalidData("ip6 derived from public key is not equal to ip6 from header bytes"));
                 }
@@ -142,7 +138,7 @@ impl RouteHeader {
 
         let mut data_writer = Writer::with_capacity(Self::SIZE);
         data_writer.write_slice(public_key_bytes);
-        data_writer.write_slice(switch_header_bytes.as_slice());
+        data_writer.write_slice(&switch_header_bytes);
         data_writer.write_u32_be(self.version);
         data_writer.write_u8(flags);
         data_writer.write_slice(pad_bytes);
@@ -157,7 +153,7 @@ mod tests {
     use std::convert::TryFrom;
 
     use cjdns_core::RoutingLabel;
-    use cjdns_keys::{CJDNS_IP6, CJDNSPublicKey};
+    use cjdns_keys::{CJDNSPublicKey, CJDNS_IP6};
 
     use crate::route_header::{CONTROL_FRAME, INCOMING_FRAME};
     use crate::switch_header::SwitchHeader;
@@ -249,12 +245,7 @@ mod tests {
                 false,
             ),
             // ip6 is some but message is control
-            instantiate_header(
-                None,
-                CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").ok(),
-                true,
-                false,
-            ),
+            instantiate_header(None, CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").ok(), true, false),
             // message is incoming, but ip6 is none
             instantiate_header(
                 CJDNSPublicKey::try_from("3fdqgz2vtqb0wx02hhvx3wjmjqktyt567fcuvj3m72vw5u6ubu70.k").ok(),
@@ -276,12 +267,7 @@ mod tests {
 
         // is_ctrl == is_incoming
         let valid_cases = [
-            instantiate_header(
-                None,
-                CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").ok(),
-                false,
-                false,
-            ),
+            instantiate_header(None, CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").ok(), false, false),
             instantiate_header(None, None, true, true),
         ];
         for valid_header in valid_cases.iter() {
@@ -293,10 +279,26 @@ mod tests {
     fn test_flag_checks() {
         let flag_idx = 48;
         let test_data = [
-            ("a331ebbed8d92ac03b10efed3e389cd0c6ec7331a72dbde198476c5eb4d14a1f0000000000000013004800000000000001000000fc928136dc1fe6e04ef6a6dd7187b85f", false, true),
-            ("0000000000000000000000000000000000000000000000000000000000000000000000000000001300480000000000000200000000000000000000000000000000000000", true, false),
-            ("0000000000000000000000000000000000000000000000000000000000000000000000000000001300480000000000000300000000000000000000000000000000000000", true, true),
-            ("a331ebbed8d92ac03b10efed3e389cd0c6ec7331a72dbde198476c5eb4d14a1f0000000000000013004800000000000000000000fc928136dc1fe6e04ef6a6dd7187b85f", false, false)
+            (
+                "a331ebbed8d92ac03b10efed3e389cd0c6ec7331a72dbde198476c5eb4d14a1f0000000000000013004800000000000001000000fc928136dc1fe6e04ef6a6dd7187b85f",
+                false,
+                true,
+            ),
+            (
+                "0000000000000000000000000000000000000000000000000000000000000000000000000000001300480000000000000200000000000000000000000000000000000000",
+                true,
+                false,
+            ),
+            (
+                "0000000000000000000000000000000000000000000000000000000000000000000000000000001300480000000000000300000000000000000000000000000000000000",
+                true,
+                true,
+            ),
+            (
+                "a331ebbed8d92ac03b10efed3e389cd0c6ec7331a72dbde198476c5eb4d14a1f0000000000000013004800000000000000000000fc928136dc1fe6e04ef6a6dd7187b85f",
+                false,
+                false,
+            ),
         ];
         for &(hex_data, is_ctrl, is_incoming) in test_data.iter() {
             // parse test

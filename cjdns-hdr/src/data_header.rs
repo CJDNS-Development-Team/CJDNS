@@ -1,6 +1,6 @@
 //! Logic for parsing and serializing the data header, providing type of content
 
-use cjdns_bytes::{ParseError, SerializeError};
+use cjdns_bytes::{ParseError, SerializeError, ExpectedSize};
 use cjdns_bytes::{Reader, Writer};
 
 use crate::content_type::ContentType;
@@ -28,23 +28,18 @@ impl DataHeader {
     /// If content number is not defined in `ContentType`, default `ContentType` variant will be used.
     /// *Note*: default `ContentType` variant is a temporary solution.
     pub fn parse(data: &[u8]) -> Result<Self, ParseError> {
-        if data.len() != Self::SIZE {
-            return Err(ParseError::InvalidPacketSize);
-        }
         let mut data_reader = Reader::new(data);
-        let version = {
-            let version_with_flags = data_reader.read_u8().expect("invalid header data size");
-            version_with_flags >> 4
-        };
-        // Zero-padding
-        let pad = data_reader.read_u8().expect("invalid header data size");
-        if pad != 0 {
-            return Err(ParseError::InvalidData("non-zero padding"));
-        }
-        let content_type = {
-            let content_type_code = data_reader.read_u16_be().expect("invalid header data size");
-            ContentType::from_u16(content_type_code)
-        };
+        let (version_with_flags, content_type_code) = data_reader
+            .read(ExpectedSize::Exact(Self::SIZE), |r| {
+                let version_with_flags = r.read_u8()?;
+                let _padding = r.skip(1)?;
+                let content_type_code = r.read_u16_be()?;
+                Ok((version_with_flags, content_type_code))
+            })
+            .map_err(|_| ParseError::InvalidPacketSize)?;
+
+        let version = version_with_flags >> 4;
+        let content_type = ContentType::from_u16(content_type_code);
         Ok(DataHeader { version, content_type })
     }
 

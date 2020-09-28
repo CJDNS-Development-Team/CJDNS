@@ -1,4 +1,4 @@
-use cjdns_bytes::{ParseError, Reader, SerializeError, Writer};
+use cjdns_bytes::{ParseError, Reader, SerializeError, ExpectedSize, Writer};
 use cjdns_keys::CJDNSPublicKey;
 
 use crate::CtrlMessageType;
@@ -22,27 +22,31 @@ impl PingData {
     /// * encoded ping magic is not equal to magic defined for the inputted `ping`
     /// * if input `ping` is sort of key pings, but bytes data size is too small to create cjdns public key from it
     pub fn parse(bytes: &[u8], ping: CtrlMessageType) -> Result<Self, ParseError> {
-        if bytes.len() < Self::MIN_SIZE {
-            return Err(ParseError::InvalidPacketSize);
-        }
         let mut reader = Reader::new(bytes);
+        let (encoded_magic, version, pk_bytes, content) = reader
+            .read(ExpectedSize::NotLessThan(Self::MIN_SIZE), |r| {
+                let encoded_magic = r.read_u32_be()?;
+                let version = r.read_u32_be()?;
+                let key_bytes = r.read_array_32();
+                let content = r.read_remainder().to_vec();
+                Ok((encoded_magic, version, key_bytes, content))
+            })
+            .map_err(|_| ParseError::InvalidPacketSize)?;
+
         // Validating ping data magic
         {
-            let encoded_magic = reader.read_u32_be().expect("invalid message size");
             let original_magic = Self::ping_to_magic(ping);
             if encoded_magic != original_magic {
                 return Err(ParseError::InvalidData("invalid encoded connection magic"));
             }
         }
-        let version = reader.read_u32_be().expect("invalid message size");
         let key = match ping {
             CtrlMessageType::KeyPing | CtrlMessageType::KeyPong => {
-                let key_bytes = reader.read_array_32().or(Err(ParseError::InvalidPacketSize))?;
-                Some(CJDNSPublicKey::from(key_bytes))
+                let pk_bytes = pk_bytes.map_err(|_| ParseError::InvalidPacketSize)?;
+                Some(CJDNSPublicKey::from(pk_bytes))
             }
             _ => None,
         };
-        let content = reader.read_all_mut().to_vec();
         Ok(PingData { version, key, content })
     }
 
