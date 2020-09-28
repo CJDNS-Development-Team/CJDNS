@@ -98,6 +98,10 @@ pub mod serialized_data {
             hex::decode(hex_string).expect("invalid hex string")
         }
 
+        fn encoding_form(bit_count: u8, prefix_len: u8, prefix: u32) -> EncodingSchemeForm {
+            EncodingSchemeForm::try_new(bit_count, prefix_len, prefix).expect("invalid form")
+        }
+
         #[test]
         fn test_packet_creation() {
             for packet_length in 0..144 {
@@ -191,21 +195,9 @@ pub mod serialized_data {
                         Entity::EncodingScheme {
                             hex: "6114458100".to_string(),
                             scheme: EncodingScheme::new(&vec![
-                                EncodingSchemeForm {
-                                    bit_count: 3,
-                                    prefix_len: 1,
-                                    prefix: 1
-                                },
-                                EncodingSchemeForm {
-                                    bit_count: 5,
-                                    prefix_len: 2,
-                                    prefix: 2
-                                },
-                                EncodingSchemeForm {
-                                    bit_count: 8,
-                                    prefix_len: 2,
-                                    prefix: 0
-                                },
+                                encoding_form(3, 1, 1),
+                                encoding_form(5, 2, 2),
+                                encoding_form(8, 2, 0),
                             ])
                         },
                         Entity::Peer {
