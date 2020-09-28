@@ -38,10 +38,8 @@ pub use encoding_scheme::*;
 mod encoding_serde {
     use std::collections::HashSet;
 
-    use super::scheme_errors::EncodingSchemeError;
+    use super::errors::{SchemeValidationError, EncodingSerDeError};
     use crate::EncodingSchemeForm;
-
-    type Result<T> = std::result::Result<T, EncodingSchemeError>;
 
     /// As a scheme is represented as an array of **forms**, this function will tell you how many bits of
     /// label space is occupied by a representation of a given form.
@@ -51,16 +49,16 @@ mod encoding_serde {
     }
 
     /// Validates encoding scheme. Returned value in case of error describes the problem.
-    pub fn validate(forms: &[EncodingSchemeForm]) -> Result<()> {
+    pub fn validate(forms: &[EncodingSchemeForm]) -> Result<(), SchemeValidationError> {
         if forms.len() == 0 {
-            return Err(EncodingSchemeError::NoEncodingForms);
+            return Err(SchemeValidationError::NoEncodingForms);
         }
 
         if forms.len() > 31 {
             // each form must have a different prefix_len and bit_count;
             // can only be expressed in 5 bits limiting it to 31 bits max and a form
             // using zero bits is not allowed so there are only 31 max possibilities.
-            return Err(EncodingSchemeError::TooManyEncodingForms);
+            return Err(SchemeValidationError::TooManyEncodingForms);
         }
 
         if forms.len() == 1 {
@@ -68,10 +66,10 @@ mod encoding_serde {
             let form = forms[0];
             let (bit_count, prefix_len, prefix) = form.params();
             if prefix_len != 0 || prefix != 0 {
-                return Err(EncodingSchemeError::SingleFormWithPrefix);
+                return Err(SchemeValidationError::SingleFormWithPrefix);
             }
             if bit_count == 0 || bit_count > 31 {
-                return Err(EncodingSchemeError::BadBitCount);
+                return Err(SchemeValidationError::BadBitCount);
             }
             return Ok(());
         }
@@ -83,27 +81,27 @@ mod encoding_serde {
             let (bit_count, prefix_len, prefix) = form.params();
             // when multiple forms - prefixes must be non-empty
             if prefix_len == 0 || prefix_len > 31 {
-                return Err(EncodingSchemeError::MultiFormBadPrefix);
+                return Err(SchemeValidationError::MultiFormBadPrefix);
             }
 
             if bit_count == 0 || bit_count > 31 {
-                return Err(EncodingSchemeError::BadBitCount);
+                return Err(SchemeValidationError::BadBitCount);
             }
 
             // forms must have bit_count in ascending order
             if last_bit_count > bit_count {
-                return Err(EncodingSchemeError::BitCountNotSorted);
+                return Err(SchemeValidationError::BitCountNotSorted);
             }
             last_bit_count = bit_count;
 
             // bit_count + prefix_len must be < 59 bits
             if form_size(form) > 59 {
-                return Err(EncodingSchemeError::TooBigForm);
+                return Err(SchemeValidationError::TooBigForm);
             }
 
             // forms must be distinguishable by their prefix
             if used_prefixes.contains(&prefix) {
-                return Err(EncodingSchemeError::DuplicatePrefix);
+                return Err(SchemeValidationError::DuplicatePrefix);
             }
             used_prefixes.insert(prefix);
         }
@@ -114,7 +112,7 @@ mod encoding_serde {
     ///
     /// Accepts vector of `EncodingSchemeForm`s, encodes them as bits sequence
     /// and returns the result as bytes vector.
-    pub fn serialize_forms(forms: &[EncodingSchemeForm]) -> Result<Vec<u8>> {
+    pub fn serialize_forms(forms: &[EncodingSchemeForm]) -> Result<Vec<u8>, EncodingSerDeError> {
         let mut result_vec: Vec<u8> = [].to_vec();
         let mut pos = 0_u32;
         let mut cur_byte_num = 0;
@@ -126,11 +124,11 @@ mod encoding_serde {
             let mut acc = 0_u64;
 
             if prefix_len > 31 {
-                return Err(EncodingSchemeError::BadEncodingForm);
+                return Err(EncodingSerDeError::BadEncodingForm);
             }
 
             if bit_count < 1 || bit_count > 31 {
-                return Err(EncodingSchemeError::BadEncodingForm);
+                return Err(EncodingSerDeError::BadEncodingForm);
             }
 
             if prefix_len > 0 {
@@ -207,9 +205,9 @@ mod encoding_serde {
     /// Parse byte vector array (bits sequence) and transform it to encoding scheme.
     ///
     /// Accepts bytes array, parses it and returns vector of `EncodingSchemeForm`s.
-    pub fn deserialize_forms(form_bytes: &[u8]) -> Result<Vec<EncodingSchemeForm>> {
+    pub fn deserialize_forms(form_bytes: &[u8]) -> Result<Vec<EncodingSchemeForm>, EncodingSerDeError> {
         if form_bytes.len() < 2 {
-            return Err(EncodingSchemeError::BadSerializedData);
+            return Err(EncodingSerDeError::BadSerializedData);
         }
 
         let mut result = Vec::new();
@@ -262,27 +260,27 @@ mod encoding_serde {
             input = [
                 encoding_form(4, 1, 1),
             ].to_vec();
-            assert_eq!(validate(&input), Err(EncodingSchemeError::SingleFormWithPrefix));
+            assert_eq!(validate(&input), Err(SchemeValidationError::SingleFormWithPrefix));
 
             // test non-valid bit_count single form
             input = [
                 encoding_form(34, 0, 0),
             ].to_vec();
-            assert_eq!(validate(&input), Err(EncodingSchemeError::BadBitCount));
+            assert_eq!(validate(&input), Err(SchemeValidationError::BadBitCount));
 
             // test non-valid bit_count multiple forms
             input = [
                 encoding_form(30, 1, 1),
                 encoding_form(34, 2, 2),
             ].to_vec();
-            assert_eq!(validate(&input), Err(EncodingSchemeError::BadBitCount));
+            assert_eq!(validate(&input), Err(SchemeValidationError::BadBitCount));
 
             // test non valid prefix_len
             input = [
                 encoding_form(3, 32, 111),
                 encoding_form(4, 4, 2),
             ].to_vec();
-            assert_eq!(validate(&input), Err(EncodingSchemeError::MultiFormBadPrefix));
+            assert_eq!(validate(&input), Err(SchemeValidationError::MultiFormBadPrefix));
 
             // test bit_count not in ascending order
             input = [
@@ -292,14 +290,14 @@ mod encoding_serde {
                 encoding_form(4, 6, 4),
                 encoding_form(8, 7, 5),
             ].to_vec();
-            assert_eq!(validate(&input), Err(EncodingSchemeError::BitCountNotSorted));
+            assert_eq!(validate(&input), Err(SchemeValidationError::BitCountNotSorted));
 
             // test too big form size (bit_count + prefix_len > 59)
             input = [
                 encoding_form(3, 3, 1),
                 encoding_form(31, 29, 5),
             ].to_vec();
-            assert_eq!(validate(&input), Err(EncodingSchemeError::TooBigForm));
+            assert_eq!(validate(&input), Err(SchemeValidationError::TooBigForm));
 
             // test non-unique prefix in multiple forms
             input = [
@@ -308,7 +306,7 @@ mod encoding_serde {
                 encoding_form(5, 5, 6),
                 encoding_form(8, 9, 2),
             ].to_vec();
-            assert_eq!(validate(&input), Err(EncodingSchemeError::DuplicatePrefix));
+            assert_eq!(validate(&input), Err(SchemeValidationError::DuplicatePrefix));
         }
 
         #[test]
@@ -513,6 +511,7 @@ mod encoding_scheme {
         pub fn try_new(bit_count: u8, prefix_len: u8, prefix: u32) -> Result<Self, ()> {
             Ok(EncodingSchemeForm { bit_count, prefix_len, prefix })
         }
+
         /// Returns encoding scheme form params in respected order:
         /// * bit count;
         /// * prefix length;
@@ -611,12 +610,11 @@ mod encoding_scheme {
     }
 }
 
-mod scheme_errors {
+mod errors {
     use thiserror::Error;
 
-    // todo change visibility
     #[derive(Error, Debug, PartialEq, Eq)]
-    pub enum EncodingSchemeError {
+    pub enum SchemeValidationError {
         #[error("Invalid encoding scheme: no encoding forms defined")]
         NoEncodingForms,
         #[error("Invalid encoding scheme: too many encoding forms defined (max 31)")]
@@ -633,6 +631,10 @@ mod scheme_errors {
         DuplicatePrefix,
         #[error("Invalid encoding scheme: form size too big (bit_count + prefix_len > 59)")]
         TooBigForm,
+    }
+
+    #[derive(Error, Debug, PartialEq, Eq)]
+    pub enum EncodingSerDeError {
         #[error("Invalid serialized encoding scheme")]
         BadSerializedData,
         #[error("Invalid encoding form")]
