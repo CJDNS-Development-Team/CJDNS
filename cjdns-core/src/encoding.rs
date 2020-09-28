@@ -34,11 +34,12 @@
 
 pub use encoding_serde::{deserialize_forms, serialize_forms};
 pub use encoding_scheme::*;
+pub use errors::{SchemeValidationError, EncodingSerDeError};
 
 mod encoding_serde {
     //! Serialization and deserialization logic
 
-    use super::errors::EncodingSerDeError;
+    use super::EncodingSerDeError;
     use crate::EncodingSchemeForm;
 
     /// Store encoding scheme (array of `EncodingSchemeForm`) into a byte vector array (bits sequence).
@@ -176,7 +177,7 @@ mod encoding_serde {
     #[cfg(test)]
     mod tests {
         use super::*;
-        use crate::{EncodingScheme, encoding::errors::SchemeValidationError};
+        use crate::{EncodingScheme, SchemeValidationError};
 
         fn encoding_form(bit_count: u8, prefix_len: u8, prefix: u32) -> EncodingSchemeForm {
             EncodingSchemeForm::try_new(bit_count, prefix_len, prefix).expect("invalid form")
@@ -372,6 +373,11 @@ mod encoding_scheme {
     }
 
     impl EncodingSchemeForm {
+        /// Instantiates `EncodingSchemeForm`.
+        ///
+        /// Returns an error in several situations:
+        /// *
+        /// *
         // todo what should I validate here?!
         pub fn try_new(bit_count: u8, prefix_len: u8, prefix: u32) -> Result<Self, ()> {
             Ok(EncodingSchemeForm { bit_count, prefix_len, prefix })
@@ -393,22 +399,31 @@ mod encoding_scheme {
     }
 
     impl EncodingScheme {
+        /// Instantiates `EncodingScheme`.
+        ///
+        /// Returns an error if forms validation failed. See `validate` function docs for more info.
         pub fn try_new(forms: &[EncodingSchemeForm]) -> Result<Self, SchemeValidationError> {
             let _ = Self::validate(forms)?;
             Ok(Self(forms.to_vec()))
         }
 
-        /// Validates encoding scheme. Returned value in case of error describes the problem.
+        /// Validates encoding scheme.
+        ///
+        /// Returns an error in several situations:
+        /// * provided forms slice length is 0 or greater than 31
+        /// * `bit_count` value of any form is out of valid range - 1..32
+        /// * `prefix_len` value of any form is out if valid range - 1..32 (for multiple forms scheme)
+        /// * forms are not in ascending order by `bits_count` key
+        /// * bits size of a form is greater than 59 (for multiple forms scheme)
+        /// * forms with equal prefixes are in scheme
+        ///
+        /// Each returned value fully reflects error type.
         pub fn validate(forms: &[EncodingSchemeForm]) -> Result<(), SchemeValidationError> {
-            if forms.len() == 0 {
-                return Err(SchemeValidationError::NoEncodingForms);
-            }
-
-            if forms.len() > 31 {
-                // each form must have a different prefix_len and bit_count;
-                // can only be expressed in 5 bits limiting it to 31 bits max and a form
-                // using zero bits is not allowed so there are only 31 max possibilities.
-                return Err(SchemeValidationError::TooManyEncodingForms);
+            // each form must have a different prefix_len and bit_count;
+            // can only be expressed in 5 bits limiting it to 31 bits max and a form
+            // using zero bits is not allowed so there are only 31 max possibilities.
+            if forms.len() == 0 || forms.len() > 31 {
+                return Err(SchemeValidationError::InvalidFormsAmount);
             }
 
             if forms.len() == 1 {
@@ -538,6 +553,7 @@ mod encoding_scheme {
             ]);
         }
 
+        /// Returns an iterator over all the well-known encoding schemes
         pub fn all() -> impl Iterator<Item=&'static EncodingScheme> + 'static {
             lazy_static! {
                 static ref ALL: [EncodingScheme; 5] = [F4.clone(), F8.clone(), V48.clone(), V358.clone(), V37.clone()];
@@ -591,30 +607,46 @@ mod encoding_scheme {
 mod errors {
     use thiserror::Error;
 
+    /// Error returned when scheme validation fails
     #[derive(Error, Debug, PartialEq, Eq)]
     pub enum SchemeValidationError {
-        #[error("Invalid encoding scheme: no encoding forms defined")]
-        NoEncodingForms,
-        #[error("Invalid encoding scheme: too many encoding forms defined (max 31)")]
-        TooManyEncodingForms,
+        /// Invalid scheme forms length. Should be in 1..32 range.
+        #[error("Invalid encoding scheme: amount of encoding forms is not in range of (1..32)")]
+        InvalidFormsAmount,
+
+        /// Scheme with single form must not have non-empty prefix value
         #[error("Invalid encoding scheme: single form has non-empty prefix")]
         SingleFormWithPrefix,
-        #[error("Invalid encoding scheme: form has bit_count out of bounds (1..31)")]
+
+        /// Scheme bit count value out of valid range (which is 1..32)
+        #[error("Invalid encoding scheme: form has `bit_count` out of bounds (1..32)")]
         BadBitCount,
-        #[error("Invalid encoding scheme: multiple forms - prefix length is out of bounds (1..31)")]
+
+        /// Scheme with multiple forms must have non-empty prefix value
+        #[error("Invalid encoding scheme: multiple forms - prefix length is out of bounds (1..32)")]
         MultiFormBadPrefix,
+
+        /// Multiple forms should have `bit_count` in ascending order
         #[error("Invalid encoding scheme: multiple forms should have bit_count in ascending order")]
         BitCountNotSorted,
+
+        /// Multiple forms must have unique prefixes
         #[error("Invalid encoding scheme: multiple forms must have unique prefixes")]
         DuplicatePrefix,
+
+        /// Form bit size should be less than 59 for multiple form schemes
         #[error("Invalid encoding scheme: form size too big (bit_count + prefix_len > 59)")]
         TooBigForm,
     }
 
+    /// Error returned when encoding scheme for serialization/deserialization fails
     #[derive(Error, Debug, PartialEq, Eq)]
     pub enum EncodingSerDeError {
+        /// Returned when scheme serialization fails
         #[error("Invalid serialized encoding scheme")]
         BadSerializedData,
+
+        /// Returned when encoding form deserialization fails
         #[error("Invalid encoding form")]
         BadEncodingForm,
     }

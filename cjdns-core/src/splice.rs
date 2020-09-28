@@ -1,6 +1,4 @@
 //! Routing label splice/unsplice routines.
-//!
-//! Below in the examples labels are written in the hex form for brevity.
 
 use thiserror::Error;
 
