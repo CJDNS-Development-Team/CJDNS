@@ -32,21 +32,21 @@
 //! assert_eq!(deserialized, forms_to_scheme(forms.as_ref()));
 //! ```
 
-pub use encoding_serde::{deserialize_scheme, serialize_scheme};
+pub use encoding_serialization::{deserialize_scheme, serialize_scheme};
 pub use encoding_scheme::*;
-pub use errors::{SchemeValidationError, EncodingSerDeError};
+pub use errors::{SchemeValidationError, EncodingSerializationError};
 
-mod encoding_serde {
+mod encoding_serialization {
     //! Serialization and deserialization logic
 
-    use super::EncodingSerDeError;
+    use super::EncodingSerializationError;
     use crate::{EncodingScheme, EncodingSchemeForm};
 
     /// Store encoding scheme into a byte vector array (bits sequence).
     ///
-    /// Accepts `EncodingScheme`, encodes them as bits sequence
+    /// Accepts `EncodingScheme`, encodes it as bits sequence
     /// and returns the result as bytes vector.
-    pub fn serialize_scheme(scheme: &EncodingScheme) -> Result<Vec<u8>, EncodingSerDeError> {
+    pub fn serialize_scheme(scheme: &EncodingScheme) -> Result<Vec<u8>, EncodingSerializationError> {
         let mut result_vec: Vec<u8> = [].to_vec();
         let mut pos = 0_u32;
         let mut cur_byte_num = 0;
@@ -58,11 +58,11 @@ mod encoding_serde {
             let mut acc = 0_u64;
 
             if prefix_len > 31 {
-                return Err(EncodingSerDeError::BadEncodingForm);
+                return Err(EncodingSerializationError::BadEncodingForm);
             }
 
             if bit_count < 1 || bit_count > 31 {
-                return Err(EncodingSerDeError::BadEncodingForm);
+                return Err(EncodingSerializationError::BadEncodingForm);
             }
 
             if prefix_len > 0 {
@@ -101,10 +101,10 @@ mod encoding_serde {
 
     /// Parse byte vector array (bits sequence) and transform it to encoding scheme.
     ///
-    /// Accepts bytes array, parses it and returns vector of `EncodingScheme`.
-    pub fn deserialize_scheme(scheme_bytes: &[u8]) -> Result<EncodingScheme, EncodingSerDeError> {
+    /// Parses bytes array into `EncodingScheme`.
+    pub fn deserialize_scheme(scheme_bytes: &[u8]) -> Result<EncodingScheme, EncodingSerializationError> {
         if scheme_bytes.len() < 2 {
-            return Err(EncodingSerDeError::BadSerializedData);
+            return Err(EncodingSerializationError::BadSerializedData);
         }
 
         let mut result = Vec::new();
@@ -134,7 +134,7 @@ mod encoding_serde {
                 break;
             }
         }
-        let ret_scheme = EncodingScheme::try_new(&result).map_err(|_| EncodingSerDeError::BadSerializedData)?;
+        let ret_scheme = EncodingScheme::try_new(&result).map_err(|_| EncodingSerializationError::BadSerializedData)?;
         Ok(ret_scheme)
     }
 
@@ -356,6 +356,12 @@ mod encoding_scheme {
 
     use crate::encoding::errors::{SchemeValidationError, FormValidationError};
 
+    /// In the old days every label needed to be topped with 0001.
+    /// To make sure that no label would ever go over 64 bits even with 0001 spliced on the top of it, we use this reservation.
+    ///
+    /// Now that we have a shift field in the header, that's all but obsolete, a label can go up to bit 64 if needed, as long as the final bit is a 1.
+    const FORM_MAX_BIT_SIZE: u8 = 59;
+
     /// Encoding scheme - an iterable list of scheme forms.
     ///
     /// Schemes are comparable for equality, immutable, opaque and iterable.
@@ -462,8 +468,7 @@ mod encoding_scheme {
                 }
                 last_bit_count = bit_count;
 
-                // bit_count + prefix_len must be < 59 bits
-                if form.size_bits() > 59 {
+                if form.size_bits() > FORM_MAX_BIT_SIZE {
                     return Err(SchemeValidationError::TooBigForm);
                 }
 
@@ -632,8 +637,8 @@ mod errors {
         #[error("Invalid encoding scheme: multiple forms must have unique prefixes")]
         DuplicatePrefix,
 
-        /// Form bit size should be less than 59 for multiple form schemes
-        #[error("Invalid encoding scheme: form size too big (bit_count + prefix_len > 59)")]
+        /// Encoding scheme cannot be represented in the usable space in a 64-bit label
+        #[error("Invalid encoding scheme: encoding scheme cannot be represented in the usable space in a 64-bit label")]
         TooBigForm,
     }
 
@@ -650,7 +655,7 @@ mod errors {
 
     /// Error returned when encoding scheme for serialization/deserialization fails
     #[derive(Error, Debug, PartialEq, Eq)]
-    pub enum EncodingSerDeError {
+    pub enum EncodingSerializationError {
         /// Returned when scheme serialization fails
         #[error("Invalid serialized encoding scheme")]
         BadSerializedData,
