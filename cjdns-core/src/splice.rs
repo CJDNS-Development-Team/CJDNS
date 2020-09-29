@@ -92,15 +92,8 @@ pub fn get_encoding_form<L: LabelBits>(label: RoutingLabel<L>, scheme: &Encoding
             return Ok((*form, i));
         }
 
-        if prefix_len > 32 {
-            continue;
-        }
-
-        let mask = if prefix_len == 32 {
-            0xFFFFFFFFu32
-        } else {
-            (1u32 << (prefix_len as u32)) - 1u32
-        };
+        assert!(prefix_len < 32, "encoding scheme with invalid form");
+        let mask = (1u32 << (prefix_len as u32)) - 1u32;
         if label.bits() & mask.into() == prefix.into() {
             return Ok((*form, i));
         }

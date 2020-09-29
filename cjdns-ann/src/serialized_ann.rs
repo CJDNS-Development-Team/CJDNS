@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 use sodiumoxide::crypto::hash::sha512::{Digest, hash};
 use sodiumoxide::crypto::sign::ed25519::{PublicKey, Signature, verify_detached};
 
-use cjdns_core::{deserialize_forms, EncodingScheme, RoutingLabel};
+use cjdns_core::{deserialize_scheme, RoutingLabel};
 use cjdns_keys::{CJDNS_IP6, CJDNSPublicKey};
 
 use super::errors::*;
@@ -86,7 +86,7 @@ pub mod serialized_data {
     mod tests {
         use sodiumoxide::*;
 
-        use cjdns_core::EncodingSchemeForm;
+        use cjdns_core::{EncodingScheme, EncodingSchemeForm};
 
         use super::*;
 
@@ -394,8 +394,7 @@ mod parser {
 
     fn parse_encoding_scheme(encoding_scheme_data: &[u8]) -> Result<Entity> {
         let hex = hex::encode(encoding_scheme_data);
-        let scheme_forms = deserialize_forms(encoding_scheme_data).or(Err(ParserError::CannotParseEntity("encoding scheme deserialization failed")))?;
-        let scheme = EncodingScheme::try_new(&scheme_forms).or(Err(ParserError::CannotParseEntity("invalid encoding scheme")))?;
+        let scheme = deserialize_scheme(encoding_scheme_data).or(Err(ParserError::CannotParseEntity("encoding scheme deserialization failed")))?;
         Ok(Entity::EncodingScheme { hex, scheme })
     }
 

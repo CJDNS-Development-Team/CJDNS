@@ -9,8 +9,8 @@
 //! Serialization/deserialization example:
 //!
 //! ```rust
-//! # use cjdns_core::EncodingSchemeForm;
-//! # use cjdns_core::{serialize_forms, deserialize_forms};
+//! # use cjdns_core::{EncodingSchemeForm, EncodingScheme};
+//! # use cjdns_core::{serialize_scheme, deserialize_scheme};
 //!
 //! // [{ bitCount: 4, prefix: "01", prefixLen: 1 }, { bitCount: 8, prefix: "00", prefixLen: 1 }]
 //! // hex: 81 0c 08
@@ -19,20 +19,20 @@
 //! // 0000 1000 0000 1100 1000 0001
 //! // read bits from right to left:
 //! // 5 bits = prefix_len, next 5 bits = bit_count, next "prefix_len" bits = prefix
-//!
-//! let mut input = [
+//! # let forms_to_scheme = |forms| EncodingScheme::try_new(forms).expect("invalid scheme");
+//! let mut forms = [
 //!     // params are: bit_count, prefix_len, prefix
 //!     EncodingSchemeForm::try_new(4, 1, 1).expect("invalid scheme form"),
 //!     EncodingSchemeForm::try_new(8, 1, 0).expect("invalid scheme form"),
-//! ].to_vec();
+//! ];
 //!
-//! let mut serialized = serialize_forms(&input.to_vec()).unwrap();
+//! let mut serialized = serialize_scheme(&forms_to_scheme(forms.as_ref())).unwrap();
 //! assert_eq!(serialized, [0x81, 0x0c, 0x08].to_vec());
-//! let mut deserialized = deserialize_forms(&serialized).unwrap();
-//! assert_eq!(deserialized, input);
+//! let mut deserialized = deserialize_scheme(&serialized).unwrap();
+//! assert_eq!(deserialized, forms_to_scheme(forms.as_ref()));
 //! ```
 
-pub use encoding_serde::{deserialize_forms, serialize_forms};
+pub use encoding_serde::{deserialize_scheme, serialize_scheme};
 pub use encoding_scheme::*;
 pub use errors::{SchemeValidationError, EncodingSerDeError};
 
@@ -40,19 +40,19 @@ mod encoding_serde {
     //! Serialization and deserialization logic
 
     use super::EncodingSerDeError;
-    use crate::EncodingSchemeForm;
+    use crate::{EncodingScheme, EncodingSchemeForm};
 
-    /// Store encoding scheme (array of `EncodingSchemeForm`) into a byte vector array (bits sequence).
+    /// Store encoding scheme into a byte vector array (bits sequence).
     ///
-    /// Accepts vector of `EncodingSchemeForm`s, encodes them as bits sequence
+    /// Accepts `EncodingScheme`, encodes them as bits sequence
     /// and returns the result as bytes vector.
-    pub fn serialize_forms(forms: &[EncodingSchemeForm]) -> Result<Vec<u8>, EncodingSerDeError> {
+    pub fn serialize_scheme(scheme: &EncodingScheme) -> Result<Vec<u8>, EncodingSerDeError> {
         let mut result_vec: Vec<u8> = [].to_vec();
         let mut pos = 0_u32;
         let mut cur_byte_num = 0;
         let mut cur_bit_num = 0_u8;
 
-        for form in forms {
+        for form in scheme.iter() {
             let (bit_count, prefix_len, prefix) = form.params();
             // any form can be packed in u64
             let mut acc = 0_u64;
@@ -101,26 +101,26 @@ mod encoding_serde {
 
     /// Parse byte vector array (bits sequence) and transform it to encoding scheme.
     ///
-    /// Accepts bytes array, parses it and returns vector of `EncodingSchemeForm`s.
-    pub fn deserialize_forms(form_bytes: &[u8]) -> Result<Vec<EncodingSchemeForm>, EncodingSerDeError> {
-        if form_bytes.len() < 2 {
+    /// Accepts bytes array, parses it and returns vector of `EncodingScheme`.
+    pub fn deserialize_scheme(scheme_bytes: &[u8]) -> Result<EncodingScheme, EncodingSerDeError> {
+        if scheme_bytes.len() < 2 {
             return Err(EncodingSerDeError::BadSerializedData);
         }
 
         let mut result = Vec::new();
-        let mut cur_pos = (form_bytes.len() * 8) as u32;
+        let mut cur_pos = (scheme_bytes.len() * 8) as u32;
 
         loop {
             cur_pos = cur_pos - 5;
-            let prefix_len = read_bits(form_bytes, cur_pos, 5);
+            let prefix_len = read_bits(scheme_bytes, cur_pos, 5);
 
             cur_pos = cur_pos - 5;
-            let bit_count = read_bits(form_bytes, cur_pos, 5);
+            let bit_count = read_bits(scheme_bytes, cur_pos, 5);
 
             cur_pos = cur_pos - prefix_len;
 
             // if prefix_len == 0 we simply read 0 bits from current position, receiving prefix = 0
-            let prefix = read_bits(form_bytes, cur_pos, prefix_len as u8);
+            let prefix = read_bits(scheme_bytes, cur_pos, prefix_len as u8);
 
             result.push(
                 EncodingSchemeForm::try_new(
@@ -134,8 +134,8 @@ mod encoding_serde {
                 break;
             }
         }
-
-        Ok(result)
+        let ret_scheme = EncodingScheme::try_new(&result).map_err(|_| EncodingSerDeError::BadSerializedData)?;
+        Ok(ret_scheme)
     }
 
     fn read_bits(data: &[u8], position: u32, bits_amount: u8) -> u32 {
@@ -178,6 +178,10 @@ mod encoding_serde {
     mod tests {
         use super::*;
         use crate::{EncodingScheme, SchemeValidationError};
+
+        fn encoding_scheme(forms: &[EncodingSchemeForm]) -> EncodingScheme {
+            EncodingScheme::try_new(forms).expect("invalid scheme")
+        }
 
         fn encoding_form(bit_count: u8, prefix_len: u8, prefix: u32) -> EncodingSchemeForm {
             EncodingSchemeForm::try_new(bit_count, prefix_len, prefix).expect("invalid form")
@@ -242,14 +246,17 @@ mod encoding_serde {
             // hex: '8000'
             // 80        00
             // 1000 0000 0000 0000
-            let mut input = [
-                encoding_form(4, 0, 0),
-            ].to_vec();
+            let mut input = encoding_scheme(
+                [
+                    encoding_form(4, 0, 0),
+                ]
+                .as_ref()
+            );
 
-            let mut serialized = serialize_forms(&input.to_vec()).expect("failed to serialize");
+            let mut serialized = serialize_scheme(&input).expect("failed to serialize");
             // https://github.com/cjdelisle/cjdnsencode/blob/89216230daa82eb43689c6af48de3c6a138002f1/test.js#L8
             assert_eq!(serialized, [0x80, 0x0].to_vec());
-            let mut deserialized = deserialize_forms(&serialized).expect("failed to deserialize");
+            let mut deserialized = deserialize_scheme(&serialized).expect("failed to deserialize");
             assert_eq!(deserialized, input);
             assert!(validate(&deserialized).is_ok());
 
@@ -257,14 +264,17 @@ mod encoding_serde {
             // hex: '0001'
             // 00        01
             // 0000 0000 0000 0001
-            input = [
-                encoding_form(8, 0, 0),
-            ].to_vec();
+            input = encoding_scheme(
+                [
+                    encoding_form(8, 0, 0),
+                ]
+                .as_ref()
+            );
 
-            serialized = serialize_forms(&input.to_vec()).expect("failed to serialize");
+            serialized = serialize_scheme(&input).expect("failed to serialize");
             // https://github.com/cjdelisle/cjdnsencode/blob/89216230daa82eb43689c6af48de3c6a138002f1/test.js#L13
             assert_eq!(serialized, [0x0, 0x1].to_vec());
-            deserialized = deserialize_forms(&serialized).expect("failed to deserialize");
+            deserialized = deserialize_scheme(&serialized).expect("failed to deserialize");
             assert_eq!(deserialized, input);
             assert!(validate(&deserialized).is_ok());
         }
@@ -275,15 +285,18 @@ mod encoding_serde {
             // { bitCount: 8, prefix: "00", prefixLen: 1 },
             // 81        0c        08
             // 1000 0001 0000 1100 0000 1000
-            let mut input = [
-                encoding_form(4, 1, 1),
-                encoding_form(8, 1, 0),
-            ].to_vec();
+            let mut input = encoding_scheme(
+                [
+                    encoding_form(4, 1, 1),
+                    encoding_form(8, 1, 0),
+                ]
+                .as_ref()
+            );
 
-            let mut serialized = serialize_forms(&input.to_vec()).expect("failed to serialize");
+            let mut serialized = serialize_scheme(&input).expect("failed to serialize");
             // https://github.com/cjdelisle/cjdnsencode/blob/89216230daa82eb43689c6af48de3c6a138002f1/test.js#L21
             assert_eq!(serialized, [0x81, 0x0c, 0x08].to_vec());
-            let mut deserialized = deserialize_forms(&serialized).expect("failed to deserialize");
+            let mut deserialized = deserialize_scheme(&serialized).expect("failed to deserialize");
             assert_eq!(deserialized, input);
             assert!(validate(&deserialized).is_ok());
 
@@ -296,16 +309,19 @@ mod encoding_serde {
             // hex: '6114458100'
             // 61        14        45        81  :      00
             // 0110 0001 0001 0100 0100 0101 1000 0001 0000 0000
-            input = [
-                encoding_form(3, 1, 1),
-                encoding_form(5, 2, 2),
-                encoding_form(8, 2, 0),
-            ].to_vec();
+            input = encoding_scheme(
+                [
+                    encoding_form(3, 1, 1),
+                    encoding_form(5, 2, 2),
+                    encoding_form(8, 2, 0),
+                ]
+                .as_ref()
+            );
 
-            serialized = serialize_forms(&input.to_vec()).expect("failed to serialize");
+            serialized = serialize_scheme(&input).expect("failed to serialize");
             // https://github.com/cjdelisle/cjdnsencode/blob/89216230daa82eb43689c6af48de3c6a138002f1/test.js#L30
             assert_eq!(serialized, [0x61, 0x14, 0x45, 0x81, 0x0].to_vec());
-            deserialized = deserialize_forms(&serialized).expect("failed to deserialize");
+            deserialized = deserialize_scheme(&serialized).expect("failed to deserialize");
             assert_eq!(deserialized, input);
             assert!(validate(&deserialized).is_ok());
         }
@@ -324,9 +340,10 @@ mod encoding_serde {
             }
 
             assert!(validate(&pack).is_ok());
-            let serialized = serialize_forms(&pack).expect("failed to serialize");
-            let deserialized = deserialize_forms(&serialized).expect("failed to deserialize");
-            assert_eq!(deserialized, pack);
+            let scheme = EncodingScheme::try_new(&pack).expect("invalid scheme");
+            let serialized = serialize_scheme(&scheme).expect("failed to serialize");
+            let deserialized = deserialize_scheme(&serialized).expect("failed to deserialize");
+            assert_eq!(deserialized, scheme);
         }
     }
 }
@@ -369,7 +386,8 @@ mod encoding_scheme {
             if bit_count == 0 || bit_count > 31 {
                 return Err(FormValidationError::BadBitCount);
             }
-            if 2u32.pow(prefix_len as u32) <= 32 - prefix.leading_zeros() {
+            let prefix_max_value = (1 << prefix_len) - 1;
+            if prefix > prefix_max_value {
                 return Err(FormValidationError::InvalidPrefixData);
             }
             Ok(EncodingSchemeForm { bit_count, prefix_len, prefix })
@@ -473,7 +491,6 @@ mod encoding_scheme {
         use super::{EncodingSchemeForm, EncodingScheme};
 
         lazy_static! {
-
             /// Fixed-length 4 bit scheme.
             pub static ref F4: EncodingScheme = encoding_scheme(&[EncodingSchemeForm {
                 bit_count: 4,
