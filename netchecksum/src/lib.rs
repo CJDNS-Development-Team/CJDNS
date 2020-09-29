@@ -100,6 +100,14 @@ fn test_raw() {
         (hexbuf("45000054ccf3000040010000c0a80001c0a8000b"), 0x2c59),
         (hexbuf("45000034fa4d400040064b8d0a4206015cde87c8"), 0x0000),
         (hexbuf("45000034fa4d4000400600000a4206015cde87c8"), 0x4b8d),
+        (hexbuf("00"), 0xffff),
+        (hexbuf("0001"), 0xfffe),
+        (hexbuf("000102"), 0xfdfe),
+        (hexbuf("00010203"), 0xfdfb),
+        (hexbuf("ff"), 0xff),
+        (hexbuf("fffe"), 0x1),
+        (hexbuf("fffefd"), 0x300),
+        (hexbuf("fffefdfc"), 0x204),
     ];
     for &(ref buf, sum) in &cases {
         assert_eq!(cksum_raw(buf), sum);
