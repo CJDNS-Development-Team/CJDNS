@@ -1,6 +1,4 @@
 //! Routing label splice/unsplice routines.
-//!
-//! Below in the examples labels are written in the hex form for brevity.
 
 use thiserror::Error;
 
@@ -78,30 +76,25 @@ pub fn splice<L: LabelBits>(labels: &[RoutingLabel<L>]) -> Result<RoutingLabel<L
 /// # use cjdns_core::{RoutingLabel, schemes, EncodingSchemeForm};
 /// # use std::convert::TryFrom;
 /// # let l = |s: &str| RoutingLabel::<u64>::try_from(s).unwrap();
+/// # let encoding_form = |bit_count, prefix_len, prefix| EncodingSchemeForm::try_new(bit_count, prefix_len, prefix).expect("invalid encoding form");
 /// let form = get_encoding_form(l("0000.0000.0000.0013"), &schemes::V358);
-/// assert_eq!(form, Ok((EncodingSchemeForm {bit_count: 3, prefix_len: 1, prefix: 0b01}, 0)));
+/// assert_eq!(form, Ok((encoding_form(3, 1, 1), 0)));
 ///
 /// let form = get_encoding_form(l("0000.0000.0000.1110"), &schemes::V358);
-/// assert_eq!(form, Ok((EncodingSchemeForm {bit_count: 8, prefix_len: 2, prefix: 0}, 2)));
+/// assert_eq!(form, Ok((encoding_form(8, 2, 0), 2)));
 /// ```
 ///
 /// See: [EncodingScheme_getFormNum()](https://github.com/cjdelisle/cjdns/blob/cjdns-v20.2/switch/EncodingScheme.c#L23)
 pub fn get_encoding_form<L: LabelBits>(label: RoutingLabel<L>, scheme: &EncodingScheme) -> Result<(EncodingSchemeForm, usize)> {
-    for (i, form) in scheme.forms().iter().enumerate() {
-        if 0 == form.prefix_len {
+    for (i, form) in scheme.iter().enumerate() {
+        let (_, prefix_len, prefix) = form.params();
+        if 0 == prefix_len {
             return Ok((*form, i));
         }
 
-        if form.prefix_len > 32 {
-            continue;
-        }
-
-        let mask = if form.prefix_len == 32 {
-            0xFFFFFFFFu32
-        } else {
-            (1u32 << (form.prefix_len as u32)) - 1u32
-        };
-        if label.bits() & mask.into() == form.prefix.into() {
+        assert!(prefix_len < 32, "encoding scheme with invalid form");
+        let mask = (1u32 << (prefix_len as u32)) - 1u32;
+        if label.bits() & mask.into() == prefix.into() {
             return Ok((*form, i));
         }
     }
@@ -112,8 +105,9 @@ pub fn get_encoding_form<L: LabelBits>(label: RoutingLabel<L>, scheme: &Encoding
 /// Extracts a director stripping the encoding.
 #[inline]
 fn get_director<L: LabelBits>(label: RoutingLabel<L>, form: EncodingSchemeForm) -> L {
-    let padding = L::BIT_SIZE - form.bit_count as u32 - form.prefix_len as u32;
-    (label.bits() << padding) >> (padding + form.prefix_len as u32)
+    let (bit_count, prefix_len, _) = form.params();
+    let padding = L::BIT_SIZE - bit_count as u32 - prefix_len as u32;
+    (label.bits() << padding) >> (padding + prefix_len as u32)
 }
 
 /// Bit length of a director (not a label, e.g. without self-route).
@@ -158,10 +152,9 @@ fn find_shortest_form<L: LabelBits>(dir: L, scheme: &EncodingScheme) -> Result<E
     let dir_bits = director_bit_length(dir);
 
     scheme
-        .forms()
         .iter()
-        .filter(|&form| (form.bit_count as u32) >= dir_bits)
-        .min_by_key(|&form| form.bit_count)
+        .filter(|&form| (form.params().0 as u32) >= dir_bits)
+        .min_by_key(|&form| form.params().0)
         .map(|&form| form)
         .ok_or(SpliceError::CannotFindForm)
 }
@@ -200,22 +193,23 @@ pub fn re_encode<L: LabelBits>(label: RoutingLabel<L>, scheme: &EncodingScheme, 
     let mut dir = get_director(label, form);
 
     let mut desired_form = if let Some(num) = desired_form_num {
-        if num >= scheme.forms().len() {
+        if num >= scheme.len() {
             return Err(SpliceError::BadArgument);
         }
-        scheme.forms()[num]
+        scheme[num]
     } else {
         find_shortest_form(dir, scheme)?
     };
+    let (desired_bit_count, desired_prefix_len, desired_prefix) = desired_form.params();
 
     if *scheme == *schemes::V358 {
         // Special magic for SCHEME_358 legacy.
         fn is_358_zero_form(f: EncodingSchemeForm) -> bool {
-            f == schemes::V358.forms()[0]
+            f == schemes::V358[0]
         }
 
         if is_358_zero_form(desired_form) && dir == 0b111_u32.into() {
-            desired_form = schemes::V358.forms()[1];
+            desired_form = schemes::V358[1];
         }
 
         if is_358_zero_form(form) {
@@ -230,20 +224,23 @@ pub fn re_encode<L: LabelBits>(label: RoutingLabel<L>, scheme: &EncodingScheme, 
     }
 
     // Construct result: [bits before extracted dir][padded dir][desired form prefix]
-    let mut result_bits = label.bits() >> (form.bit_count as u32 + form.prefix_len as u32);
+    let mut result_bits = {
+        let (bit_count, prefix_len, _) = form.params();
+        label.bits() >> (bit_count as u32 + prefix_len as u32)
+    };
 
     // check for overflow
     let rest_bitlen = match result_bits.highest_set_bit() {
         None => 0,
         Some(len) => len + 1,
     };
-    let used_bits = rest_bitlen + desired_form.bit_count as u32 + desired_form.prefix_len as u32;
+    let used_bits = rest_bitlen + desired_bit_count as u32 + desired_prefix_len as u32;
     if used_bits > L::MAX_PAYLOAD_BITS {
         return Err(SpliceError::LabelTooLong);
     }
 
-    result_bits = (result_bits << (desired_form.bit_count as u32)) | dir;
-    result_bits = (result_bits << (desired_form.prefix_len as u32)) | desired_form.prefix.into();
+    result_bits = (result_bits << (desired_bit_count as u32)) | dir;
+    result_bits = (result_bits << (desired_prefix_len as u32)) | desired_prefix.into();
 
     RoutingLabel::try_new(result_bits).ok_or(()).map_err(|_| unreachable!("result_bits is zero"))
 }
@@ -265,7 +262,8 @@ pub fn re_encode<L: LabelBits>(label: RoutingLabel<L>, scheme: &EncodingScheme, 
 /// See: [EncodingScheme_isOneHop()](https://github.com/cjdelisle/cjdns/blob/77259a49e5bc7ca7bc6dca5bd423e02be563bdc5/switch/EncodingScheme.c#L451)
 pub fn is_one_hop<L: LabelBits>(label: RoutingLabel<L>, encoding_scheme: &EncodingScheme) -> Result<bool> {
     let (label_form, _) = get_encoding_form(label, encoding_scheme)?;
-    let form_bits = (label_form.bit_count + label_form.prefix_len) as u32;
+    let (bit_count, prefix_len, _) = label_form.params();
+    let form_bits = (bit_count + prefix_len) as u32;
     Ok(label_highest_set_bit(&label) == form_bits)
 }
 
@@ -334,7 +332,9 @@ fn build_label_impl<L: LabelBits>(first_hop: &PathHop<L>, mid_hops: &[PathHop<L>
         if let (Some(label_p), Some(mut label_n)) = (hop.label_p, hop.label_n) {
             let (form_label_p, form_idx) = get_encoding_form(label_p, hop.encoding_scheme)?;
             let (form_label_n, _) = get_encoding_form(label_n, hop.encoding_scheme)?;
-            if form_label_p.bit_count + form_label_p.prefix_len > form_label_n.bit_count + form_label_n.prefix_len {
+            let (label_p_bit_count, label_p_prefix_len, _) = form_label_p.params();
+            let (label_n_bit_count, label_n_prefix_len, _) = form_label_n.params();
+            if label_p_bit_count + label_p_prefix_len > label_n_bit_count + label_n_prefix_len {
                 label_n = re_encode(label_n, hop.encoding_scheme, Some(form_idx))?;
             }
 
@@ -423,6 +423,14 @@ mod tests {
         RoutingLabel::<u128>::try_from(v).ok()
     }
 
+    fn encoding_scheme(forms: &[EncodingSchemeForm]) -> EncodingScheme {
+        EncodingScheme::try_new(forms).expect("invalid scheme")
+    }
+
+    fn encoding_form(bit_count: u8, prefix_len: u8, prefix: u32) -> EncodingSchemeForm {
+        EncodingSchemeForm::try_new(bit_count, prefix_len, prefix).expect("invalid form")
+    }
+
     #[test]
     fn test_splice() {
         assert_eq!(splice::<u64>(&[]), Err(SpliceError::NotEnoughArguments));
@@ -502,11 +510,7 @@ mod tests {
         assert_eq!(
             get_encoding_form(l("0000.0000.0000.1111"), &schemes::F8),
             Ok((
-                EncodingSchemeForm {
-                    bit_count: 8,
-                    prefix_len: 0,
-                    prefix: 0,
-                },
+                encoding_form(8, 0, 0),
                 0
             ))
         );
@@ -514,33 +518,21 @@ mod tests {
         assert_eq!(
             get_encoding_form(l("0000.0000.0000.1110"), &schemes::V358),
             Ok((
-                EncodingSchemeForm {
-                    bit_count: 8,
-                    prefix_len: 2,
-                    prefix: 0,
-                },
+                encoding_form(8, 2, 0),
                 2
             ))
         );
         assert_eq!(
             get_encoding_form(l("0000.0000.0000.1111"), &schemes::V358),
             Ok((
-                EncodingSchemeForm {
-                    bit_count: 3,
-                    prefix_len: 1,
-                    prefix: 1,
-                },
+                encoding_form(3, 1, 1),
                 0
             ))
         );
         assert_eq!(
             get_encoding_form(l("0000.0000.0000.1112"), &schemes::V358),
             Ok((
-                EncodingSchemeForm {
-                    bit_count: 5,
-                    prefix_len: 2,
-                    prefix: 2,
-                },
+                encoding_form(5, 2, 2),
                 1
             ))
         );
@@ -548,28 +540,16 @@ mod tests {
         assert_eq!(
             get_encoding_form(l("0000.0000.0000.0013"), &schemes::V358),
             Ok((
-                EncodingSchemeForm {
-                    bit_count: 3,
-                    prefix_len: 1,
-                    prefix: 0b01,
-                },
+                encoding_form(3, 1, 1),
                 0
             ))
         );
 
         assert!(get_encoding_form(
             l("0000.0000.0000.1113"),
-            &EncodingScheme::new(&[
-                EncodingSchemeForm {
-                    bit_count: 5,
-                    prefix_len: 2,
-                    prefix: 0b10,
-                },
-                EncodingSchemeForm {
-                    bit_count: 8,
-                    prefix_len: 2,
-                    prefix: 0b00,
-                },
+            &encoding_scheme(&[
+                encoding_form(5, 2, 2),
+                encoding_form(8, 2, 0),
             ])
         )
         .is_err());
@@ -579,39 +559,23 @@ mod tests {
     fn test_find_shortest_form() {
         assert_eq!(
             find_shortest_form(l("0000.0000.0000.0002").bits(), &schemes::F4),
-            Ok(EncodingSchemeForm {
-                bit_count: 4,
-                prefix_len: 0,
-                prefix: 0,
-            })
+            Ok(encoding_form(4, 0, 0))
         );
         assert!(find_shortest_form(l("0000.0000.0000.0010").bits(), &schemes::F4).is_err());
 
         assert_eq!(
             find_shortest_form(l("0000.0000.0000.0002").bits(), &schemes::V48),
-            Ok(EncodingSchemeForm {
-                bit_count: 4,
-                prefix_len: 1,
-                prefix: 0b01,
-            })
+            Ok(encoding_form(4, 1, 1))
         );
         assert_eq!(
             find_shortest_form(l("0000.0000.0000.0010").bits(), &schemes::V48),
-            Ok(EncodingSchemeForm {
-                bit_count: 8,
-                prefix_len: 1,
-                prefix: 0b00,
-            })
+            Ok(encoding_form(8, 1, 0))
         );
         assert!(find_shortest_form(l("0000.0000.0000.0100").bits(), &schemes::V48).is_err());
 
         assert_eq!(
             find_shortest_form(l("0000.0000.0000.0015").bits(), &schemes::V358),
-            Ok(EncodingSchemeForm {
-                bit_count: 5,
-                prefix_len: 2,
-                prefix: 0b10,
-            })
+            Ok(encoding_form(5, 2, 2))
         );
     }
 
@@ -639,17 +603,9 @@ mod tests {
 
         assert!(re_encode(
             l("0000.0000.0000.1113"),
-            &EncodingScheme::new(&[
-                EncodingSchemeForm {
-                    bit_count: 5,
-                    prefix_len: 2,
-                    prefix: 0b10,
-                },
-                EncodingSchemeForm {
-                    bit_count: 8,
-                    prefix_len: 2,
-                    prefix: 0b00,
-                },
+            &encoding_scheme(&[
+                encoding_form(5, 2, 2),
+                encoding_form(8, 2, 0),
             ]),
             None
         )
@@ -665,19 +621,20 @@ mod tests {
     #[test]
     fn test_reencode_big() {
         fn test_scheme(scheme: &EncodingScheme) {
-            let biggest_form = *(scheme.forms().last().expect("bad test"));
-            let biggest_form_num = scheme.forms().len() - 1;
-            let max = ((1u64 << (biggest_form.bit_count as u64)) - 1) as u32;
+            let biggest_form = *(scheme.last().expect("bad test"));
+            let biggest_form_num = scheme.len() - 1;
+            let (bit_count, prefix_len, prefix) = biggest_form.params();
+            let max = ((1u64 << (bit_count as u64)) - 1) as u32;
 
             for i in 0..max {
-                let full_label_bits = (1_u64 << (biggest_form.bit_count as u32 + biggest_form.prefix_len as u32))
-                    | ((i as u64) << (biggest_form.prefix_len as u32))
-                    | (biggest_form.prefix as u64);
+                let full_label_bits = (1_u64 << (bit_count as u32 + prefix_len as u32))
+                    | ((i as u64) << (prefix_len as u32))
+                    | (prefix as u64);
                 let full_label = RoutingLabel::try_new(full_label_bits).expect("bad test data");
 
                 let dir_bit_count = director_bit_length(i as u64);
                 for (form_num, form) in scheme.into_iter().enumerate() {
-                    if (form.bit_count as u32) < dir_bit_count {
+                    if (form.params().0 as u32) < dir_bit_count {
                         continue;
                     }
 
@@ -688,7 +645,7 @@ mod tests {
                     );
 
                     for (smaller_form_num, smaller_form) in scheme.into_iter().enumerate() {
-                        if smaller_form_num >= form_num || (smaller_form.bit_count as u32) < dir_bit_count {
+                        if smaller_form_num >= form_num || (smaller_form.params().0 as u32) < dir_bit_count {
                             continue;
                         }
 
@@ -1276,29 +1233,10 @@ mod tests {
         assert_eq!(
             is_one_hop(
                 l("0000.0000.0000.1113"),
-                &EncodingScheme::new(&[
-                    EncodingSchemeForm {
-                        bit_count: 5,
-                        prefix_len: 2,
-                        prefix: 0b10,
-                    },
-                    EncodingSchemeForm {
-                        bit_count: 8,
-                        prefix_len: 2,
-                        prefix: 0b00,
-                    },
+                &encoding_scheme(&[
+                    encoding_form(5, 2, 2),
+                    encoding_form(8, 2, 0),
                 ])
-            ),
-            Err(SpliceError::CannotFindForm)
-        );
-        assert_eq!(
-            is_one_hop(
-                l("0000.0000.0000.0200"),
-                &EncodingScheme::new(&[EncodingSchemeForm {
-                    bit_count: 4,
-                    prefix_len: 1,
-                    prefix: 0b01,
-                },])
             ),
             Err(SpliceError::CannotFindForm)
         );
