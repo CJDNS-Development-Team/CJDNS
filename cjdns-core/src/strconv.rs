@@ -3,6 +3,8 @@
 //! RoutingLabel supports default formatting `format!("{}", routing_label)` (in hex form)
 //! and binary formatting `format!("{:b}", routing_label)`.
 
+#![deny(missing_docs)]
+
 use std::convert::TryFrom;
 use std::fmt;
 
@@ -11,10 +13,17 @@ use thiserror::Error;
 
 use super::RoutingLabel;
 
+/// Label string parsing errors.
 #[derive(Error, Copy, Clone, PartialEq, Eq, Debug)]
 pub enum LabelError {
+    /// Routing label string form is not valid and can not be parsed.
     #[error("Malformed routing label string")]
     MalformedRoutingLabelStringValue,
+
+    /// Routing label is all-zeroes.
+    /// This is not a valid label anyway,
+    /// so it should be better expressed
+    /// as `None` in `Option<RoutingLabel>`.
     #[error("Routing label is all-zeroes")]
     ZeroRoutingLabel,
 }

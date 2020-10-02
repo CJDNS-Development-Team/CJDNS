@@ -1,15 +1,30 @@
 //! Path hop.
 
+#![deny(missing_docs)]
+
 use crate::{EncodingScheme, LabelBits, RoutingLabel};
 
+/// An intermediate node in a path between the two nodes.
 #[derive(Debug, PartialEq, Eq)]
 pub struct PathHop<'a, L: LabelBits> {
+    /// Label for a director to the previous hop.
+    ///
+    /// Must be `None` if it's a starting hop (i.e. packet sender node).
+    /// Knowing the label is important for reverse label creation.
+    /// For more info pls refer to [build_label](splice/fn.build_label.html) function docs.
     pub label_p: Option<RoutingLabel<L>>,
+
+    /// Label for a director to the next hop.
+    ///
+    /// Must be `None` if it's a final hop (i.e. destination node).
     pub label_n: Option<RoutingLabel<L>>,
+
+    /// Encoding scheme used by the current node.
     pub encoding_scheme: &'a EncodingScheme,
 }
 
 impl<'a, L: LabelBits> PathHop<'a, L> {
+    /// New instance
     pub fn new(label_p: Option<RoutingLabel<L>>, label_n: Option<RoutingLabel<L>>, encoding_scheme: &'a EncodingScheme) -> Self {
         PathHop {
             label_p,
