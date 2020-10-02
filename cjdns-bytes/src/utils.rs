@@ -119,6 +119,10 @@ mod reader {
             Ok(ret_bytes)
         }
 
+        pub fn is_empty(&self) -> bool {
+            self.len() == 0
+        }
+
         fn len(&self) -> usize {
             self.0.len()
         }

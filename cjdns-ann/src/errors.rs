@@ -21,8 +21,29 @@ pub enum ParserError {
     CannotParseAuthData(&'static str),
 
     #[error("Can't parse entity: {0}")]
-    CannotParseEntity(&'static str),
+    CannotParseEntity(#[source] EntityParserError),
+}
 
-    #[error("Can't parse link state: {0}")]
-    CannotParseLinkState(&'static str),
+#[derive(Error, Debug, Copy, Clone, PartialEq, Eq)]
+pub enum EntityParserError {
+    #[error("Invalid entity data size")]
+    InvalidSize,
+
+    #[error("Not enough data")]
+    InsufficientData,
+
+    #[error("Bad data: {0}")]
+    BadData(&'static str),
+}
+
+#[derive(Error, Debug, Copy, Clone, PartialEq, Eq)]
+pub(crate) enum VarIntError {
+    #[error("Not enough data")]
+    InsufficientData,
+
+    #[error("Malformed VarInt encoding")]
+    MalformedVarIntEncoding,
+
+    #[error("Can't cast to desired integer type")]
+    VarIntValueTooBig,
 }

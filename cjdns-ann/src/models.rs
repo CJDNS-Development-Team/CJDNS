@@ -33,7 +33,7 @@ pub struct Announcement {
 pub struct AnnouncementHeader {
     pub signature: String,
     pub pub_signing_key: String,
-    pub super_node_ip6: CJDNS_IP6,
+    pub snode_ip6: CJDNS_IP6,
     pub version: u8,
     pub is_reset: bool,
     pub timestamp: u64,
@@ -47,7 +47,7 @@ pub type AnnouncementEntities = Vec<Entity>;
 /// Samples are collected every 10 seconds, normally messages are submitted to the Route Server every minute,
 /// resulting in 6 samples. But we would store 3 times more samples so that if there is some reason it is unable
 /// to submit a message to the route server for up to 3 minutes, still no link state samples will be lost.
-pub type LinkStateSlots<T> = [T; 18];
+pub type LinkStateSlots<T> = [Option<T>; 18];
 
 /// Announcement message entity types.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -130,8 +130,8 @@ pub enum Entity {
     /// through the network and avoid links which have long or unreliable delay.
     /// So the data under `LinkState` represents the quality of network link.
     LinkState {
-        node_id: u32,
-        starting_point: u32,
+        node_id: u16,
+        slots_start_idx: u8,
         lag_slots: LinkStateSlots<u16>,
         drop_slots: LinkStateSlots<u16>,
         kb_recv_slots: LinkStateSlots<u32>,

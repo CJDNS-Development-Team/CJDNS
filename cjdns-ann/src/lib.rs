@@ -122,7 +122,7 @@
 //! #                 "3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09"
 //! #                     .to_string(),
 //! #             pub_signing_key: "f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2".to_string(),
-//! #             super_node_ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
+//! #             snode_ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
 //! #             version: 1,
 //! #             is_reset: true,
 //! #             timestamp: 1474857989878
@@ -156,10 +156,10 @@
 //! # );
 //!
 //! ```
-
 pub use models::{Announcement, AnnouncementEntities, AnnouncementHeader, Entity, LinkStateSlots};
 pub use serialized_ann::serialized_data::AnnouncementPacket;
 
 mod errors;
 mod models;
 mod serialized_ann;
+mod var_int;
