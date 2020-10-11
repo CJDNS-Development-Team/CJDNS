@@ -46,7 +46,7 @@ pub struct Peers {
 }
 
 impl Peers {
-    const VERSION: u32 = 1;
+    const VERSION: u64 = 1;
 }
 
 pub fn create_peers() -> (Peers, mpsc::Receiver<AnnData>) {
@@ -202,14 +202,14 @@ impl Peers {
         loop {
             select! {
                 Some(msg) = msg_rx.recv() => {
-                    let bytes = msg.encode_msgpack();
+                    let bytes = msg.encode_msgpack()?;
                     let ws_message = WebSocketMessage::Binary(bytes);
                     ws_write.send(ws_message).await?;
                 }
                 Some(ws_message) = ws_read.next() => {
                     let ws_message = ws_message?;
                     let bytes = ws_message.into_data(); //todo process message type properly maybe?
-                    let message = Message::decode_msgpack(&bytes); //todo errors?
+                    let message = Message::decode_msgpack(&bytes)?;
                     self.handle_message(peer.clone(), message, &mut ann_tx).await?;
                 }
                 else => break,
@@ -271,7 +271,7 @@ impl Peers {
                         if !self.anns.lock().hash_known(&hash) {
                             let seq = self.msg_id_seq.next();
                             peer.add_pending_req(seq);
-                            peer.send_msg(msg![seq, "GET_DATA" | data = hash.into_inner()]).await?;
+                            peer.send_msg(msg![seq, "GET_DATA" | hash = hash]).await?;
                         }
                     }
                 }
