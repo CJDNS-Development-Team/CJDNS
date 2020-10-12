@@ -17,7 +17,7 @@ lazy_static! {
 }
 
 /// CJDNS private key type
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CJDNSPrivateKey {
     k: [u8; 32],
 }

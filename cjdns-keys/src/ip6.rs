@@ -22,7 +22,7 @@ const IP6_FIRST_BYTE: u8 = 252;
 
 /// CJDNS IP6 type
 #[allow(non_camel_case_types)]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct CJDNS_IP6 {
     k: [u8; 16],
 }
