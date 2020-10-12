@@ -35,15 +35,3 @@ pub enum EntityParserError {
     #[error("Bad data: {0}")]
     BadData(&'static str),
 }
-
-#[derive(Error, Debug, Copy, Clone, PartialEq, Eq)]
-pub(crate) enum VarIntError {
-    #[error("Not enough data")]
-    InsufficientData,
-
-    #[error("Malformed VarInt encoding")]
-    MalformedVarIntEncoding,
-
-    #[error("Can't cast to desired integer type")]
-    VarIntValueTooBig,
-}
