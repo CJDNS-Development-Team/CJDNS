@@ -94,7 +94,7 @@
 //! # use sodiumoxide::crypto::hash::sha512;
 //! # use cjdns_core::{RoutingLabel, EncodingScheme, EncodingSchemeForm};
 //! # use cjdns_keys::{CJDNS_IP6, CJDNSPublicKey};
-//! # use cjdns_ann::{Announcement, AnnouncementHeader, AnnouncementEntities, Entity};
+//! # use cjdns_ann::{AnnHash, Announcement, AnnouncementHeader, AnnouncementEntities, Entity, PeerData};
 //! use cjdns_ann::AnnouncementPacket;
 //! #
 //! # let encoding_scheme = |forms| EncodingScheme::try_new(forms).expect("invalid scheme");
@@ -137,26 +137,26 @@
 //! #                     encoding_form(8, 2, 0),
 //! #                 ])
 //! #             },
-//! #             Entity::Peer {
-//! #                 ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
+//! #             Entity::Peer(PeerData {
+//! #                 ipv6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
 //! #                 label: Some(RoutingLabel::<u32>::try_new(21).expect("zero routing label bits")),
 //! #                 mtu: 0,
 //! #                 peer_num: 65535,
 //! #                 unused: 4294967295,
 //! #                 encoding_form_number: 0,
 //! #                 flags: 0
-//! #             }
+//! #             })
 //! #         ],
 //! #         node_pub_key: CJDNSPublicKey::try_from("z15pzyd9wgzs2g5np7d3swrqc1533yb7xx9dq0pvrqrqs42uwgq0.k")
 //! #             .expect("failed pub key creation"),
 //! #         node_ip: CJDNS_IP6::try_from("fc49:11cb:38c2:8d42:9865:7b8e:0d67:11b3").expect("failed ip6 creation"),
-//! #         binary: returning_packet,
-//! #         hash: announcement_bytes_hash
+//! #         binary: returning_packet.into_inner(),
+//! #         hash: AnnHash::from_digest(announcement_bytes_hash)
 //! #     }
 //! # );
 //!
 //! ```
-pub use models::{Announcement, AnnouncementEntities, AnnouncementHeader, Entity, LinkStateSlots};
+pub use models::{AnnHash, Announcement, AnnouncementEntities, AnnouncementHeader, Entity, LINK_STATE_SLOTS, LinkStateData, LinkStateSlots, PeerData};
 pub use serialized_ann::serialized_data::AnnouncementPacket;
 
 mod errors;

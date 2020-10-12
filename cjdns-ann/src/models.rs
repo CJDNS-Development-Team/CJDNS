@@ -1,11 +1,9 @@
 //! This module exports logic on deserialized announcement message
 
-use sodiumoxide::crypto::hash::sha512::Digest;
+use sodiumoxide::crypto::hash::sha512;
 
 use cjdns_core::{EncodingScheme, RoutingLabel};
 use cjdns_keys::{CJDNS_IP6, CJDNSPublicKey};
-
-use super::AnnouncementPacket;
 
 /// Deserialized cjdns route announcement message.
 ///
@@ -17,8 +15,8 @@ pub struct Announcement {
     pub entities: AnnouncementEntities,
     pub node_pub_key: CJDNSPublicKey,
     pub node_ip: CJDNS_IP6,
-    pub binary: AnnouncementPacket,
-    pub hash: Digest,
+    pub binary: Vec<u8>,
+    pub hash: AnnHash,
 }
 
 /// Deserialized announcement message header.
@@ -42,12 +40,13 @@ pub struct AnnouncementHeader {
 /// A sequence of entities in the announcement message.
 pub type AnnouncementEntities = Vec<Entity>;
 
-/// An array of slots, storing network link samples.
-///
+/// An array of slots storing network link samples.
+pub type LinkStateSlots<T> = [Option<T>; LINK_STATE_SLOTS as usize];
+
 /// Samples are collected every 10 seconds, normally messages are submitted to the Route Server every minute,
 /// resulting in 6 samples. But we would store 3 times more samples so that if there is some reason it is unable
 /// to submit a message to the route server for up to 3 minutes, still no link state samples will be lost.
-pub type LinkStateSlots<T> = [Option<T>; 18];
+pub const LINK_STATE_SLOTS: u8 = 18;
 
 /// Announcement message entity types.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -110,15 +109,7 @@ pub enum Entity {
     ///
     /// **Note:** The `label` field is an `Option`: zero label parsed as `None` (the route is being withdrawn and it is no longer usable),
     /// nonzero label is `Some(label)`.
-    Peer {
-        ip6: CJDNS_IP6,
-        label: Option<RoutingLabel<u32>>,
-        mtu: u32,
-        peer_num: u16,
-        unused: u32,
-        encoding_form_number: u8,
-        flags: u8,
-    },
+    Peer(PeerData),
 
     /// As `EncodingScheme` serialization does not have a fixed width in bytes, `EncodingScheme` entities are
     /// prefixed with a number of pads in order that their length will be a multiple of four bytes.
@@ -129,11 +120,49 @@ pub enum Entity {
     /// `LinkState` stores data, which is used by route server/super node to plot good paths
     /// through the network and avoid links which have long or unreliable delay.
     /// So the data under `LinkState` represents the quality of network link.
-    LinkState {
-        node_id: u16,
-        slots_start_idx: u8,
-        lag_slots: LinkStateSlots<u16>,
-        drop_slots: LinkStateSlots<u16>,
-        kb_recv_slots: LinkStateSlots<u32>,
-    },
+    LinkState(LinkStateData),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PeerData {
+    pub ipv6: CJDNS_IP6,
+    pub label: Option<RoutingLabel<u32>>,
+    pub mtu: u32,
+    pub peer_num: u16,
+    pub unused: u32,
+    pub encoding_form_number: u8,
+    pub flags: u8,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LinkStateData {
+    pub node_id: u16,
+    pub starting_point: u8,
+    pub lag_slots: LinkStateSlots<u16>,
+    pub drop_slots: LinkStateSlots<u16>,
+    pub kb_recv_slots: LinkStateSlots<u32>,
+}
+
+/// 512-bit hash
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct AnnHash(pub Vec<u8>);
+
+impl AnnHash {
+    #[inline]
+    pub fn from_digest(digest: sha512::Digest) -> Self {
+        let data = &digest.0[..];
+        AnnHash(Vec::from(data))
+    }
+
+    #[inline]
+    pub fn into_inner(self) -> Vec<u8> {
+        let AnnHash(bytes) = self;
+        bytes
+    }
+
+    #[inline]
+    pub fn bytes(&self) -> &[u8] {
+        let AnnHash(bytes) = self;
+        &bytes
+    }
 }

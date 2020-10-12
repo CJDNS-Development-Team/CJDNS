@@ -1,6 +1,6 @@
 use std::convert::TryFrom;
 
-use sodiumoxide::crypto::hash::sha512::{Digest, hash};
+use sodiumoxide::crypto::hash::sha512;
 use sodiumoxide::crypto::sign::ed25519::{PublicKey, Signature, verify_detached};
 
 use cjdns_core::{deserialize_scheme, RoutingLabel};
@@ -59,8 +59,8 @@ pub mod serialized_data {
             parser::parse(self).map_err(PacketError::CannotParsePacket)
         }
 
-        pub(super) fn get_hash(&self) -> Digest {
-            hash(&self.0)
+        pub(super) fn get_hash(&self) -> sha512::Digest {
+            sha512::hash(&self.0)
         }
 
         pub(super) fn get_entities_bytes(&self) -> &[u8] {
@@ -82,6 +82,10 @@ pub mod serialized_data {
         fn get_signed_data(&self) -> &[u8] {
             &self.0[SIGN_SIZE..]
         }
+
+        pub fn into_inner(self) -> Vec<u8> {
+            self.0
+        }
     }
 
     #[cfg(test)]
@@ -89,6 +93,8 @@ pub mod serialized_data {
         use sodiumoxide::*;
 
         use cjdns_core::{EncodingScheme, EncodingSchemeForm};
+
+        use crate::models::{AnnHash, PeerData};
 
         use super::*;
 
@@ -177,7 +183,7 @@ pub mod serialized_data {
 
                 hex_to_bytes(s)
             };
-            let test_bytes_hash = hash(&test_data_bytes);
+            let test_bytes_hash = AnnHash::from_digest(sha512::hash(&test_data_bytes));
 
             let ann_packet = AnnouncementPacket::try_new(test_data_bytes.clone()).expect("wrong packet size");
             assert!(ann_packet.check().is_ok());
@@ -206,20 +212,20 @@ pub mod serialized_data {
                                 encoding_form(8, 2, 0),
                             ])
                         },
-                        Entity::Peer {
-                            ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
+                        Entity::Peer(PeerData {
+                            ipv6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
                             label: Some(RoutingLabel::<u32>::try_new(21).expect("zero routing label bits")),
                             mtu: 0,
                             peer_num: 65535,
                             unused: 4294967295,
                             encoding_form_number: 0,
                             flags: 0
-                        }
+                        })
                     ],
                     node_pub_key: CJDNSPublicKey::try_from("z15pzyd9wgzs2g5np7d3swrqc1533yb7xx9dq0pvrqrqs42uwgq0.k")
                         .expect("failed pub key creation"),
                     node_ip: CJDNS_IP6::try_from("fc49:11cb:38c2:8d42:9865:7b8e:0d67:11b3").expect("failed ip6 creation"),
-                    binary: AnnouncementPacket(test_data_bytes),
+                    binary: test_data_bytes,
                     hash: test_bytes_hash
                 }
             )
@@ -233,8 +239,11 @@ mod parser {
     use libsodium_sys::crypto_sign_ed25519_pk_to_curve25519;
 
     use cjdns_bytes::{ExpectedSize, Reader};
+    use serialized_data::AnnouncementPacket;
 
+    use crate::models::{AnnHash, LINK_STATE_SLOTS, LinkStateData, PeerData};
     use crate::var_int::read_var_int;
+
     use super::*;
 
     const PEER_TYPE: u8 = 1;
@@ -246,20 +255,20 @@ mod parser {
     const PEER_ENTITY_SIZE: usize = 30;
     const VERSION_ENTITY_SIZE: usize = 2;
     const ENCODING_SCHEME_ENTITY_MIN_SIZE: usize = 2;
-    const STATE_SLOTS_SIZE: usize = 18;
+    const STATE_SLOTS_SIZE: usize = LINK_STATE_SLOTS as usize;
 
-    pub(super) fn parse(packet: serialized_data::AnnouncementPacket) -> Result<Announcement, ParserError> {
+    pub(super) fn parse(packet: AnnouncementPacket) -> Result<Announcement, ParserError> {
         let header = parse_header(packet.get_header_bytes())?;
         let (node_encryption_key, node_ip6) = parse_sender_auth_data(packet.get_pub_key_bytes())?;
         let entities = parse_entities(packet.get_entities_bytes())?;
-        let binary_hash = packet.get_hash();
+        let digest = packet.get_hash();
         Ok(Announcement {
             header,
             node_pub_key: node_encryption_key,
             node_ip: node_ip6,
             entities,
-            hash: binary_hash,
-            binary: packet,
+            hash: AnnHash::from_digest(digest),
+            binary: packet.into_inner(),
         })
     }
 
@@ -405,19 +414,19 @@ mod parser {
             .map_err(|_| EntityParserError::InvalidSize)?;
 
         let mtu = mtu8 as u32 * 8;
-        let ip6 = CJDNS_IP6::try_from(ip6_bytes).map_err(|_| EntityParserError::BadData("failed ip6 creation from peer bytes"))?;
+        let ipv6 = CJDNS_IP6::try_from(ip6_bytes).map_err(|_| EntityParserError::BadData("failed ip6 creation from peer bytes"))?;
         // A label of 0 indicates that the route is being withdrawn and it is no longer usable. Handling of zero label is not a job for parser
         // So we return an Option
         let label = RoutingLabel::<u32>::try_new(label_bits);
-        Ok(Entity::Peer {
-            ip6,
+        Ok(Entity::Peer(PeerData {
+            ipv6,
             label,
             mtu,
             peer_num,
             unused,
             encoding_form_number,
             flags,
-        })
+        }))
     }
 
     /// C implementation: https://github.com/cjdelisle/cjdns/blob/d832e26951a2af083b4defb576fe1f0beeef6327/subnode/LinkState.h#L127
@@ -456,13 +465,13 @@ mod parser {
                 Some(read_var_int::<u32>(&mut data_reader).map_err(|_| EntityParserError::BadData("cant create kb_recv_slots sample from received bytes"))?);
             i = (i + 1) % STATE_SLOTS_SIZE;
         }
-        Ok(Entity::LinkState {
+        Ok(Entity::LinkState(LinkStateData {
             node_id,
-            slots_start_idx,
+            starting_point: slots_start_idx,
             lag_slots,
             drop_slots,
             kb_recv_slots,
-        })
+        }))
     }
 
     #[cfg(test)]
@@ -535,7 +544,7 @@ mod parser {
                 "0000157354c540c1";
             let header_bytes = decode_hex(valid_hexed_header);
             let parsed_announcement =
-                parser::parse(serialized_data::AnnouncementPacket::try_new(header_bytes).expect("invalid bytes len")).expect("invalid ann data");
+                parser::parse(AnnouncementPacket::try_new(header_bytes).expect("invalid bytes len")).expect("invalid ann data");
             assert_eq!(parsed_announcement.entities, vec![]);
         }
 
@@ -568,29 +577,29 @@ mod parser {
                 (decode_hex(""), vec![]),
                 (
                     decode_hex("200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000003"),
-                    vec![Entity::Peer {
-                        ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
+                    vec![Entity::Peer(PeerData {
+                        ipv6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
                         label: Some(RoutingLabel::<u32>::try_new(3).expect("zero label bits")),
                         mtu: 0,
                         peer_num: 65535,
                         unused: 4294967295,
                         encoding_form_number: 0,
                         flags: 0,
-                    }],
+                    })],
                 ),
                 (
                     decode_hex("04020002200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000020"),
                     vec![
                         Entity::NodeProtocolVersion(2),
-                        Entity::Peer {
-                            ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
+                        Entity::Peer(PeerData {
+                            ipv6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
                             label: Some(RoutingLabel::<u32>::try_new(32).expect("zero label bits")),
                             mtu: 0,
                             peer_num: 65535,
                             unused: 4294967295,
                             encoding_form_number: 0,
                             flags: 0,
-                        },
+                        }),
                     ],
                 ),
                 (
@@ -598,29 +607,29 @@ mod parser {
                     decode_hex("0402000201010101200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000013"),
                     vec![
                         Entity::NodeProtocolVersion(2),
-                        Entity::Peer {
-                            ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
+                        Entity::Peer(PeerData {
+                            ipv6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
                             label: Some(RoutingLabel::<u32>::try_new(19).expect("zero label bits")),
                             mtu: 0,
                             peer_num: 65535,
                             unused: 4294967295,
                             encoding_form_number: 0,
                             flags: 0,
-                        },
+                        }),
                     ],
                 ),
                 (
                     // with unrecognised entities at the beginning and at the end
                     decode_hex("020701200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000003030510"),
-                    vec![Entity::Peer {
-                        ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
+                    vec![Entity::Peer(PeerData {
+                        ipv6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
                         label: Some(RoutingLabel::<u32>::try_new(3).expect("zero label bits")),
                         mtu: 0,
                         peer_num: 65535,
                         unused: 4294967295,
                         encoding_form_number: 0,
                         flags: 0,
-                    }],
+                    })],
                 ),
                 (
                     // all of them are unrecognised
@@ -642,15 +651,15 @@ mod parser {
             };
             let entities_data_vec = decode_hex(multiple_peer_entity_hex);
 
-            let parsed_peer = Entity::Peer {
-                ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
+            let parsed_peer = Entity::Peer(PeerData {
+                ipv6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
                 label: Some(RoutingLabel::<u32>::try_new(21).expect("zero label bits")),
                 mtu: 0,
                 peer_num: 65535,
                 unused: 4294967295,
                 encoding_form_number: 0,
                 flags: 0,
-            };
+            });
             let parsed_entities = parse_entities(&entities_data_vec).expect("parsing entities failed");
 
             assert_eq!(parsed_entities, vec![parsed_peer; 3]);
@@ -662,13 +671,13 @@ mod parser {
             let res = parse_entities(&test_bytes).expect("invalid entity");
             assert_eq!(
                 res,
-                vec![Entity::LinkState {
+                vec![Entity::LinkState(LinkStateData {
                     node_id: 4,
-                    slots_start_idx: 16,
+                    starting_point: 16,
                     lag_slots: [Some(19), Some(19), Some(20), Some(18), Some(19), None, None, None, None, None, None, None, None, None, None, None, Some(19), Some(18)],
                     drop_slots: [Some(0), Some(0), Some(0), Some(0), Some(0), None, None, None, None, None, None, None, None, None, None, None, Some(0), Some(0)],
                     kb_recv_slots: [Some(2), Some(0), Some(3), Some(1), Some(1), None, None, None, None, None, None, None, None, None, None, None, Some(1), Some(2)]
-                }]
+                })]
             )
         }
 
