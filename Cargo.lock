@@ -140,6 +140,7 @@ dependencies = [
 name = "cjdns-ann"
 version = "0.1.0"
 dependencies = [
+ "cjdns-bytes 0.1.0",
  "cjdns-core 0.1.0",
  "cjdns-keys 0.1.0",
  "hex 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",

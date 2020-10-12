@@ -31,7 +31,9 @@ pub mod serialized_data {
         ///
         /// Results in error if `ann_data` packet length is less than 120 bytes (incomplete message header).
         ///
-        /// **Note:** Announcement can have only header without any data, this is a valid case.
+        /// # Note
+        ///
+        /// It is valid for announcement to have just header with no data.
         pub fn try_new(ann_data: Vec<u8>) -> Result<Self> {
             if ann_data.len() < ANNOUNCEMENT_MIN_SIZE {
                 return Err(PacketError::CannotInstantiatePacket);
@@ -43,8 +45,8 @@ pub mod serialized_data {
         /// Gets signature, public signing key and signed data bytes from announcement packet and performs signature check using
         /// [crypto_sign_verify_detached](https://libsodium.gitbook.io/doc/public-key_cryptography/public-key_signatures).
         pub fn check(&self) -> Result<()> {
-            let signature = Signature::from_slice(self.get_signature_bytes()).expect("signature size != 64");
-            let public_sign_key = PublicKey::from_slice(self.get_pub_key_bytes()).expect("public key size != 32");
+            let signature = Signature::from_slice(self.get_signature_bytes()).expect("internal error: signature size != 64");
+            let public_sign_key = PublicKey::from_slice(self.get_pub_key_bytes()).expect("internal error: public key size != 32");
             let signed_data = self.get_signed_data();
             if verify_detached(&signature, signed_data, &public_sign_key) {
                 return Ok(());
@@ -54,7 +56,7 @@ pub mod serialized_data {
 
         /// Parses announcement packet and creates deserialized announcement message, consuming this packet.
         pub fn parse(self) -> Result<Announcement> {
-            parser::parse(self).map_err(|e| PacketError::CannotParsePacket(e))
+            parser::parse(self).map_err(PacketError::CannotParsePacket)
         }
 
         pub(super) fn get_hash(&self) -> Digest {
@@ -189,7 +191,7 @@ pub mod serialized_data {
                             "3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09"
                                 .to_string(),
                         pub_signing_key: "f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2".to_string(),
-                        super_node_ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
+                        snode_ip: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
                         version: 1,
                         is_reset: true,
                         timestamp: 1474857989878
@@ -214,11 +216,11 @@ pub mod serialized_data {
                             flags: 0
                         }
                     ],
-                    node_encryption_key: CJDNSPublicKey::try_from("z15pzyd9wgzs2g5np7d3swrqc1533yb7xx9dq0pvrqrqs42uwgq0.k")
+                    node_pub_key: CJDNSPublicKey::try_from("z15pzyd9wgzs2g5np7d3swrqc1533yb7xx9dq0pvrqrqs42uwgq0.k")
                         .expect("failed pub key creation"),
-                    node_ip6: CJDNS_IP6::try_from("fc49:11cb:38c2:8d42:9865:7b8e:0d67:11b3").expect("failed ip6 creation"),
+                    node_ip: CJDNS_IP6::try_from("fc49:11cb:38c2:8d42:9865:7b8e:0d67:11b3").expect("failed ip6 creation"),
                     binary: AnnouncementPacket(test_data_bytes),
-                    binary_hash: test_bytes_hash
+                    hash: test_bytes_hash
                 }
             )
         }
@@ -228,207 +230,185 @@ pub mod serialized_data {
 mod parser {
     //! Parser module encapsulating logic for announcement data parsing
 
-    use std::slice::Iter;
-
     use libsodium_sys::crypto_sign_ed25519_pk_to_curve25519;
 
-    use super::*;
+    use cjdns_bytes::{ExpectedSize, Reader};
 
-    type Result<T> = std::result::Result<T, ParserError>;
+    use crate::var_int::read_var_int;
+    use super::*;
 
     const PEER_TYPE: u8 = 1;
     const VERSION_TYPE: u8 = 2;
     const LINK_STATE_TYPE: u8 = 3;
     const ENCODING_SCHEME_TYPE: u8 = 0;
 
-    const ENTITY_MAX_SIZE: usize = 255;
+    // entity data size without encoded meta-data (i.g., length and type)
+    const PEER_ENTITY_SIZE: usize = 30;
+    const VERSION_ENTITY_SIZE: usize = 2;
+    const ENCODING_SCHEME_ENTITY_MIN_SIZE: usize = 2;
+    const STATE_SLOTS_SIZE: usize = 18;
 
-    const PEER_ENTITY_SIZE: usize = 32;
-    const VERSION_ENTITY_SIZE: usize = 4;
-    const LINK_STATE_ENTITY_MIN_SIZE: usize = 2;
-    // it's actually `2` in cjdnsann doc, but it's too little, because min size for encoding scheme bytes to be deserialized is `2`.
-    // So we have 2 bytes for encoded type and length and minimum 2 bytes for encoding scheme deserialization.
-    const ENCODING_SCHEME_ENTITY_MIN_SIZE: usize = 4;
-
-    pub(super) fn parse(packet: serialized_data::AnnouncementPacket) -> Result<Announcement> {
+    pub(super) fn parse(packet: serialized_data::AnnouncementPacket) -> Result<Announcement, ParserError> {
         let header = parse_header(packet.get_header_bytes())?;
         let (node_encryption_key, node_ip6) = parse_sender_auth_data(packet.get_pub_key_bytes())?;
         let entities = parse_entities(packet.get_entities_bytes())?;
         let binary_hash = packet.get_hash();
         Ok(Announcement {
             header,
-            node_encryption_key,
-            node_ip6,
+            node_pub_key: node_encryption_key,
+            node_ip: node_ip6,
             entities,
-            binary_hash,
+            hash: binary_hash,
             binary: packet,
         })
     }
 
-    fn parse_header(header_data: &[u8]) -> Result<AnnouncementHeader> {
-        if header_data.len() != HEADER_SIZE {
-            return Err(ParserError::CannotParseHeader("invalid data size"));
-        }
-        let (signature_data, header_without_sign) = header_data.split_at(SIGN_SIZE);
-        let signature = hex::encode(signature_data);
+    fn parse_header(header_data: &[u8]) -> Result<AnnouncementHeader, ParserError> {
+        let mut data_reader = Reader::new(header_data);
+        let (signature_bytes, sign_key_bytes, snode_bytes, last_byte, timestamp) = data_reader
+            .read(ExpectedSize::Exact(HEADER_SIZE), |r| {
+                let signature_bytes = r.read_slice(SIGN_SIZE)?;
+                let sign_key_bytes = r.read_slice(SIGN_KEY_SIZE)?;
+                let snode_bytes = r.read_slice(IP_SIZE)?;
+                let &last_byte = r.peek_remainder().last().expect("internal error: unexpected buffer size");
+                let timestamp = r.read_u64_be()?;
+                Ok((signature_bytes, sign_key_bytes, snode_bytes, last_byte, timestamp))
+            })
+            .map_err(|_| ParserError::CannotParseHeader("invalid data size"))?;
 
-        let (signing_key_data, header_without_sign_n_key) = header_without_sign.split_at(SIGN_KEY_SIZE);
-        let pub_signing_key = hex::encode(signing_key_data);
-
-        let (super_node_data, rest_header) = header_without_sign_n_key.split_at(IP_SIZE);
-        let super_node_ip = CJDNS_IP6::try_from(super_node_data).or(Err(ParserError::CannotParseHeader("failed ip6 creation from bytes data")))?;
-
-        assert_eq!(rest_header.len(), 8, "Header size != 120 bytes");
-        let last_byte = rest_header[7];
+        let signature = hex::encode(signature_bytes);
+        let pub_signing_key = hex::encode(sign_key_bytes);
+        let snode_ip6 = CJDNS_IP6::try_from(snode_bytes).map_err(|_| ParserError::CannotParseHeader("failed ip6 creation from received data"))?;
         let version = {
-            // version is encoded as a number from last 3 bits
+            // version is encoded in 3 least significant bits
             // For example:
             // last byte is NNNN_NNNN, where N is either 0 or 1
             // so version is 0000_0NNN = NNNN_NNNN & 111
             last_byte & 7
         };
         let is_reset = {
-            // this flag is encoded in the fourth byte from the right
+            // this flag is encoded in the fourth bit in least significant order
             // For example:
             // last byte is AAAA_AAAA, where N is either 0 or 1
             // so reset flag is the bit N in last byte: AAAA_NAAA
             (last_byte >> 3) & 1 == 1
         };
-
-        let mut timestamp = u64::from_be_bytes(<[u8; 8]>::try_from(rest_header).expect("slice size != 8"));
         // removing `version` and `is_reset` bits form timestamp bytes
-        timestamp >>= 4;
+        let timestamp = timestamp >> 4;
 
         Ok(AnnouncementHeader {
             signature,
             pub_signing_key,
-            super_node_ip6: super_node_ip,
+            snode_ip: snode_ip6,
             version,
             is_reset,
             timestamp,
         })
     }
 
-    fn parse_sender_auth_data(sender_auth_data: &[u8]) -> Result<(CJDNSPublicKey, CJDNS_IP6)> {
+    /// It's expected, that `pub_key_bytes` len is 32. Otherwise function will panic.
+    ///
+    /// Currently, the argument is provided by `AnnouncementPacket::get_pub_key_bytes` method, which returns a slice of the expected len.
+    fn parse_sender_auth_data(pub_key_bytes: &[u8]) -> Result<(CJDNSPublicKey, CJDNS_IP6), ParserError> {
         // auth encryption key
         let mut curve25519_key_bytes = [0u8; SIGN_KEY_SIZE];
         // ed25519 key
-        let public_sign_key = PublicKey::from_slice(sender_auth_data).expect("sender sign key size is gt 32");
+        let public_sign_key = PublicKey::from_slice(pub_key_bytes).expect("internal error: public key size != 32");
         let ok = unsafe {
             // call to an extern function which uses raw pointers
             // considered safe, because data under these pointers is consistent during function call
             crypto_sign_ed25519_pk_to_curve25519(curve25519_key_bytes.as_mut_ptr(), public_sign_key.0.as_ptr()) == 0
         };
         if !ok {
-            return Err(ParserError::CannotParseAuthData("Conversion from x25519 to curve25519 failed"));
+            return Err(ParserError::CannotParseAuthData("conversion from x25519 to curve25519 failed"));
         }
         let node_encryption_key = CJDNSPublicKey::from(curve25519_key_bytes);
-        let node_ip6 = CJDNS_IP6::try_from(&node_encryption_key).or(Err(ParserError::CannotParseAuthData("failed ip6 creation from auth pub key")))?;
+        let node_ip6 = CJDNS_IP6::try_from(&node_encryption_key).map_err(|_| ParserError::CannotParseAuthData("failed ip6 creation from received data"))?;
         Ok((node_encryption_key, node_ip6))
     }
 
-    fn parse_entities(entities_data: &[u8]) -> Result<AnnouncementEntities> {
-        let mut parsed_entities = Vec::new();
-        let mut idx = 0;
-        while idx < entities_data.len() {
-            let encoded_entity_len = entities_data[idx] as usize;
-            let entity_data = entities_data
-                .get(idx..idx + encoded_entity_len)
-                .ok_or(ParserError::CannotParseEntity("entity with invalid encoded length"))?;
+    fn parse_entities(entities_data: &[u8]) -> Result<AnnouncementEntities, ParserError> {
+        parse_entities_impl(entities_data).map_err(ParserError::CannotParseEntity)
+    }
 
-            if encoded_entity_len == 0 {
-                return Err(ParserError::CannotParseEntity("zero entity inside entities data"));
+    fn parse_entities_impl(entities_data: &[u8]) -> Result<AnnouncementEntities, EntityParserError> {
+        let mut parsed_entities = Vec::new();
+        let mut data_reader = Reader::new(entities_data);
+        while !data_reader.is_empty() {
+            // each valid entity is encoded in `entities_data` as `[entity_length][entity_type][entity_data]`
+            // `entity_length` must be `2 + entity_data.len()`, where `2` states for `entity_length` and `entity_type` bytes.
+            let entity_length = data_reader.read_u8().expect("internal error: empty buffer");
+            if entity_length == 0 {
+                return Err(EntityParserError::BadData("zero length entity"));
             }
-            if encoded_entity_len == 1 {
-                idx += 1;
+            // padding
+            if entity_length == 1 {
                 continue;
             }
+            let entity_data = data_reader
+                // reading `entity_length - 1`, because entity length byte has been already read
+                .read_slice((entity_length - 1) as usize)
+                .map_err(|_| EntityParserError::BadData("encoded entity len > entities data remainder size"))?;
 
-            let &entity_type = entities_data.get(idx + 1).expect("entity data length != encoded length in it");
-            let parsed_entity = parse_entity(entity_type, entity_data)?;
+            let parsed_entity = parse_entity(entity_data)?;
             if let Some(entity) = parsed_entity {
                 parsed_entities.push(entity)
             }
-
-            idx += entities_data[idx] as usize;
         }
-
         Ok(parsed_entities)
     }
 
-    fn parse_entity(entity_type: u8, entity_data: &[u8]) -> Result<Option<Entity>> {
-        // First byte of each entity data is its length. The second byte is its type. So "non meta" data of each entity starts from index 2 (3rd byte).
-        let parsing_data = &entity_data[2..];
+    /// The function argument represents a properly encoded entity.
+    /// Properly encoded entity has the structure: `[entity_length][entity_type][entity_data]`.
+    /// Entity length is read in `parse_entities_impl`, so received `entity_data` only has entity type and parsing data.
+    fn parse_entity(entity_data: &[u8]) -> Result<Option<Entity>, EntityParserError> {
+        let &entity_type = entity_data.get(0).expect("internal error: entity data without entity type");
+        let parsing_data = &entity_data[1..];
         match entity_type {
-            ENCODING_SCHEME_TYPE => {
-                if entity_data.len() < ENCODING_SCHEME_ENTITY_MIN_SIZE || entity_data.len() > ENTITY_MAX_SIZE {
-                    return Err(ParserError::CannotParseEntity("invalid encoding scheme data size"));
-                }
-                let scheme_entity = parse_encoding_scheme(parsing_data)?;
-                Ok(Some(scheme_entity))
-            }
-            PEER_TYPE => {
-                if entity_data.len() != PEER_ENTITY_SIZE {
-                    return Err(ParserError::CannotParseEntity("invalid peer data size"));
-                }
-                let peer_entity = parse_peer(parsing_data)?;
-                Ok(Some(peer_entity))
-            }
-            VERSION_TYPE => {
-                if entity_data.len() != VERSION_ENTITY_SIZE {
-                    return Err(ParserError::CannotParseEntity("invalid version data size"));
-                }
-                let version_entity = parse_version(parsing_data)?;
-                Ok(Some(version_entity))
-            }
-            LINK_STATE_TYPE => {
-                if entity_data.len() < LINK_STATE_ENTITY_MIN_SIZE || entity_data.len() > ENTITY_MAX_SIZE {
-                    return Err(ParserError::CannotParseEntity("invalid link state data size"));
-                }
-                let link_state_entity = parse_link_state(parsing_data)?;
-                Ok(Some(link_state_entity))
-            }
+            ENCODING_SCHEME_TYPE => Ok(Some(parse_encoding_scheme(parsing_data)?)),
+            PEER_TYPE => Ok(Some(parse_peer(parsing_data)?)),
+            VERSION_TYPE => Ok(Some(parse_version(parsing_data)?)),
+            LINK_STATE_TYPE => Ok(Some(parse_link_state(parsing_data)?)),
             _ => Ok(None),
         }
     }
 
-    fn parse_encoding_scheme(encoding_scheme_data: &[u8]) -> Result<Entity> {
-        let hex = hex::encode(encoding_scheme_data);
-        let scheme = deserialize_scheme(encoding_scheme_data).or(Err(ParserError::CannotParseEntity("encoding scheme deserialization failed")))?;
+    fn parse_encoding_scheme(encoding_scheme_data: &[u8]) -> Result<Entity, EntityParserError> {
+        let scheme_data = Reader::new(encoding_scheme_data)
+            .read(ExpectedSize::NotLessThan(ENCODING_SCHEME_ENTITY_MIN_SIZE), |r| Ok(r.read_remainder()))
+            .map_err(|_| EntityParserError::InvalidSize)?;
+        let hex = hex::encode(scheme_data);
+        let scheme = deserialize_scheme(scheme_data).map_err(|_| EntityParserError::BadData("encoding scheme bytes can't be deserialized"))?;
         Ok(Entity::EncodingScheme { hex, scheme })
     }
 
-    fn parse_version(version_data: &[u8]) -> Result<Entity> {
-        // Version data is always 4 bytes. First 2 bytes are encoded length and type.
-        assert_eq!(version_data.len(), 2);
-        let version = u16::from_be_bytes(<[u8; 2]>::try_from(version_data).expect("version slice length != 2"));
+    fn parse_version(version_data: &[u8]) -> Result<Entity, EntityParserError> {
+        let version = Reader::new(version_data)
+            .read(ExpectedSize::Exact(VERSION_ENTITY_SIZE), |r| Ok(r.read_u16_be()?))
+            .map_err(|_| EntityParserError::InvalidSize)?;
         Ok(Entity::NodeProtocolVersion(version))
     }
 
-    fn parse_peer(peer_data: &[u8]) -> Result<Entity> {
-        // Peer data is always 32 bytes. First 2 bytes are encoded length and type.
-        assert_eq!(peer_data.len(), 30);
-        let mut peer_data_iter = peer_data.iter();
-        let mut take_peer_bytes = |n: usize| peer_data_iter.by_ref().take(n).map(|&byte| byte).collect::<Vec<u8>>();
-        let (encoding_form_number, flags) = {
-            let efn_f = take_peer_bytes(2);
-            let err_msg = "peer data is empty";
-            let (&encoding_form_number, &flags) = (efn_f.first().expect(err_msg), efn_f.last().expect(err_msg));
-            (encoding_form_number, flags)
-        };
-        let mtu = {
-            let mtu8 = u16::from_be_bytes(<[u8; 2]>::try_from(take_peer_bytes(2).as_slice()).expect("mtu slice size != 2"));
-            mtu8 as u32 * 8
-        };
-        let peer_num = u16::from_be_bytes(<[u8; 2]>::try_from(take_peer_bytes(2).as_slice()).expect("peer_num slice size != 2"));
-        let unused = u32::from_be_bytes(<[u8; 4]>::try_from(take_peer_bytes(4).as_slice()).expect("unused slice size != 4"));
-        let ip6 = CJDNS_IP6::try_from(take_peer_bytes(16).as_slice()).or(Err(ParserError::CannotParseEntity("failed ip6 creation from entity bytes")))?;
-        let label = {
-            let label_bits = u32::from_be_bytes(<[u8; 4]>::try_from(take_peer_bytes(4).as_slice()).expect("label slice size != 4"));
-            // A label of 0 indicates that the route is being withdrawn and it is no longer usable. Handling of zero label is not a job for parser
-            // So we return an Option
-            RoutingLabel::<u32>::try_new(label_bits)
-        };
+    fn parse_peer(peer_data: &[u8]) -> Result<Entity, EntityParserError> {
+        let mut data_reader = Reader::new(peer_data);
+        let (encoding_form_number, flags, mtu8, peer_num, unused, ip6_bytes, label_bits) = data_reader
+            .read(ExpectedSize::Exact(PEER_ENTITY_SIZE), |r| {
+                let encoding_form_number = r.read_u8()?;
+                let flags = r.read_u8()?;
+                let mtu8 = r.read_u16_be()?;
+                let peer_num = r.read_u16_be()?;
+                let unused = r.read_u32_be()?;
+                let ip6_bytes = r.read_slice(16)?;
+                let label_bits = r.read_u32_be()?;
+                Ok((encoding_form_number, flags, mtu8, peer_num, unused, ip6_bytes, label_bits))
+            })
+            .map_err(|_| EntityParserError::InvalidSize)?;
+
+        let mtu = mtu8 as u32 * 8;
+        let ip6 = CJDNS_IP6::try_from(ip6_bytes).map_err(|_| EntityParserError::BadData("failed ip6 creation from peer bytes"))?;
+        // A label of 0 indicates that the route is being withdrawn and it is no longer usable. Handling of zero label is not a job for parser
+        // So we return an Option
+        let label = RoutingLabel::<u32>::try_new(label_bits);
         Ok(Entity::Peer {
             ip6,
             label,
@@ -440,89 +420,49 @@ mod parser {
         })
     }
 
-    // todo refactor
-    fn parse_link_state(link_state_data: &[u8]) -> Result<Entity> {
-        assert!(link_state_data.len() >= 1);
-        let mut link_state_iter = link_state_data.iter();
-        let &pads_amount = link_state_iter.next().expect("wrong link state data len");
-        let zero_pads = link_state_iter.by_ref().take(pads_amount as usize).filter(|&&x| x == 0).count();
-        if zero_pads != pads_amount as usize {
-            return Err(ParserError::CannotParseLinkState("non zero pad found in pad range"));
+    /// C implementation: https://github.com/cjdelisle/cjdns/blob/d832e26951a2af083b4defb576fe1f0beeef6327/subnode/LinkState.h#L127
+    fn parse_link_state(link_state_data: &[u8]) -> Result<Entity, EntityParserError> {
+        let mut data_reader = Reader::new(link_state_data);
+        {
+            let pads_amount = data_reader.read_u8().map_err(|_| EntityParserError::InsufficientData)?;
+            let zero_pads = {
+                let pads = data_reader.read_slice(pads_amount as usize).map_err(|_| EntityParserError::InsufficientData)?;
+                pads.iter().filter(|&&x| x == 0).count()
+            };
+            if zero_pads != pads_amount as usize {
+                return Err(EntityParserError::BadData("non zero pad"));
+            }
         }
-        let node_id = var_int_pop(&mut link_state_iter)?;
-        let starting_point = var_int_pop(&mut link_state_iter)?;
+        let node_id = read_var_int::<u16>(&mut data_reader).map_err(|_| EntityParserError::BadData("can't create node id from received bytes"))?;
+        let slots_start_idx = read_var_int::<u8>(&mut data_reader).map_err(|_| EntityParserError::BadData("can't create slots idx from received bytes"))?;
+        if slots_start_idx as usize >= STATE_SLOTS_SIZE {
+            return Err(EntityParserError::BadData("slots index out of bounds"));
+        }
+
+        if data_reader.is_empty() {
+            return Err(EntityParserError::BadData("empty slots"));
+        }
+
         let mut lag_slots = LinkStateSlots::<u16>::default();
         let mut drop_slots = LinkStateSlots::<u16>::default();
         let mut kb_recv_slots = LinkStateSlots::<u32>::default();
-        let mut i = starting_point;
-        while link_state_iter.as_slice().len() != 0 {
-            lag_slots[i as usize] = var_int_pop(&mut link_state_iter)? as u16; //todo need checked conversion here
-            drop_slots[i as usize] = var_int_pop(&mut link_state_iter)? as u16; //todo need checked conversion here
-            kb_recv_slots[i as usize] = var_int_pop(&mut link_state_iter)?;
-            i = (i + 1) % 18;
+        let mut i = slots_start_idx as usize;
+        while !data_reader.is_empty() {
+            lag_slots[i] =
+                Some(read_var_int::<u16>(&mut data_reader).map_err(|_| EntityParserError::BadData("can't create log_slots sample from received bytes"))?);
+            drop_slots[i] =
+                Some(read_var_int::<u16>(&mut data_reader).map_err(|_| EntityParserError::BadData("can't create drop_slots sample from received bytes"))?);
+            kb_recv_slots[i] =
+                Some(read_var_int::<u32>(&mut data_reader).map_err(|_| EntityParserError::BadData("cant create kb_recv_slots sample from received bytes"))?);
+            i = (i + 1) % STATE_SLOTS_SIZE;
         }
         Ok(Entity::LinkState {
             node_id,
-            starting_point,
+            slots_start_idx,
             lag_slots,
             drop_slots,
             kb_recv_slots,
         })
-    }
-
-    // todo refactor
-    fn var_int_pop(link_state_iter: &mut Iter<u8>) -> Result<u32> {
-        let mut output = 0;
-        let len = link_state_iter.as_slice().len();
-        let &byte = link_state_iter.as_slice().first().ok_or(ParserError::CannotParseLinkState("wrong iter len"))?;
-        let runt_err = Err(ParserError::CannotParseLinkState("runt"));
-        if len < 9 {
-            if len < 5 {
-                if len < 3 {
-                    if len < 1 {
-                        return runt_err;
-                    }
-                    if byte >= 0xfd {
-                        return runt_err;
-                    }
-                } else if byte >= 0xfe {
-                    return runt_err;
-                }
-            } else if byte >= 0xff {
-                return runt_err;
-            }
-        }
-        output = check_current_byte_fall_through(byte, output, link_state_iter);
-        Ok(output)
-    }
-
-    // todo refactor
-    fn check_current_byte_fall_through(current_byte: u8, mut current_output: u32, link_state_iter: &mut Iter<u8>) -> u32 {
-        match current_byte {
-            0xff => {
-                for _ in 0..4 {
-                    current_output |= *link_state_iter.by_ref().skip(1).next().expect("link state data len is too small") as u32;
-                    current_output <<= 8;
-                }
-                check_current_byte_fall_through(0xfe, current_output, link_state_iter)
-            }
-            0xfe => {
-                for _ in 0..2 {
-                    current_output |= *link_state_iter.by_ref().skip(1).next().expect("link state data len is too small") as u32;
-                    current_output <<= 8;
-                }
-                check_current_byte_fall_through(0xfe, current_output, link_state_iter)
-            }
-            0xfd => {
-                current_output |= *link_state_iter.by_ref().skip(1).next().expect("link state data len is too small") as u32;
-                current_output <<= 8;
-                check_current_byte_fall_through(u8::default(), current_output, link_state_iter)
-            }
-            _ => {
-                current_output |= *link_state_iter.next().expect("link state data len is too small") as u32;
-                current_output
-            }
-        }
     }
 
     #[cfg(test)]
@@ -530,6 +470,10 @@ mod parser {
         use cjdns_keys::CJDNSKeysApi;
 
         use super::*;
+
+        fn decode_hex<T: AsRef<[u8]>>(hex: T) -> Vec<u8> {
+            hex::decode(hex).expect("invalid hex string")
+        }
 
         #[test]
         fn test_parse_header() {
@@ -561,7 +505,7 @@ mod parser {
                 AnnouncementHeader {
                     signature: hex::encode(random_signature),
                     pub_signing_key: hex::encode(&*keys.public_key),
-                    super_node_ip6: keys.ip6,
+                    snode_ip: keys.ip6,
                     timestamp: ann_timestamp,
                     version,
                     is_reset
@@ -589,7 +533,7 @@ mod parser {
                 "fc928136dc1fe6e04ef6a6dd7187b85f" +
                 // timestamp-version-is_reset
                 "0000157354c540c1";
-            let header_bytes = hex::decode(valid_hexed_header).expect("invalid hex string");
+            let header_bytes = decode_hex(valid_hexed_header);
             let parsed_announcement =
                 parser::parse(serialized_data::AnnouncementPacket::try_new(header_bytes).expect("invalid bytes len")).expect("invalid ann data");
             assert_eq!(parsed_announcement.entities, vec![]);
@@ -597,34 +541,33 @@ mod parser {
 
         #[test]
         fn test_parse_entities() {
-            let invalid_entities_data_hexed = [
+            let invalid_data = [
                 // zero length entity
-                "00123123132412",
-                "02050001",
-                // zero byte at the end - corrupt
-                "02050100",
-                // invalid encoded len: not equal to actual buffer len
-                "02",
-                "0305",
-                "02050302",
+                decode_hex("00123123132412"),
+                decode_hex("02050001"),
+                decode_hex("02050100"),
+                // no type
+                decode_hex("02"),
+                // invalid encoded length
+                decode_hex("0305"),
+                decode_hex("02050302"),
                 // invalid data size for entities
-                "030201",     // version entity len should be 4
-                "0501000220", // peer entity len should be 32
+                decode_hex("030201"),     // version entity len should be 4
+                decode_hex("0501000220"), // peer entity len should be 32
                 // mixing valid and invalid
-                "030507006114458100",                                                 // 0305 and valid encoding entity
-                "0204020012",                                                         // 02 and valid version entity
-                "20200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000015", // 20 and valid peer entity
+                decode_hex("030507006114458100"),                                                 // 0305 and valid encoding entity
+                decode_hex("0204020012"),                                                         // 02 and valid version entity
+                decode_hex("20200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000015"), // 20 and valid peer entity
             ];
-            for &invalid_entity_data in invalid_entities_data_hexed.iter() {
-                let data_bytes = hex::decode(invalid_entity_data).expect("invalid hex string");
-                assert!(parse_entities(&data_bytes).is_err());
+            for data in invalid_data.iter() {
+                assert!(parse_entities(data).is_err());
             }
 
             let valid_tests = vec![
                 // no entities passed
-                ("", vec![]),
+                (decode_hex(""), vec![]),
                 (
-                    "200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000003",
+                    decode_hex("200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000003"),
                     vec![Entity::Peer {
                         ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
                         label: Some(RoutingLabel::<u32>::try_new(3).expect("zero label bits")),
@@ -636,7 +579,7 @@ mod parser {
                     }],
                 ),
                 (
-                    "04020002200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000020",
+                    decode_hex("04020002200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000020"),
                     vec![
                         Entity::NodeProtocolVersion(2),
                         Entity::Peer {
@@ -652,7 +595,7 @@ mod parser {
                 ),
                 (
                     // with some pads
-                    "0402000201010101200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000013",
+                    decode_hex("0402000201010101200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000013"),
                     vec![
                         Entity::NodeProtocolVersion(2),
                         Entity::Peer {
@@ -668,7 +611,7 @@ mod parser {
                 ),
                 (
                     // with unrecognised entities at the beginning and at the end
-                    "020701200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000003030510",
+                    decode_hex("020701200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000003030510"),
                     vec![Entity::Peer {
                         ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
                         label: Some(RoutingLabel::<u32>::try_new(3).expect("zero label bits")),
@@ -681,14 +624,13 @@ mod parser {
                 ),
                 (
                     // all of them are unrecognised
-                    "03100102050504020304",
+                    decode_hex("03100102050504020304"),
                     vec![],
                 ),
             ];
-            for (test_data_hexed, res) in valid_tests.into_iter() {
-                let test_bytes = hex::decode(test_data_hexed).expect("invalid hex string");
-                let parsed_entity = parse_entities(&test_bytes).expect("invalid entity passed");
-                assert_eq!(parsed_entity, res);
+            for (test_bytes, res) in valid_tests.iter() {
+                let parsed_entity = parse_entities(test_bytes).expect("invalid entity passed");
+                assert_eq!(parsed_entity, *res);
             }
         }
 
@@ -698,7 +640,7 @@ mod parser {
                 let peer_data_hex = "200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000015";
                 format!("{}{}{}", peer_data_hex, peer_data_hex, peer_data_hex)
             };
-            let entities_data_vec = hex::decode(multiple_peer_entity_hex).expect("invalid hex string");
+            let entities_data_vec = decode_hex(multiple_peer_entity_hex);
 
             let parsed_peer = Entity::Peer {
                 ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
@@ -715,20 +657,70 @@ mod parser {
         }
 
         #[test]
-        fn test_parse_link_state() {
-            let hexed_data = "2003060000000000000410130001120002130002130000140003120001130001";
-            let test_bytes = hex::decode(hexed_data).expect("invalid hex string");
+        fn test_parse_link_state_base() {
+            let test_bytes = decode_hex("2003060000000000000410130001120002130002130000140003120001130001");
             let res = parse_entities(&test_bytes).expect("invalid entity");
             assert_eq!(
                 res,
                 vec![Entity::LinkState {
                     node_id: 4,
-                    starting_point: 16,
-                    lag_slots: [19, 19, 20, 18, 19, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 19, 18],
-                    drop_slots: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-                    kb_recv_slots: [2, 0, 3, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 2]
+                    slots_start_idx: 16,
+                    lag_slots: [Some(19), Some(19), Some(20), Some(18), Some(19), None, None, None, None, None, None, None, None, None, None, None, Some(19), Some(18)],
+                    drop_slots: [Some(0), Some(0), Some(0), Some(0), Some(0), None, None, None, None, None, None, None, None, None, None, None, Some(0), Some(0)],
+                    kb_recv_slots: [Some(2), Some(0), Some(3), Some(1), Some(1), None, None, None, None, None, None, None, None, None, None, None, Some(1), Some(2)]
                 }]
             )
+        }
+
+        #[test]
+        fn test_parse_link_state() {
+            let invalid_data = [
+                // no pads
+                decode_hex("0203"),
+                // invalid pads (non zero pad in data)
+                decode_hex("07030400000001"),
+                // bad node id data
+                decode_hex("080300fe01020304"),
+                // bad slots starting idx data
+                decode_hex("090300fd0102fd0102"),
+                // out of bounds starting idx
+                decode_hex("050300fafa"),
+                // empty slots
+                decode_hex("050300fa0a"),
+                // inconsistent slots data: some slots have more samples data
+                decode_hex("0b0300fa0f010203fd0102"),
+                // bad lag slot data
+                decode_hex("120300fa0f010203040506fe010203040102"),
+                // bad drop slot data
+                decode_hex("130300fa0f010203040506fd0102fe03040102"),
+                // bad kb_recv slot data
+                decode_hex("10030001010203ff1122334455667788"),
+                // insufficient data
+                // not enough ff bytes
+                decode_hex("0f0300fa0f0102ff01020304050607"),
+                // can't create log slot
+                decode_hex("070300fa0ffd01"),
+                // can't create log slot
+                decode_hex("090300fa0ffe010203"),
+            ];
+            for data in invalid_data.iter() {
+                assert!(parse_entities(data).is_err())
+            }
+        }
+
+        #[test]
+        fn test_link_state_valid() {
+            let valid_cases = [
+                // minimum valid
+                decode_hex("0803000102030405"),
+                // var ints
+                decode_hex("2d0300fd00af00fdaa01fdaa01ff00000000556677887788ff0000000011223344fdaa0101fe03040506110f78"),
+                // with some pads
+                decode_hex("0d030500000000000a0a0a0a0a"),
+            ];
+            for data in valid_cases.iter() {
+                assert!(parse_entities(data).is_ok());
+            }
         }
     }
 }
