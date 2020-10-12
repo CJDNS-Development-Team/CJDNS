@@ -122,7 +122,7 @@
 //! #                 "3a2349bd342608df20d999ff2384e99f1e179dbdf4aaa61692c2477c011cfe635b42d3cdb8556d94f365cdfa338dc38f40c1fabf69500830af915f41bed71b09"
 //! #                     .to_string(),
 //! #             pub_signing_key: "f2e1d148ed18b09d16b5766e4250df7b4e83a5ccedd4cfde15f1f474db1a5bc2".to_string(),
-//! #             snode_ip6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
+//! #             snode_ip: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
 //! #             version: 1,
 //! #             is_reset: true,
 //! #             timestamp: 1474857989878
@@ -147,11 +147,11 @@
 //! #                 flags: 0
 //! #             }
 //! #         ],
-//! #         node_encryption_key: CJDNSPublicKey::try_from("z15pzyd9wgzs2g5np7d3swrqc1533yb7xx9dq0pvrqrqs42uwgq0.k")
+//! #         node_pub_key: CJDNSPublicKey::try_from("z15pzyd9wgzs2g5np7d3swrqc1533yb7xx9dq0pvrqrqs42uwgq0.k")
 //! #             .expect("failed pub key creation"),
-//! #         node_ip6: CJDNS_IP6::try_from("fc49:11cb:38c2:8d42:9865:7b8e:0d67:11b3").expect("failed ip6 creation"),
+//! #         node_ip: CJDNS_IP6::try_from("fc49:11cb:38c2:8d42:9865:7b8e:0d67:11b3").expect("failed ip6 creation"),
 //! #         binary: returning_packet,
-//! #         binary_hash: announcement_bytes_hash
+//! #         hash: announcement_bytes_hash
 //! #     }
 //! # );
 //!

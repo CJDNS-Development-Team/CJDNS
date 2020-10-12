@@ -15,10 +15,10 @@ use super::AnnouncementPacket;
 pub struct Announcement {
     pub header: AnnouncementHeader,
     pub entities: AnnouncementEntities,
-    pub node_encryption_key: CJDNSPublicKey,
-    pub node_ip6: CJDNS_IP6,
+    pub node_pub_key: CJDNSPublicKey,
+    pub node_ip: CJDNS_IP6,
     pub binary: AnnouncementPacket,
-    pub binary_hash: Digest,
+    pub hash: Digest,
 }
 
 /// Deserialized announcement message header.
@@ -33,7 +33,7 @@ pub struct Announcement {
 pub struct AnnouncementHeader {
     pub signature: String,
     pub pub_signing_key: String,
-    pub snode_ip6: CJDNS_IP6,
+    pub snode_ip: CJDNS_IP6,
     pub version: u8,
     pub is_reset: bool,
     pub timestamp: u64,
