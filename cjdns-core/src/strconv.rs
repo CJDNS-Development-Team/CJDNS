@@ -19,6 +19,12 @@ pub enum LabelError {
     ZeroRoutingLabel,
 }
 
+impl fmt::Display for RoutingLabel<u32> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        <RoutingLabel<u32> as fmt::LowerHex>::fmt(self, f)
+    }
+}
+
 impl fmt::Display for RoutingLabel<u64> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         <RoutingLabel<u64> as fmt::LowerHex>::fmt(self, f)
@@ -28,6 +34,18 @@ impl fmt::Display for RoutingLabel<u64> {
 impl fmt::Display for RoutingLabel<u128> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         <RoutingLabel<u128> as fmt::LowerHex>::fmt(self, f)
+    }
+}
+
+impl fmt::LowerHex for RoutingLabel<u32> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let bits = self.bits();
+        write!(
+            f,
+            "{:04x}.{:04x}",
+            (bits >> 16) & 0xFFFFu32,
+            bits & 0xFFFFu32
+        )
     }
 }
 
@@ -59,6 +77,18 @@ impl fmt::LowerHex for RoutingLabel<u128> {
             (bits >> 32) & 0xFFFFu128,
             (bits >> 16) & 0xFFFFu128,
             bits & 0xFFFFu128
+        )
+    }
+}
+
+impl fmt::UpperHex for RoutingLabel<u32> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let bits = self.bits();
+        write!(
+            f,
+            "{:04X}.{:04X}",
+            (bits >> 16) & 0xFFFFu32,
+            bits & 0xFFFFu32
         )
     }
 }
@@ -95,6 +125,18 @@ impl fmt::UpperHex for RoutingLabel<u128> {
     }
 }
 
+impl fmt::Binary for RoutingLabel<u32> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let bits = self.bits();
+        write!(
+            f,
+            "{:016b}.{:016b}",
+            (bits >> 16) & 0xFFFFu32,
+            bits & 0xFFFFu32
+        )
+    }
+}
+
 impl fmt::Binary for RoutingLabel<u64> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let bits = self.bits();
@@ -124,6 +166,32 @@ impl fmt::Binary for RoutingLabel<u128> {
             (bits >> 16) & 0xFFFFu128,
             bits & 0xFFFFu128
         )
+    }
+}
+
+impl TryFrom<&str> for RoutingLabel<u32> {
+    type Error = LabelError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        lazy_static! {
+            static ref RE: Regex = Regex::new(
+                "^([[:xdigit:]]{4})\\.([[:xdigit:]]{4})$"
+            ).expect("inavlid regexp");
+        }
+
+        fn capture2u32(c: &regex::Captures, group_num: usize) -> u32 {
+            let s = c.get(group_num).expect("bad group index").as_str();
+            u32::from_str_radix(s, 16).expect("broken regexp matched non-number")
+        }
+
+        if let Some(c) = RE.captures(value) {
+            Self::try_new(
+                (capture2u32(&c, 1) << 16)
+                    | capture2u32(&c, 2),
+            ).ok_or(LabelError::ZeroRoutingLabel)
+        } else {
+            Err(LabelError::MalformedRoutingLabelStringValue)
+        }
     }
 }
 
