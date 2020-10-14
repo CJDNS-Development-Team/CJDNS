@@ -100,9 +100,9 @@ impl Peers {
         //TODO break the loop by using select!() on external interupt channel
     }
 
-    pub async fn accept_incoming_connection(&self, from_ipv6: &str, ws_stream: WebSock) -> Result<(), Error> {
+    pub async fn accept_incoming_connection(&self, from_ipv6: String, ws_stream: WebSock) -> Result<(), Error> {
         info!("Incoming connection from {}", from_ipv6);
-        self.incoming(from_ipv6.to_string(), ws_stream).await
+        self.incoming(from_ipv6, ws_stream).await
     }
 
     pub async fn disconnect_all(&self) {

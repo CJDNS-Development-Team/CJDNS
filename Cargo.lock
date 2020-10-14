@@ -314,6 +314,7 @@ dependencies = [
  "anyhow 1.0.32 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono 0.4.19 (registry+https://github.com/rust-lang/crates.io-index)",
  "cjdns-ann 0.1.0",
+ "cjdns-bytes 0.1.0",
  "cjdns-core 0.1.0",
  "cjdns-keys 0.1.0",
  "clap 3.0.0-beta.1 (registry+https://github.com/rust-lang/crates.io-index)",
