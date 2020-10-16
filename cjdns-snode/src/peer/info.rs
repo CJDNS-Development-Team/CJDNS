@@ -1,13 +1,17 @@
 //! Info about connections to peer supernodes
 
+use serde::Serialize;
+
 use crate::peer::{Peer, PeerList, Peers};
 
+#[derive(Serialize)]
 pub struct PeersInfo {
     pub peers: Vec<PeerInfo>,
     pub announcements: usize,
     pub ann_by_hash_len: usize,
 }
 
+#[derive(Serialize)]
 pub struct PeerInfo {
     pub addr: String,
     pub outstanding_requests: usize,

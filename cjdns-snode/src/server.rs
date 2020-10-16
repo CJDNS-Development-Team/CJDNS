@@ -66,8 +66,11 @@ pub async fn main(config: Config) -> Result<()> {
     }
 
     // Start supernode HTTP/WebSocket server task
-    let h = task::spawn(webserver::test_srv_task());
-    tasks.push(h);
+    {
+        let server = Arc::clone(&server);
+        let h = task::spawn(webserver::test_srv_task(server));
+        tasks.push(h);
+    }
 
     // Connect to peer supernodes
     for peer_addr in config.peers.iter() {
@@ -98,7 +101,7 @@ struct Server {
 }
 
 struct ServerMut {
-    //debug_node: Option<()>, //TODO Debugging feature - need '/debugnode' endpoint
+    debug_node: Option<CJDNS_IP6>, //TODO Debugging feature - need to implement log filtering
     //last_rebuild: Instant, //TODO Milestone 3
     self_node: Option<Arc<Node>>,
     //route_cache: (), //TODO Milestone 3
@@ -113,7 +116,7 @@ impl Server {
             peers: peers.clone(),
             nodes: Nodes::new(peers),
             mut_state: Mutex::new(ServerMut {
-                //debug_node: None,
+                debug_node: None,
                 //last_rebuild: Instant::now(),
                 self_node: None,
                 //route_cache: (),
@@ -474,6 +477,7 @@ mod nodes {
     use cjdns_ann::Announcement;
     use cjdns_core::EncodingScheme;
     use cjdns_keys::{CJDNS_IP6, CJDNSPublicKey};
+    use cjdns_bytes::Writer;
 
     use crate::peer::Peers;
     use crate::server::link::Link;
@@ -522,6 +526,24 @@ mod nodes {
 
         pub fn by_ip(&self, ip: &CJDNS_IP6) -> Option<Arc<Node>> {
             self.nodes_by_ip.read().get(ip).cloned()
+        }
+
+        pub fn count(&self) -> usize {
+            self.nodes_by_ip.read().len()
+        }
+
+        pub fn anns_dump(&self) -> Vec<u8> {
+            let mut writer = Writer::new();
+            let nodes_by_ip = self.nodes_by_ip.read();
+            for node in nodes_by_ip.values() {
+                let state = node.mut_state.read();
+                for ann in &state.announcements {
+                    writer.write_u32_be(ann.binary.len() as u32);
+                    writer.write_slice(&ann.binary);
+                }
+            }
+            writer.write_u32_be(0);
+            writer.into_vec()
         }
 
         pub fn keep_table_clean(&self) {
@@ -668,3 +690,4 @@ mod link {
 mod service;
 mod webserver;
 mod utils;
+pub mod websock;

@@ -8,18 +8,16 @@ use anyhow::Error;
 use futures::{Future, SinkExt, StreamExt};
 use http::Uri;
 use parking_lot::Mutex;
-use tokio::net::TcpStream;
 use tokio::select;
 use tokio::sync::mpsc;
 use tokio::time;
 use tokio_tungstenite as websocket;
-use tokio_tungstenite::tungstenite::Message as WebSocketMessage;
-use tokio_tungstenite::WebSocketStream;
 
 use cjdns_ann::AnnHash;
 
 use crate::message::{Message, MessageData};
 use crate::msg;
+use crate::server::websock::WebSock;
 use crate::utils::rand::seed;
 use crate::utils::seq::Seq;
 
@@ -35,8 +33,6 @@ mod info;
 mod peer;
 mod peer_list;
 mod ping;
-
-type WebSock = WebSocketStream<TcpStream>;
 
 pub struct Peers {
     peers: PeerList,
@@ -100,9 +96,9 @@ impl Peers {
         //TODO break the loop by using select!() on external interupt channel
     }
 
-    pub async fn accept_incoming_connection(&self, from_ipv6: &str, ws_stream: WebSock) -> Result<(), Error> {
+    pub async fn accept_incoming_connection(&self, from_ipv6: String, ws_stream: impl WebSock) -> Result<(), Error> {
         info!("Incoming connection from {}", from_ipv6);
-        self.incoming(from_ipv6.to_string(), ws_stream).await
+        self.incoming(from_ipv6, ws_stream).await
     }
 
     pub async fn disconnect_all(&self) {
@@ -131,7 +127,7 @@ impl Peers {
 
     /// Handle incoming WebSocket connection and process it until closed.
     /// This async fn completes when the connection is closed, so spawn a task for it.
-    async fn incoming(&self, addr: String, ws_stream: WebSock) -> Result<(), Error> {
+    async fn incoming(&self, addr: String, ws_stream: impl WebSock) -> Result<(), Error> {
         // Create peer & websocket service task
         let (mut peer, ws_task) = self.create_peer(addr, ws_stream, PeerType::Incoming);
 
@@ -139,11 +135,12 @@ impl Peers {
         peer.send_msg(msg![0, "HELLO", Self::VERSION]).await?;
 
         // Send known announce hashes
-        {
+        let hash_list = {
             let anns = self.anns.lock();
-            for h in anns.hash_list().chunks(128) {
-                peer.send_msg(msg![0, "INV", 0 => hashes = h]).await?;
-            }
+            anns.hash_list().clone()
+        };
+        for h in hash_list.chunks(128) {
+            peer.send_msg(msg![0, "INV", 0 => hashes = h]).await?;
         }
 
         // Send/Receive messages until websocket is closed
@@ -157,7 +154,7 @@ impl Peers {
 
     /// Handle outgoing WebSocket connection and process it until closed.
     /// This async fn completes when the connection is closed, so spawn a task for it.
-    async fn outgoing(&self, addr: String, ws_stream: WebSock) -> Result<(), Error> {
+    async fn outgoing(&self, addr: String, ws_stream: impl WebSock) -> Result<(), Error> {
         // Create peer & websocket service task
         let (mut peer, ws_task) = self.create_peer(addr, ws_stream, PeerType::Outgoing);
 
@@ -173,7 +170,7 @@ impl Peers {
         res
     }
 
-    fn create_peer(&self, addr: String, ws_stream: WebSock, peer_type: PeerType) -> (Peer, impl Future<Output=Result<(), Error>> + '_) {
+    fn create_peer<'a>(&'a self, addr: String, ws_stream: impl WebSock + 'a, peer_type: PeerType) -> (Peer, impl Future<Output=Result<(), Error>> + 'a) {
         // Create bounded channel to send messages
         const QUEUE_SIZE: usize = 256;
         let (msg_tx, msg_rx) = mpsc::channel(QUEUE_SIZE);
@@ -194,21 +191,19 @@ impl Peers {
         self.peers.remove_peer(peer.id);
     }
 
-    async fn run_websocket(&self, peer: Peer, ws_stream: WebSock, mut msg_rx: mpsc::Receiver<Message>, mut ann_tx: mpsc::Sender<AnnData>) -> Result<(), Error> {
+    async fn run_websocket(&self, peer: Peer, ws_stream: impl WebSock, mut msg_rx: mpsc::Receiver<Message>, mut ann_tx: mpsc::Sender<AnnData>) -> Result<(), Error> {
         // Split the socket
-        let (mut ws_write, mut ws_read) = ws_stream.split();
+        let (mut ws_write, mut ws_read) = ws_stream.ws_split();
 
         // Socket handling loop
         loop {
             select! {
                 Some(msg) = msg_rx.recv() => {
-                    let bytes = msg.encode_msgpack()?;
-                    let ws_message = WebSocketMessage::Binary(bytes);
+                    let ws_message = msg.encode_msgpack()?;
                     ws_write.send(ws_message).await?;
                 }
                 Some(ws_message) = ws_read.next() => {
-                    let ws_message = ws_message?;
-                    let bytes = ws_message.into_data(); //todo process message type properly maybe?
+                    let bytes = ws_message?;
                     let message = Message::decode_msgpack(&bytes)?;
                     self.handle_message(peer.clone(), message, &mut ann_tx).await?;
                 }

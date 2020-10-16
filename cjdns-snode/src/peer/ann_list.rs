@@ -29,7 +29,7 @@ impl AnnList {
         self.ann_by_hash.remove(hash);
     }
 
-    pub(super) fn hash_list(&self) -> &[AnnHash] {
+    pub(super) fn hash_list(&self) -> &Vec<AnnHash> {
         &self.ann_hashes_ordered
     }
 
