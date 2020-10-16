@@ -53,7 +53,14 @@ fn ws_route(server: Arc<Server>) -> impl Filter<Extract=impl Reply, Error=Reject
         .and(warp::ws())
         .map(|addr: Option<SocketAddr>, server: Arc<Server>, ws_manager: warp::ws::Ws| {
             let addr = addr.expect("no remote addr");
-            ws_manager.on_upgrade(move |ws_conn| handlers::handle_ws(addr, server, ws_conn))
+            let addr = addr.to_string();
+            let peers = Arc::clone(&server.peers);
+            ws_manager.on_upgrade(move |ws_conn| async move {
+                let res = peers.accept_incoming_connection(addr, ws_conn).await;
+                if let Err(err) = res {
+                    warn!("WebSocket error: {}", err);
+                }
+            })
         })
 }
 
@@ -63,7 +70,6 @@ fn with_server(server: Arc<Server>) -> impl Filter<Extract=(Arc<Server>,), Error
 
 mod handlers {
     use std::convert::{Infallible, TryFrom};
-    use std::net::SocketAddr;
     use std::sync::Arc;
 
     use serde::Serialize;
@@ -106,10 +112,5 @@ mod handlers {
 
     pub(super) async fn handle_dump(server: Arc<Server>) -> Result<Vec<u8>, Infallible> {
         Ok(server.nodes.anns_dump())
-    }
-
-    pub(super) async fn handle_ws(addr: SocketAddr, server: Arc<Server>, ws_conn: warp::ws::WebSocket) {
-        let addr = addr.to_string();
-        //TODO server.peers.accept_incoming_connection(addr, ws_conn);
     }
 }
