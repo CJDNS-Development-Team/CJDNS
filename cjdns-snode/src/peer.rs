@@ -172,7 +172,7 @@ impl Peers {
 
     fn create_peer<'a>(&'a self, addr: String, ws_stream: impl WebSock + 'a, peer_type: PeerType) -> (Peer, impl Future<Output=Result<(), Error>> + 'a) {
         // Create bounded channel to send messages
-        const QUEUE_SIZE: usize = 256;
+        const QUEUE_SIZE: usize = 1024;
         let (msg_tx, msg_rx) = mpsc::channel(QUEUE_SIZE);
 
         // Clone announcement tx channel
@@ -201,6 +201,7 @@ impl Peers {
                 Some(msg) = msg_rx.recv() => {
                     let ws_message = msg.encode_msgpack()?;
                     ws_write.send(ws_message).await?;
+                    //ws_write.flush().await?;
                 }
                 Some(ws_message) = ws_read.next() => {
                     let bytes = ws_message?;

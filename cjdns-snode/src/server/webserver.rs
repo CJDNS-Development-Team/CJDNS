@@ -10,7 +10,7 @@ use crate::server::Server;
 
 pub(super) async fn test_srv_task(server: Arc<Server>) {
     let routes = api(server);
-    warp::serve(routes).run(([127, 0, 0, 1], 8080)).await;
+    warp::serve(routes).run(([127, 0, 0, 1], 3333)).await;
 }
 
 fn api(server: Arc<Server>) -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {

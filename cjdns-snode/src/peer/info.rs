@@ -39,7 +39,7 @@ impl PeerList {
 impl Peer {
     fn info(&self) -> PeerInfo {
         PeerInfo {
-            addr: "".to_string(), //TODO self.socket._socket.remoteAddress
+            addr: self.addr.clone(),
             outstanding_requests: self.get_outstanding_reqs_count(),
             msgs_on_wire: 0, //TODO useless?
             msg_queue: 0, //self.msg_queue.len(), //TODO possible?

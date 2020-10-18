@@ -204,7 +204,7 @@ impl Server {
         if let Some(ann) = ann_opt.as_ref() {
             let clock_skew = time_diff(SystemTime::now(), mktime(ann.header.timestamp));
             if clock_skew > max_clock_skew {
-                warn!("unacceptably large clock skew {}ms", clock_skew.as_millis());
+                warn!("unacceptably large clock skew {}h", clock_skew.as_secs_f64() / 60.0 / 60.0);
                 reply_error = "excessive_clock_skew";
                 ann_opt = None;
             } else {
@@ -434,7 +434,7 @@ impl Server {
                 let mut index = sp - 1;
                 while index != sp {
                     if index < 0 {
-                        index = LINK_STATE_SLOTS as i8;
+                        index = (LINK_STATE_SLOTS - 1) as i8;
                         continue;
                     }
 
