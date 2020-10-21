@@ -17,7 +17,7 @@ use parking_lot::Mutex;
 use tokio::task;
 use sodiumoxide::crypto::hash::sha512;
 
-use cjdns_ann::{Announcement, AnnouncementPacket, Entity, LINK_STATE_SLOTS};
+use cjdns_ann::{Announcement, AnnouncementPacket, Entity, LINK_STATE_SLOTS, AnnHash};
 use cjdns_keys::CJDNS_IP6;
 
 use crate::config::Config;
@@ -153,14 +153,14 @@ impl Server {
         }
     }
 
-    async fn handle_announce_impl(&self, announce: Vec<u8>, from_node: bool) -> Result<(sha512::Digest, ReplyError), Error> {
+    async fn handle_announce_impl(&self, announce: Vec<u8>, from_node: bool) -> Result<(AnnHash, ReplyError), Error> {
         let mut reply_error = ReplyError::None;
 
         let mut ann_opt = None;
         let mut self_node = None;
         let mut node = None;
 
-        if let Some(announcement_packet) = AnnouncementPacket::try_new(announce).ok() {
+        if let Ok(announcement_packet) = AnnouncementPacket::try_new(announce) {
             if announcement_packet.check().is_ok() {
                 ann_opt = announcement_packet.parse().ok();
             }
@@ -274,15 +274,9 @@ impl Server {
         let ann_timestamp = mktime(ann.header.timestamp);
 
         if let Some(node) = node.as_ref() {
-            let is_old_ann = {
-                let node_mut = node.mut_state.read();
-                let is_old_ann = node_mut.timestamp > ann_timestamp;
-                // we do not return state hash after call to `warn!()`, because hash computation requires write lock,
-                // but read lock is already acquired
-                if is_old_ann { warn!("old announcement [{}] most recent [{:?}]", ann.header.timestamp, node_mut.timestamp); } //TODO suspicious - duplicate check? Ask CJ
-                is_old_ann
-            };
-            if is_old_ann {
+            let node_timestamp = node.mut_state.read().timestamp;
+            if node_timestamp > ann_timestamp { //TODO suspicious - duplicate check? Ask CJ
+                warn!("old announcement [{}] most recent [{:?}]", ann.header.timestamp, node_timestamp);
                 return Ok((self.node_announcement_hash(Some(node.clone())), reply_error));
             }
         }
@@ -492,7 +486,7 @@ impl Server {
         }
     }
 
-    fn node_announcement_hash(&self, node: Option<Arc<Node>>) -> sha512::Digest {
+    fn node_announcement_hash(&self, node: Option<Arc<Node>>) -> AnnHash {
         let mut carry = sha512::Digest([0; 64]);
         let mut state = 0;
         if let Some(node) = node {
@@ -504,10 +498,10 @@ impl Server {
                 hash.update(&ann.binary);
                 carry = hash.finalize();
             }
-            node_mut.state_hash = Some(carry);
+            node_mut.state_hash = Some(AnnHash::from_digest(carry));
         }
         debug!("node announcement hash - {}, state - {}", hex::encode(carry), state);
-        carry
+        AnnHash::from_digest(carry)
     }
 }
 
@@ -520,9 +514,8 @@ mod nodes {
 
     use anyhow::Error;
     use parking_lot::{Mutex, RwLock};
-    use sodiumoxide::crypto::hash::sha512;
 
-    use cjdns_ann::Announcement;
+    use cjdns_ann::{Announcement, AnnHash};
     use cjdns_core::EncodingScheme;
     use cjdns_keys::{CJDNS_IP6, CJDNSPublicKey};
     use cjdns_bytes::Writer;
@@ -550,7 +543,7 @@ mod nodes {
     pub(super) struct NodeMut {
         pub(super) timestamp: SystemTime,
         pub(super) announcements: Vec<Announcement>,
-        pub(super) state_hash: Option<sha512::Digest>,
+        pub(super) state_hash: Option<AnnHash>,
 
         // Dirty trick to preserve the last reset message in order to
         // allow downstream snode peers to be able to get the version and the
