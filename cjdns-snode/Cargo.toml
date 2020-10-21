@@ -30,6 +30,9 @@ warp = "0.2"
 cjdns-core = { path = "../cjdns-core" }
 cjdns-keys = { path = "../cjdns-keys" }
 cjdns-ann = { path = "../cjdns-ann" }
+cjdns-hdr = { path = "../cjdns-hdr" }
+cjdns-admin = { path = "../cjdns-admin" }
+cjdns-sniff = { path = "../cjdns-sniff" }
 cjdns-bytes = { path = "../cjdns-bytes" }
 
 [dev-dependencies]

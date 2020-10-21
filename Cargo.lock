@@ -313,10 +313,13 @@ version = "0.1.0"
 dependencies = [
  "anyhow 1.0.32 (registry+https://github.com/rust-lang/crates.io-index)",
  "chrono 0.4.19 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cjdns-admin 0.1.0",
  "cjdns-ann 0.1.0",
  "cjdns-bytes 0.1.0",
  "cjdns-core 0.1.0",
+ "cjdns-hdr 0.1.0",
  "cjdns-keys 0.1.0",
+ "cjdns-sniff 0.1.0",
  "clap 3.0.0-beta.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "env_logger 0.7.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "futures 0.3.5 (registry+https://github.com/rust-lang/crates.io-index)",

@@ -61,7 +61,8 @@ pub async fn main(config: Config) -> Result<()> {
 
     // Connect to local CJDNS router, if configured
     if config.connect {
-        let h = task::spawn(service::service_task());
+        let server = Arc::clone(&server);
+        let h = task::spawn(service::service_task(server));
         tasks.push(h);
     }
 
@@ -251,9 +252,9 @@ impl Server {
         };
 
         if let Some(node) = node.as_ref() {
-            let node_mut = node.mut_state.read();
-            if node_mut.timestamp > ann_timestamp { //TODO suspicious - duplicate check? Ask CJ
-                warn!("old announcement [{}] most recent [{:?}]", ann.header.timestamp, node_mut.timestamp);
+            let node_timestamp = node.mut_state.read().timestamp;
+            if node_timestamp > ann_timestamp { //TODO suspicious - duplicate check? Ask CJ
+                warn!("old announcement [{}] most recent [{:?}]", ann.header.timestamp, node_timestamp);
                 return Ok(()); //xTODO return { stateHash: nodeAnnouncementHash(ctx, node), error: replyError };
             }
         }
@@ -687,6 +688,7 @@ mod link {
     }
 }
 
+mod route;
 mod service;
 mod webserver;
 mod utils;
