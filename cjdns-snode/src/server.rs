@@ -16,7 +16,7 @@ use http::Uri;
 use parking_lot::Mutex;
 use tokio::task;
 
-use cjdns_ann::{Announcement, AnnouncementPacket, Entity, LINK_STATE_SLOTS};
+use cjdns_ann::{AnnHash, Announcement, AnnouncementPacket, Entity, LINK_STATE_SLOTS};
 use cjdns_keys::CJDNS_IP6;
 
 use crate::config::Config;
@@ -108,6 +108,18 @@ struct ServerMut {
     current_node: Option<CJDNS_IP6>,
 }
 
+#[derive(Debug)]
+enum ReplyError {
+    None,
+    FailedParseOrValidate,
+    OldMessage,
+    WrongSnode,
+    ExcessiveClockSkew,
+    NoEncodingScheme,
+    NoVersion,
+    UnknownNode,
+}
+
 impl Server {
     //const VERSION: u32 = 1; //TODO Milestone 3
 
@@ -140,40 +152,49 @@ impl Server {
         }
     }
 
-    async fn handle_announce_impl(&self, announce: Vec<u8>, from_node: bool) -> Result<(), Error> {
-        let mut reply_error = "none"; //xTODO convert to proper enum
+    async fn handle_announce_impl(&self, announce: Vec<u8>, from_node: bool) -> Result<(AnnHash, ReplyError), Error> {
+        let mut reply_error = ReplyError::None;
 
-        let announcement_packet = AnnouncementPacket::try_new(announce)?;
-        announcement_packet.check()?;
-        let ann = announcement_packet.parse()?; //xTODO reply_error = "failed_parse_or_validate";
-        let self_node = {
-            let mut state = self.mut_state.lock();
-            state.current_node = Some(ann.node_ip.clone());
-            state.self_node.as_ref().map(|n| n.clone())
-        };
-        let mut node = self.nodes.by_ip(&ann.node_ip);
+        let mut ann_opt = None;
+        let mut self_node = None;
+        let mut node = None;
 
-        if log_enabled!(log::Level::Debug) {
-            debug!(
-                "ANN from [{}] ts [{}] isReset [{}] peers [{}] ls [{}] known [{}]{}",
-                ann.node_ip,
-                ann.header.timestamp,
-                ann.header.is_reset,
-                ann.entities.iter().filter(|&a| matches!(&a, Entity::Peer{..})).count(),
-                ann.entities.iter().filter(|&a| matches!(&a, Entity::LinkState{..})).count(),
-                node.is_some(),
-                if node.is_none() && !ann.header.is_reset { " ERR_UNKNOWN" } else { "" }
-            );
+        if let Ok(announcement_packet) = AnnouncementPacket::try_new(announce) {
+            if announcement_packet.check().is_ok() {
+                ann_opt = announcement_packet.parse().ok();
+            }
+        }
+        if ann_opt.is_none() {
+            reply_error = ReplyError::FailedParseOrValidate;
         }
 
-        let ann_timestamp = mktime(ann.header.timestamp);
-        let mut ann_opt = Some(ann);
+        if let Some(ann) = ann_opt.as_ref() {
+            self_node = {
+                let mut state = self.mut_state.lock();
+                state.current_node = Some(ann.node_ip.clone());
+                state.self_node.as_ref().map(|n| n.clone())
+            };
+            node = self.nodes.by_ip(&ann.node_ip);
+            if log_enabled!(log::Level::Debug) {
+                debug!(
+                    "ANN from [{}] ts [{}] isReset [{}] peers [{}] ls [{}] known [{}]{}",
+                    ann.node_ip,
+                    ann.header.timestamp,
+                    ann.header.is_reset,
+                    ann.entities.iter().filter(|&a| matches!(&a, Entity::Peer{..})).count(),
+                    ann.entities.iter().filter(|&a| matches!(&a, Entity::LinkState{..})).count(),
+                    node.is_some(),
+                    if node.is_none() && !ann.header.is_reset { " ERR_UNKNOWN" } else { "" }
+                );
+            }
+        }
 
-        if let Some(node) = node.as_ref() {
+        if let (Some(node), Some(ann)) = (node.as_ref(), ann_opt.as_ref()) {
             let node_mut = node.mut_state.read();
+            let ann_timestamp = mktime(ann.header.timestamp);
             if from_node && node_mut.timestamp > ann_timestamp {
                 warn!("old timestamp");
-                reply_error = "old_message";
+                reply_error = ReplyError::OldMessage;
                 ann_opt = None;
             }
         }
@@ -184,7 +205,7 @@ impl Server {
                 if let Some(ann) = ann_opt.as_ref() {
                     if ann.node_ip != self_node.ipv6 {
                         warn!("announcement from peer which is one of ours");
-                        reply_error = "wrong_snode";
+                        reply_error = ReplyError::WrongSnode;
                         ann_opt = None;
                     }
                 }
@@ -193,7 +214,7 @@ impl Server {
                 if let (Some(self_node), Some(ann)) = (self_node, ann_opt.as_ref()) {
                     if ann.node_ip == self_node.ipv6 {
                         warn!("announcement meant for other snode");
-                        reply_error = "wrong_snode";
+                        reply_error = ReplyError::WrongSnode;
                         ann_opt = None;
                     }
                 }
@@ -205,7 +226,7 @@ impl Server {
             let clock_skew = time_diff(SystemTime::now(), mktime(ann.header.timestamp));
             if clock_skew > max_clock_skew {
                 warn!("unacceptably large clock skew {}h", clock_skew.as_secs_f64() / 60.0 / 60.0);
-                reply_error = "excessive_clock_skew";
+                reply_error = ReplyError::ExcessiveClockSkew;
                 ann_opt = None;
             } else {
                 trace!("clock skew {}ms", clock_skew.as_millis());
@@ -219,7 +240,7 @@ impl Server {
                 Some(node.encoding_scheme.clone())
             } else if ann_opt.is_some() {
                 warn!("no encoding scheme");
-                reply_error = "no_encodingScheme";
+                reply_error = ReplyError::NoEncodingScheme;
                 ann_opt = None;
                 None
             } else {
@@ -234,7 +255,7 @@ impl Server {
                 Some(node.version)
             } else if ann_opt.is_some() {
                 warn!("no version");
-                reply_error = "no_version";
+                reply_error = ReplyError::NoVersion;
                 ann_opt = None;
                 None
             } else {
@@ -246,15 +267,16 @@ impl Server {
             if let Some(ann) = ann_opt {
                 ann
             } else {
-                return Ok(()); //xTODO return { stateHash: nodeAnnouncementHash(ctx, node), error: replyError };
+                return Ok((hash::node_announcement_hash(node), reply_error));
             }
         };
+        let ann_timestamp = mktime(ann.header.timestamp);
 
         if let Some(node) = node.as_ref() {
-            let node_mut = node.mut_state.read();
-            if node_mut.timestamp > ann_timestamp { //TODO suspicious - duplicate check? Ask CJ
-                warn!("old announcement [{}] most recent [{:?}]", ann.header.timestamp, node_mut.timestamp);
-                return Ok(()); //xTODO return { stateHash: nodeAnnouncementHash(ctx, node), error: replyError };
+            let node_timestamp = node.mut_state.read().timestamp;
+            if node_timestamp > ann_timestamp { //TODO suspicious - duplicate check? Ask CJ
+                warn!("old announcement [{}] most recent [{:?}]", ann.header.timestamp, node_timestamp);
+                return Ok((hash::node_announcement_hash(Some(node.clone())), reply_error));
             }
         }
 
@@ -273,8 +295,8 @@ impl Server {
             self.add_announcement(node.clone(), &ann);
         } else {
             warn!("no node and no reset message");
-            reply_error = "unknown_node";
-            return Ok(()); //xTODO return { stateHash: nodeAnnouncementHash(ctx, undefined), error: reply_error };
+            reply_error = ReplyError::UnknownNode;
+            return Ok((hash::node_announcement_hash(None), reply_error));
         }
 
         let node = node.expect("internal error: node expected"); // Due to the above checks it should be valid node here
@@ -335,7 +357,7 @@ impl Server {
             self.peers.add_ann(ann.hash.clone(), ann.binary.clone()).await;
         }
 
-        return Ok(()); //xTODO return { stateHash: nodeAnnouncementHash(ctx, node), error: replyError };
+        return Ok((hash::node_announcement_hash(Some(node)), reply_error));
     }
 
     fn add_announcement(&self, node: Arc<Node>, ann: &Announcement) {
@@ -464,6 +486,34 @@ impl Server {
     }
 }
 
+mod hash {
+    use std::sync::Arc;
+
+    use sodiumoxide::crypto::hash::sha512;
+
+    use cjdns_ann::AnnHash;
+
+    use crate::server::nodes::Node;
+
+    pub(super) fn node_announcement_hash(node: Option<Arc<Node>>) -> AnnHash {
+        let mut carry = sha512::Digest([0; 64]);
+        let mut state = 0;
+        if let Some(node) = node {
+            let mut node_mut = node.mut_state.write();
+            state = node_mut.announcements.len();
+            for ann in node_mut.announcements.iter().rev() {
+                let mut hash = sha512::State::new();
+                hash.update(carry.as_ref());
+                hash.update(&ann.binary);
+                carry = hash.finalize();
+            }
+            node_mut.state_hash = Some(AnnHash::from_digest(carry));
+        }
+        debug!("node announcement hash - {}, state - {}", hex::encode(carry), state);
+        AnnHash::from_digest(carry)
+    }
+}
+
 mod nodes {
     //! IP to node mapping
 
@@ -474,10 +524,10 @@ mod nodes {
     use anyhow::Error;
     use parking_lot::{Mutex, RwLock};
 
-    use cjdns_ann::Announcement;
+    use cjdns_ann::{AnnHash, Announcement};
+    use cjdns_bytes::Writer;
     use cjdns_core::EncodingScheme;
     use cjdns_keys::{CJDNS_IP6, CJDNSPublicKey};
-    use cjdns_bytes::Writer;
 
     use crate::peer::Peers;
     use crate::server::link::Link;
@@ -502,7 +552,7 @@ mod nodes {
     pub(super) struct NodeMut {
         pub(super) timestamp: SystemTime,
         pub(super) announcements: Vec<Announcement>,
-        //pub(super) state_hash: Option<())>, //TODO Milestone 3
+        pub(super) state_hash: Option<AnnHash>,
 
         // Dirty trick to preserve the last reset message in order to
         // allow downstream snode peers to be able to get the version and the
@@ -588,7 +638,7 @@ mod nodes {
             let mut out = NodeMut {
                 timestamp,
                 announcements: Vec::new(),
-                //state_hash: None,
+                state_hash: None,
                 reset_msg: None
             };
 
