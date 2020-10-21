@@ -156,21 +156,18 @@ impl Server {
     async fn handle_announce_impl(&self, announce: Vec<u8>, from_node: bool) -> Result<(sha512::Digest, ReplyError), Error> {
         let mut reply_error = ReplyError::None;
 
-        let mut ann_opt = {
-            let mut ret = None;
-            if let Some(announcement_packet) = AnnouncementPacket::try_new(announce).ok() {
-                if announcement_packet.check().is_ok() {
-                    ret = announcement_packet.parse().ok();
-                }
+        let mut ann_opt = None;
+        let mut self_node = None;
+        let mut node = None;
+
+        if let Some(announcement_packet) = AnnouncementPacket::try_new(announce).ok() {
+            if announcement_packet.check().is_ok() {
+                ann_opt = announcement_packet.parse().ok();
             }
-            ret
-        };
+        }
         if ann_opt.is_none() {
             reply_error = ReplyError::FailedParseOrValidate;
         }
-
-        let mut self_node = None;
-        let mut node = None;
 
         if let Some(ann) = ann_opt.as_ref() {
             self_node = {
@@ -277,11 +274,11 @@ impl Server {
         let ann_timestamp = mktime(ann.header.timestamp);
 
         if let Some(node) = node.as_ref() {
-            // we do not return state hash after call to `warn!()`, because hash computation requires write lock,
-            // but read lock is already acquired
             let is_old_ann = {
                 let node_mut = node.mut_state.read();
                 let is_old_ann = node_mut.timestamp > ann_timestamp;
+                // we do not return state hash after call to `warn!()`, because hash computation requires write lock,
+                // but read lock is already acquired
                 if is_old_ann { warn!("old announcement [{}] most recent [{:?}]", ann.header.timestamp, node_mut.timestamp); } //TODO suspicious - duplicate check? Ask CJ
                 is_old_ann
             };
