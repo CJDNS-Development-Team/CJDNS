@@ -156,9 +156,15 @@ impl Server {
     async fn handle_announce_impl(&self, announce: Vec<u8>, from_node: bool) -> Result<(sha512::Digest, ReplyError), Error> {
         let mut reply_error = ReplyError::None;
 
-        let announcement_packet = AnnouncementPacket::try_new(announce)?;
-        announcement_packet.check()?;
-        let mut ann_opt = announcement_packet.parse().ok();
+        let mut ann_opt = {
+            let mut ret = None;
+            if let Some(announcement_packet) = AnnouncementPacket::try_new(announce).ok() {
+                if announcement_packet.check().is_ok() {
+                    ret = announcement_packet.parse().ok();
+                }
+            }
+            ret
+        };
         if ann_opt.is_none() {
             reply_error = ReplyError::FailedParseOrValidate;
         }
