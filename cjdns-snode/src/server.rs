@@ -1,8 +1,5 @@
 //! CJDNS supernode implementation.
 
-#![allow(unused_variables)] //TODO Remove when done
-#![allow(unused_assignments)] //TODO Remove when done
-
 use std::collections::HashMap;
 use std::str::FromStr;
 use std::sync::Arc;
@@ -482,6 +479,21 @@ impl Server {
                     index -= 1;
                 }
             }
+        }
+    }
+}
+
+impl std::fmt::Display for ReplyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            ReplyError::None => write!(f, "none"),
+            ReplyError::FailedParseOrValidate => write!(f, "failed_parse_or_validate"),
+            ReplyError::OldMessage => write!(f, "old_message"),
+            ReplyError::WrongSnode => write!(f, "wrong_snode"),
+            ReplyError::ExcessiveClockSkew => write!(f, "excessive_clock_skew"),
+            ReplyError::NoEncodingScheme => write!(f, "no_encodingScheme"),
+            ReplyError::NoVersion => write!(f, "no_version"),
+            ReplyError::UnknownNode => write!(f, "unknown_node"),
         }
     }
 }

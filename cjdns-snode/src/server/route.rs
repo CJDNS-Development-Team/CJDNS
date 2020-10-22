@@ -1,5 +1,7 @@
 //! Route computation
 
+#![allow(unused_variables)] //TODO Remove when done
+
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::sync::Arc;
@@ -29,7 +31,7 @@ struct CacheKey(CJDNS_IP6, CJDNS_IP6);
 
 #[derive(Clone)]
 pub struct Route {
-    label: RoutingLabel<u64>,
+    pub label: RoutingLabel<u64>,
     hops: Vec<Hop>,
     path: Vec<CJDNS_IP6>,
 }

@@ -35,6 +35,7 @@ cjdns-hdr = { path = "../cjdns-hdr" }
 cjdns-admin = { path = "../cjdns-admin" }
 cjdns-sniff = { path = "../cjdns-sniff" }
 cjdns-bytes = { path = "../cjdns-bytes" }
+cjdns-bencode = { path = "../cjdns-bencode" }
 
 [dev-dependencies]
 chrono = "0.4"
