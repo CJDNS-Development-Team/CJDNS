@@ -1,5 +1,8 @@
 //! Generic Bencode value.
 
+use std::collections::BTreeMap;
+use std::borrow::Cow;
+
 use bendy::{decoding::FromBencode, encoding::ToBencode};
 pub use bendy::decoding::Error as BdecodeError;
 pub use bendy::encoding::Error as BencodeError;
@@ -19,7 +22,10 @@ impl BValue {
     /// Encode this `BValue` as bencoded data bytes.
     pub fn encode(&self) -> Result<Vec<u8>, BencodeError> {
         let BValue(v) = self;
-        v.to_bencode()
+        v.to_bencode()        let mut dict = match self {
+            &mut BValue(BendyValue::Dict(ref mut value)) => value,
+            _ => return Err(()),
+        };
     }
 
     /// Access stored Integer value.
@@ -54,5 +60,25 @@ impl BValue {
         };
         let value = dict.get(key.as_bytes());
         Ok(value.cloned().map(|v| BValue(v)))
+    }
+
+    /// Deletes stored Dict value by key
+    // todo ret type? dict copy past?
+    pub fn delete_dict_value(&mut self, key: &str) -> Result<(), ()> {
+        let mut dict = match self {
+            &mut BValue(BendyValue::Dict(ref mut value)) => value,
+            _ => return Err(()),
+        };
+        let _ = dict.remove(key.as_bytes());
+        Ok(())
+    }
+
+    pub fn set_dict_value(&mut self, key: &str, value: BendyValue) -> Result<(), ()> {
+        let mut dict = match self {
+            &mut BValue(BendyValue::Dict(ref mut value)) => value,
+            _ => return Err(()),
+        };
+        let _ = dict.insert(Cow::from(key.as_bytes()), value);
+        Ok(())
     }
 }
