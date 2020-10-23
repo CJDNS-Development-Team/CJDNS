@@ -315,6 +315,7 @@ dependencies = [
  "chrono 0.4.19 (registry+https://github.com/rust-lang/crates.io-index)",
  "cjdns-admin 0.1.0",
  "cjdns-ann 0.1.0",
+ "cjdns-bencode 0.1.0",
  "cjdns-bytes 0.1.0",
  "cjdns-core 0.1.0",
  "cjdns-hdr 0.1.0",
