@@ -198,21 +198,26 @@ async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<
                 warn!("missing src");
                 return Ok(None);
             }
-            let src_ip = content_benc.get_dict_value("src").map_err(|_| anyhow!("todo"))?.unwrap().as_string().unwrap();
-            let src_ip = CJDNS_IP6::try_from(src_ip.as_str())?;
+            let src_ip = content_benc.get_dict_value("src").map_err(|_| anyhow!("todo"))?.unwrap().as_bytes().unwrap();
+            let src_ip = CJDNS_IP6::try_from(src_ip.as_slice())?;
             if content_benc.get_dict_value("tar").map_err(|_| anyhow!("todo"))?.is_none() {
                 warn!("missing tar");
                 return Ok(None);
             }
-            let tar_ip = content_benc.get_dict_value("tar").map_err(|_| anyhow!("todo"))?.unwrap().as_string().unwrap();
-            let tar_ip = CJDNS_IP6::try_from(tar_ip.as_str())?;
+            let tar_ip = content_benc.get_dict_value("tar").map_err(|_| anyhow!("todo"))?.unwrap().as_bytes().unwrap();
+            let tar_ip = CJDNS_IP6::try_from(tar_ip.as_slice())?;
             let src = server.nodes.by_ip(&src_ip);
             let tar = server.nodes.by_ip(&tar_ip);
 
             let r = get_route(server.clone(), None, None);
-            if let Ok(route) = r {
-                let tar = tar.unwrap();
+            if let (Ok(route), Some(tar)) = (r, tar) {
                 dict.insert(Cow::from("n".as_bytes()), BendyValue::Bytes(Cow::from(tar.key.to_vec())));
+                let np_payload = {
+                    let mut np = vec![1];
+                    np.extend_from_slice(tar.version.to_be_bytes().as_ref());
+                    np
+                };
+                dict.insert(Cow::from("np".as_bytes()), BendyValue::Bytes(Cow::from(np_payload)));
             }
             let recv_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
             dict.insert(Cow::from("recvTime".as_bytes()), BendyValue::Integer(recv_time as i64));
