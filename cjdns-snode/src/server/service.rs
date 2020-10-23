@@ -245,9 +245,23 @@ async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<
             debug!("reply: {:?}", hex::encode(ann_hash.into_inner()));
             Some(Content::Benc(BValue(BendyValue::Dict(dict))))
         },
-        // "pn" => {
-        //     // new msg here
-        // },
+        "pn" => {
+            let mut dict = BTreeMap::new();
+            let recv_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+            dict.insert(Cow::from("recvTime".as_bytes()), BendyValue::Integer(recv_time as i64));
+            dict.insert(Cow::from("stateHash".as_bytes()), BendyValue::Bytes(Cow::from(vec![0; 64])));
+            if ret_msg.route_header.ip6.is_none() {
+                return Err(anyhow!("todo"));
+            }
+            if let Some(n) = server.nodes.by_ip(&ret_msg.route_header.ip6.as_ref().unwrap()) {
+                let n_mut = n.mut_state.read();
+                if let Some(state_hash) = &n_mut.state_hash {
+                    dict.insert(Cow::from("stateHash".as_bytes()), BendyValue::Bytes(Cow::from(state_hash.clone().into_inner())));
+                }
+            }
+            ret_msg.route_header.switch_header.label_shift = 0;
+            Some(Content::Benc(BValue(BendyValue::Dict(dict))))
+        },
         _ => {
             warn!("contentBenc {:?}", content_benc);
             None
