@@ -211,6 +211,7 @@ async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<
 
             let r = get_route(server.clone(), None, None);
             if let (Ok(route), Some(tar)) = (r, tar) {
+                // use route here
                 dict.insert(Cow::from("n".as_bytes()), BendyValue::Bytes(Cow::from(tar.key.to_vec())));
                 let np_payload = {
                     let mut np = vec![1];
@@ -222,23 +223,28 @@ async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<
             let recv_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
             dict.insert(Cow::from("recvTime".as_bytes()), BendyValue::Integer(recv_time as i64));
             ret_msg.route_header.switch_header.label_shift = 0;
+            // Some(Content::Benc(BValue(BendyValue::Dict(dict))))
+            None
+        },
+        "ann" if content_benc.get_dict_value("ann").map_err(|_| anyhow!("todo"))?.is_some() => {
+            let ann = content_benc.get_dict_value("ann").map_err(|_| anyhow!("todo"))?.unwrap().as_bytes().unwrap();
+            let reply = server.handle_announce_impl(ann, true).await?;
+            let (ann_hash, reply_err) = reply;
+            if server.mut_state.lock().self_node.is_none() {
+                return Err(anyhow!("todo"));
+            }
+            let mut dict = BTreeMap::new();
+            let txid = content_benc.get_dict_value("txid").map_err(|_| anyhow!("todo"))?.unwrap().as_bytes().unwrap();
+            dict.insert(Cow::from("txid".as_bytes()), BendyValue::Bytes(Cow::from(txid)));
+            dict.insert(Cow::from("p".as_bytes()), BendyValue::Integer(server.mut_state.lock().self_node.clone().unwrap().version as i64));
+            let recv_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+            dict.insert(Cow::from("recvTime".as_bytes()), BendyValue::Integer(recv_time as i64));
+            dict.insert(Cow::from("stateHash".as_bytes()), BendyValue::Bytes(Cow::from(ann_hash.clone().into_inner())));
+            dict.insert(Cow::from("error".as_bytes()), BendyValue::Bytes(Cow::from(reply_err.to_string().as_bytes().to_vec())));
+            ret_msg.route_header.switch_header.label_shift = 0;
+            debug!("reply: {:?}", hex::encode(ann_hash.into_inner()));
             Some(Content::Benc(BValue(BendyValue::Dict(dict))))
         },
-        // "ann" if content_benc.get_dict_value("ann").map_err(|_| anyhow("todo"))?.is_some() => {
-        //     let ann = content_benc.get_dict_value("ann").map_err(|_| anyhow("todo"))?.unwrap().as_bytes().unwrap();
-        //     let reply = server.handle_announce_impl(ann, true).await?;
-        //     let (ann_hash, reply_err) = reply;
-        //     if server.mut_state.lock().self_node.is_none() {
-        //         return Err(anyhow("todo"));
-        //     }
-        //     let _ = content_benc.set_dict_value("p", );
-        //     let _ = content_benc.set_dict_value("recvTime", );
-        //     let _ = content_benc.set_dict_value("stateHash", );
-        //     let _ = content_benc.set_dict_value("stateHash", );
-        //     msg.route_header.switch_header.label_shift = 0;
-        //     debug!(ctx, "reply: " + hex::encode(ann_hash));
-        //     msg
-        // },
         // "pn" => {
         //     // new msg here
         // },

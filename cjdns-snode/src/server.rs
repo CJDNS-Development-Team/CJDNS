@@ -486,6 +486,21 @@ impl Server {
     }
 }
 
+impl std::fmt::Display for ReplyError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match *self {
+            ReplyError::None => write!(f, "None"),
+            ReplyError::FailedParseOrValidate => write!(f, "FailedParseOrValidate"),
+            ReplyError::OldMessage => write!(f, "OldMessage"),
+            ReplyError::WrongSnode => write!(f, "WrongSnode"),
+            ReplyError::ExcessiveClockSkew => write!(f, "ExcessiveClockSkew"),
+            ReplyError::NoEncodingScheme => write!(f, "NoEncodingScheme"),
+            ReplyError::NoVersion => write!(f, "NoVersion"),
+            ReplyError::UnknownNode => write!(f, "UnknownNode"),
+        }
+    }
+}
+
 mod hash {
     use std::sync::Arc;
 
