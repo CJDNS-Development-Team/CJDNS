@@ -11,8 +11,8 @@ use serde::{Deserialize, Serialize};
 use tokio::select;
 
 use cjdns_keys::CJDNS_IP6;
-use cjdns_core::{EncodingScheme, EncodingSchemeForm};
-use cjdns_admin::{ArgValues, ReturnValue, msgs::GenericResponsePayload};
+use cjdns_admin::ReturnValue;
+use cjdns_admin::msgs::{GenericResponsePayload, Empty};
 use cjdns_sniff::{ContentType, Message, ReceiveError, Sniffer, Content};
 use cjdns_bencode::{BValue, BendyValue};
 
@@ -33,38 +33,20 @@ pub(super) async fn service_task(server: Arc<Server>) {
 async fn do_service(server: Arc<Server>) -> Result<(), Error> {
     let mut cjdns = cjdns_admin::connect(None).await?;
 
+    // getting core node info and deserializing it to `node_info::NodeInfo`
+    let raw_node_info = cjdns.invoke::<_, GenericResponsePayload>("Core_nodeInfo", Empty{}).await?;
+    let node_info = node_info::parse(raw_node_info)?;
+
     // setting self node
-    let node_info = cjdns.invoke::<_, GenericResponsePayload>("Core_nodeInfo", ArgValues::default()).await?;
-
-    let parsed_name = {
-        let my_addr = node_info.get("myAddr").unwrap().as_str().unwrap();
-        parse_node_name(my_addr.to_string()).unwrap()
-    };
-    let (version, _, key) = parsed_name;
-
-    let ip6 = CJDNS_IP6::try_from(&key)?;
-
-    let scheme_forms = node_info.get("encodingScheme").unwrap().as_list(|scheme_map| {
-        match scheme_map {
-            ReturnValue::Map(m) => {
-                let bit_count = m.get("bitCount").unwrap().as_int().unwrap() as u8;
-                let prefix = m.get("prefix").unwrap().as_str().unwrap().parse::<u32>().unwrap();
-                let prefix_len = m.get("prefixLen").unwrap().as_int().unwrap() as u8;
-                Ok(EncodingSchemeForm::try_new(bit_count, prefix_len, prefix).unwrap())
-            },
-            _ => panic!("todo")
-        }
-    }).unwrap();
-    let encoding_scheme = EncodingScheme::try_new(&scheme_forms)?;
-
     {
+        let ipv6 = CJDNS_IP6::try_from(&node_info.key)?;
         let mut server_mut = server.mut_state.lock();
         server_mut.self_node = Some(Arc::new(server.nodes.new_node(
-            version as u16,
-            key,
-            Some(encoding_scheme),
+            node_info.version,
+            node_info.key,
+            Some(node_info.encoding_scheme),
             mktime(0xffffffffffffffffu64),
-            ip6,
+            ipv6,
             None,
         )?));
         println!("SELF NODE DATA {:?}", server_mut.self_node.as_ref().unwrap().encoding_scheme);
@@ -73,8 +55,6 @@ async fn do_service(server: Arc<Server>) -> Result<(), Error> {
     }
 
     warn!("Got selfNode");
-    // let encoding_scheme = node_info.get("encodingScheme").unwrap().as_list();
-
 
     let mut sniffer = Sniffer::sniff_traffic(cjdns, ContentType::Cjdht).await?;
 
@@ -98,6 +78,76 @@ async fn do_service(server: Arc<Server>) -> Result<(), Error> {
                     }
                 }
             }
+        }
+    }
+}
+
+mod node_info {
+    use std::convert::TryFrom;
+
+    use anyhow::{Error, Result};
+
+    use cjdns_admin::ReturnValue;
+    use cjdns_admin::msgs::GenericResponsePayload;
+    use cjdns_keys::CJDNSPublicKey;
+    use cjdns_core::{EncodingScheme, EncodingSchemeForm};
+
+    use crate::utils::node::parse_node_name;
+
+    pub(super) struct NodeInfo {
+        pub(super) version: u16,
+        pub(super) key: CJDNSPublicKey,
+        pub(super) encoding_scheme: EncodingScheme,
+    }
+
+    pub(super) fn parse(raw_node_info: GenericResponsePayload) -> Result<NodeInfo> {
+        NodeInfo::try_from_payload(raw_node_info).map_err(|e| anyhow!("invalid node info: {}", e.to_string()))
+    }
+
+    impl NodeInfo {
+        fn try_from_payload(raw_node_info: GenericResponsePayload) -> Result<Self> {
+            // myAddr entry
+            let node_name = Self::get_node_name(&raw_node_info)?;
+            let (version, _, key) = parse_node_name(node_name)?;
+
+            // encodingScheme entry
+            let encoding_scheme_forms = Self::get_encoding_scheme_forms(&raw_node_info)?;
+            let encoding_scheme = EncodingScheme::try_new(&encoding_scheme_forms).map_err(|e| Error::from(e))?;
+
+            return Ok(NodeInfo { version, key, encoding_scheme });
+        }
+
+        fn get_node_name(raw_node_info: &GenericResponsePayload) -> Result<&str> {
+            let my_addr_opt = raw_node_info.get("myAddr").map(ReturnValue::as_str);
+            if let Some(addr_str_res) = my_addr_opt {
+                return addr_str_res.map_err(|_| anyhow!("can't convert myAddr data to str"));
+            }
+            Err(anyhow!("can't get myAddr"))
+        }
+
+        fn get_encoding_scheme_forms(raw_node_info: &GenericResponsePayload) -> Result<Vec<EncodingSchemeForm>> {
+            let to_scheme_form = |scheme_map: &ReturnValue| {
+                let mut bit_count_opt = None;
+                let mut prefix_opt = None;
+                let mut prefix_len_opt = None;
+                if let ReturnValue::Map(m) = scheme_map {
+                    bit_count_opt = m.get("bitCount").map(ReturnValue::as_int);
+                    prefix_opt = m.get("prefix").map(ReturnValue::as_str);
+                    prefix_len_opt = m.get("prefixLen").map(ReturnValue::as_int);
+                }
+                if let (Some(Ok(bit_count)), Some(Ok(prefix)), Some(Ok(prefix_len))) = (bit_count_opt, prefix_opt, prefix_len_opt) {
+                    let bit_count = u8::try_from(bit_count).map_err(|_| ())?;
+                    let prefix = prefix.parse::<u32>().map_err(|_| ())?;
+                    let prefix_len = u8::try_from(bit_count).map_err(|_| ())?;
+                    return EncodingSchemeForm::try_new(bit_count, prefix_len, prefix).map_err(|_| ())
+                }
+                Err(())
+            };
+            let scheme_forms_opt = raw_node_info.get("encodingScheme").map(|v| v.as_list(to_scheme_form));
+            if let Some(scheme_forms_vec_res) = scheme_forms_opt {
+                return scheme_forms_vec_res.map_err(|_| anyhow!("can't convert encodingScheme data to scheme forms"));
+            }
+            Err(anyhow!("can't get encodingScheme"))
         }
     }
 }
