@@ -126,15 +126,18 @@ mod node_info {
         }
 
         fn get_encoding_scheme_forms(raw_node_info: &GenericResponsePayload) -> Result<Vec<EncodingSchemeForm>> {
+            // converts response payload map value to encoding scheme form
             let to_scheme_form = |scheme_map: &ReturnValue| {
                 let mut bit_count_opt = None;
                 let mut prefix_opt = None;
                 let mut prefix_len_opt = None;
+
                 if let ReturnValue::Map(m) = scheme_map {
                     bit_count_opt = m.get("bitCount").map(ReturnValue::as_int);
                     prefix_opt = m.get("prefix").map(ReturnValue::as_str);
                     prefix_len_opt = m.get("prefixLen").map(ReturnValue::as_int);
                 }
+
                 if let (Some(Ok(bit_count)), Some(Ok(prefix)), Some(Ok(prefix_len))) = (bit_count_opt, prefix_opt, prefix_len_opt) {
                     let bit_count = u8::try_from(bit_count).map_err(|_| ())?;
                     let prefix = prefix.parse::<u32>().map_err(|_| ())?;
@@ -143,6 +146,7 @@ mod node_info {
                 }
                 Err(())
             };
+
             let scheme_forms_opt = raw_node_info.get("encodingScheme").map(|v| v.as_list(to_scheme_form));
             if let Some(scheme_forms_vec_res) = scheme_forms_opt {
                 return scheme_forms_vec_res.map_err(|_| anyhow!("can't convert encodingScheme data to scheme forms"));
@@ -273,8 +277,7 @@ async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<
             let recv_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
             dict.insert(Cow::from("recvTime".as_bytes()), BendyValue::Integer(recv_time as i64));
             ret_msg.route_header.switch_header.label_shift = 0;
-            // Some(Content::Benc(BValue(BendyValue::Dict(dict))))
-            None
+            Some(Content::Benc(BValue(BendyValue::Dict(dict))))
         },
         "ann" if content_benc.get_dict_value("ann").map_err(|_| anyhow!("todo"))?.is_some() => {
             let ann = content_benc.get_dict_value("ann").map_err(|_| anyhow!("todo"))?.unwrap().as_bytes().unwrap();
