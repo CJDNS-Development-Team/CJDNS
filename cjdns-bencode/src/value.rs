@@ -49,45 +49,33 @@ impl BValue {
         }
     }
 
+    // todo as_mut_dict/as_dict??
+
     /// Access stored Dict value by key and return the data under that key.
     pub fn get_dict_value(&self, key: &str) -> Result<Option<BValue>, ()> {
         let dict = match self {
-            &BValue(BendyValue::Dict(ref value)) => value,
+            &BValue(BendyValue::Dict(ref d)) => d,
             _ => return Err(()),
         };
         let value = dict.get(key.as_bytes());
         Ok(value.cloned().map(|v| BValue(v)))
     }
 
-    /// Deletes stored Dict value by key
-    // todo ret type? dict copy past?
     pub fn delete_dict_value(&mut self, key: &str) -> Result<(), ()> {
         let mut dict = match self {
-            &mut BValue(BendyValue::Dict(ref mut value)) => value,
+            BValue(BendyValue::Dict(d)) => d,
             _ => return Err(()),
         };
         let _ = dict.remove(key.as_bytes());
         Ok(())
     }
 
-    // pub fn set_dict_value<V: AsBendyValue>(&mut self, key: &str, value: V) -> Result<(), ()> {
-    //     let mut dict = match self {
-    //         &mut BValue(BendyValue::Dict(ref mut v)) => v,
-    //         _ => return Err(()),
-    //     };
-    //     let _ = dict.insert(Cow::from(key.as_bytes()), value.as_value());
-    //     Ok(())
-    // }
+    pub fn set_dict_value(&mut self, key: &'static str, value: BendyValue<'static>) -> Result<(), ()> {
+        let mut dict = match self {
+            BValue(BendyValue::Dict(d)) => d,
+            _ => return Err(()),
+        };
+        let _ = dict.insert(Cow::from(key.as_bytes()), value);
+        Ok(())
+    }
 }
-
-// impl AsBendyValue for &[u8] {
-//     fn as_value(&self) -> BendyValue {
-//         BendyValue::Bytes(Cow::from(*self))
-//     }
-// }
-//
-// impl AsBendyValue for u64 {
-//     fn as_value(&self) -> BendyValue {
-//         BendyValue::Integer(*self as i64)
-//     }
-// }

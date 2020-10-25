@@ -7,6 +7,11 @@ pub fn mktime(timestamp: u64) -> SystemTime {
     UNIX_EPOCH + Duration::from_millis(timestamp)
 }
 
+pub fn now_u64() -> u64 {
+    let now_dur = SystemTime::now().duration_since(UNIX_EPOCH).expect("internal error: 'earlier' > 'now'");
+    now_dur.as_secs()
+}
+
 /// Compute duration between two timestamps.
 /// It does not matter which of these timestamps is earlier.
 pub fn time_diff(t1: SystemTime, t2: SystemTime) -> Duration {

@@ -14,12 +14,12 @@ use cjdns_keys::CJDNS_IP6;
 use cjdns_admin::ReturnValue;
 use cjdns_admin::msgs::{GenericResponsePayload, Empty};
 use cjdns_sniff::{ContentType, Message, ReceiveError, Sniffer, Content};
-use cjdns_bencode::{BValue, BendyValue};
+use cjdns_bencode::{BValue, BendyValue, to_bytes};
 
 use crate::server::route::get_route;
 use crate::server::Server;
 use crate::utils::node::parse_node_name;
-use crate::utils::timestamp::mktime;
+use crate::utils::timestamp::{mktime, now_u64};
 use std::collections::BTreeMap;
 use std::borrow::Cow;
 
@@ -33,11 +33,9 @@ pub(super) async fn service_task(server: Arc<Server>) {
 async fn do_service(server: Arc<Server>) -> Result<(), Error> {
     let mut cjdns = cjdns_admin::connect(None).await?;
 
-    // getting core node info and deserializing it to `node_info::NodeInfo`
+    // setting self node
     let raw_node_info = cjdns.invoke::<_, GenericResponsePayload>("Core_nodeInfo", Empty{}).await?;
     let node_info = node_info::parse(raw_node_info)?;
-
-    // setting self node
     {
         let ipv6 = CJDNS_IP6::try_from(&node_info.key)?;
         let mut server_mut = server.mut_state.lock();
@@ -49,15 +47,14 @@ async fn do_service(server: Arc<Server>) -> Result<(), Error> {
             ipv6,
             None,
         )?));
-        println!("SELF NODE DATA {:?}", server_mut.self_node.as_ref().unwrap().encoding_scheme);
-        println!("SELF NODE DATA {:?}", server_mut.self_node.as_ref().unwrap().ipv6);
-        println!("SELF NODE DATA {:?}", server_mut.self_node.as_ref().unwrap().key);
     }
-
     warn!("Got selfNode");
 
     let mut sniffer = Sniffer::sniff_traffic(cjdns, ContentType::Cjdht).await?;
 
+    // todo checking connection
+
+    // handling subnode message
     loop {
         select! {
             msg = sniffer.receive() => {
@@ -80,6 +77,126 @@ async fn do_service(server: Arc<Server>) -> Result<(), Error> {
             }
         }
     }
+}
+
+/// Handles a massage from local node, and returns a response message that should be sent in return.
+async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<Message>, Error> {
+    let mut ret_msg = msg.clone();
+    let ret_content_benc = content_benc::create_content_builder(&mut ret_msg.content);
+    let msg_content_benc = content_benc::parse(&msg.content);
+
+    // comment for Alex: I know we could do it differently, but I tried to follow js impl style
+    if msg_content_benc.is_none() {
+        return Ok(None)
+    }
+    let msg_content_benc = msg_content_benc.expect("internal error: msg content isn't b-decoded");
+
+    if msg_content_benc.sq().is_none() {
+        return Ok(None)
+    }
+    let sq = msg_content_benc.sq().expect("internal error: no 'sq' entry in benc content")?;
+
+    if msg.route_header.version != 0 {
+        // no op
+    } else if msg_content_benc.p().is_none() {
+        // no op
+    } else {
+        let p = msg_content_benc.p().expect("internal error: no 'p' entry in benc content")?;
+        ret_msg.route_header.version = u32::try_from(p)?;
+    }
+
+    if msg.route_header.version == 0 || msg.route_header.public_key.is_none() || msg.route_header.ip6.is_none() {
+        if msg.route_header.ip6.is_some() {
+            warn!("message from {:?} with missing key or version {:?}", msg.route_header.ip6, msg);
+        }
+        return Ok(None)
+    }
+
+    server.mut_state.lock().current_node = msg.route_header.ip6.clone();
+    match sq.as_str() {
+        "gr" => {
+            let mut src = None;
+            let mut tar = None;
+
+            if let Some(src_bytes_res) = msg_content_benc.src() {
+                let src_bytes = src_bytes_res?;
+                let src_ip = CJDNS_IP6::try_from(src_bytes)?;
+                src = server.nodes.by_ip(&src_ip);
+            } else {
+                warn!("missing src");
+                return Ok(None);
+            }
+
+            if let Some(tar_bytes_res) = msg_content_benc.tar() {
+                let tar_bytes = tar_bytes_res?;
+                let tar_ip = CJDNS_IP6::try_from(tar_bytes)?;
+                tar = server.nodes.by_ip(&tar_ip);
+            } else {
+                warn!("missing tar");
+                return Ok(None);
+            }
+
+            let r = get_route(server.clone(), src.clone(), tar.clone());
+            if let (Ok(route), Some(tar)) = (r, tar) {
+                // use route here
+                let n = tar.key.to_vec();
+                let np = {
+                    let mut np = vec![1];
+                    np.extend_from_slice(tar.version.to_be_bytes().as_ref());
+                    np
+                };
+                ret_content_benc
+
+                // ret_content_benc.set/ ret_content_benc.delete
+            }
+            let recv_time = now_u64();
+            // ret_content_benc.set/ ret_content_benc.delete
+            ret_msg.route_header.switch_header.label_shift = 0;
+            // returns nothing
+        },
+        // "ann" if content_benc.get_dict_value("ann").map_err(|_| anyhow!("todo"))?.is_some() => {
+        //     let ann = content_benc.get_dict_value("ann").map_err(|_| anyhow!("todo"))?.unwrap().as_bytes().unwrap();
+        //     let reply = server.handle_announce_impl(ann, true).await?;
+        //     let (ann_hash, reply_err) = reply;
+        //     if server.mut_state.lock().self_node.is_none() {
+        //         return Err(anyhow!("todo"));
+        //     }
+        //     let mut dict = BTreeMap::new();
+        //     let txid = content_benc.get_dict_value("txid").map_err(|_| anyhow!("todo"))?.unwrap().as_bytes().unwrap();
+        //     dict.insert(Cow::from("txid".as_bytes()), BendyValue::Bytes(Cow::from(txid)));
+        //     dict.insert(Cow::from("p".as_bytes()), BendyValue::Integer(server.mut_state.lock().self_node.clone().unwrap().version as i64));
+        //     let recv_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        //     dict.insert(Cow::from("recvTime".as_bytes()), BendyValue::Integer(recv_time as i64));
+        //     dict.insert(Cow::from("stateHash".as_bytes()), BendyValue::Bytes(Cow::from(ann_hash.clone().into_inner())));
+        //     dict.insert(Cow::from("error".as_bytes()), BendyValue::Bytes(Cow::from(reply_err.to_string().as_bytes().to_vec())));
+        //     ret_msg.route_header.switch_header.label_shift = 0;
+        //     debug!("reply: {:?}", hex::encode(ann_hash.into_inner()));
+        //     Some(Content::Benc(BValue(BendyValue::Dict(dict))))
+        // },
+        // "pn" => {
+        //     let mut dict = BTreeMap::new();
+        //     let recv_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        //     dict.insert(Cow::from("recvTime".as_bytes()), BendyValue::Integer(recv_time as i64));
+        //     dict.insert(Cow::from("stateHash".as_bytes()), BendyValue::Bytes(Cow::from(vec![0; 64])));
+        //     if ret_msg.route_header.ip6.is_none() {
+        //         return Err(anyhow!("todo"));
+        //     }
+        //     if let Some(n) = server.nodes.by_ip(&ret_msg.route_header.ip6.as_ref().unwrap()) {
+        //         let n_mut = n.mut_state.read();
+        //         if let Some(state_hash) = &n_mut.state_hash {
+        //             dict.insert(Cow::from("stateHash".as_bytes()), BendyValue::Bytes(Cow::from(state_hash.clone().into_inner())));
+        //         }
+        //     }
+        //     ret_msg.route_header.switch_header.label_shift = 0;
+        //     Some(Content::Benc(BValue(BendyValue::Dict(dict))))
+        // },
+        _ => {
+            warn!("contentBenc {:?}", content_benc);
+            None
+        },
+    };
+    server.mut_state.lock().current_node = None;
+    Ok(Some(ret_msg))
 }
 
 mod node_info {
@@ -156,175 +273,96 @@ mod node_info {
     }
 }
 
-#[derive(Serialize, Deserialize)]
-struct ContentBenc {
-    /// "protocol version"
-    #[serde(rename = "p")]
-    p: u32,
+mod content_benc {
+    use std::convert::TryFrom;
 
-    /// transaction id
-    #[serde(rename = "txid")]
-    txid: Vec<u8>,
+    use anyhow::{Result, Error};
 
-    #[serde(flatten)]
-    body: QueryResponse,
-}
+    use cjdns_sniff::Content;
+    use cjdns_bencode::BValue;
 
-#[derive(Serialize, Deserialize)]
-#[serde(untagged)]
-enum QueryResponse {
-    Query {
-        /// "snode query"
-        #[serde(rename = "sq")]
-        sq: Option<Vec<u8>>,
+    pub(super) fn parse(content: &Content) -> Option<ContentBencQuery> {
+        ContentBencQuery::try_from_content(&content)
+    }
 
-        /// for a "gr" (get-route) query, source
-        #[serde(rename = "src")]
-        src: Option<Vec<u8>>,
+    pub(super) fn create_content_builder(content: &mut Content) {
+        todo!()
+    }
 
-        /// for a "gr" (get-route) query, destination
-        #[serde(rename = "tar")]
-        tar: Option<Vec<u8>>,
+    pub(super) struct ContentBencQuery {
+        p: Option<BValue>,
+        txid: Option<BValue>,
+        sq: Option<BValue>,
+        src: Option<BValue>,
+        tar: Option<BValue>,
+        ann: Option<BValue>,
+    }
 
-        /// for an "ann" (announce) query, the announcement
-        #[serde(rename = "ann")]
-        ann: Option<Vec<u8>>,
-    },
-
-    Response {
-        #[serde(rename = "recvTime")]
-        recv_time: Option<u64>,
-
-        #[serde(rename = "stateHash")]
-        state_hash: Option<Vec<u8>>,
-
-        #[serde(rename = "error")]
-        error: Option<String>,
-
-        #[serde(rename = "n")]
-        n: Option<Vec<u8>>,
-
-        #[serde(rename = "np")]
-        np: Option<Vec<u8>>,
-    },
-}
-
-/// Handles a massage from local node, and returns a response message that should be sent in return.
-async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<Message>, Error> {
-    let mut ret_msg = msg.clone();
-
-    let mut content_benc_opt = None;
-    let mut sq_opt = None;
-
-    if let Content::Benc(content_benc) = &msg.content {
-        content_benc_opt = Some(content_benc);
-        if let Some(sq) = content_benc.get_dict_value("sq").map_err(|_| anyhow!("todo"))? {
-            sq_opt = sq.as_string().ok();
+    impl ContentBencQuery {
+        pub fn p(&self) -> Option<Result<i64>> {
+            if let Some(p) = self.p.as_ref().map(BValue::as_int) {
+                let p = p.map_err(|_| anyhow!("'p' isn't an int"));
+                Some(p);
+            }
+            None
         }
-    }
-    if content_benc_opt.is_none() || sq_opt.is_none() {
-        return Ok(None);
-    }
 
-    let sq = sq_opt.expect("internal error: sq is none");
-    let content_benc = content_benc_opt.expect("internal error: content benc is none");
-
-    if msg.route_header.version != 0 {
-        // no op
-    } else if content_benc.get_dict_value("p").map_err(|_| anyhow!("todo"))?.is_none() {
-        // no op
-    } else {
-        let p = content_benc.get_dict_value("p").map_err(|_| anyhow!("todo"))?.unwrap().as_int().unwrap();
-        ret_msg.route_header.version = p as u32;
-    }
-
-    if msg.route_header.version == 0 || msg.route_header.public_key.is_none() || msg.route_header.ip6.is_none() {
-        if msg.route_header.ip6.is_some() {
-            warn!("message from {:?} with missing key or version {:?}", msg.route_header.ip6, msg);
+        pub fn sq(&self) -> Option<Result<String>> {
+            if let Some(sq) = self.sq.as_ref().map(BValue::as_string) {
+                let sq = sq.map_err(|_| anyhow!("'sq' value isn't a string"));
+                return Some(sq);
+            }
+            None
         }
-        return Ok(None)
-    }
-    server.mut_state.lock().current_node = msg.route_header.ip6.clone();
-    let content_benc = match sq.as_str() {
-        "gr" => {
-            let mut dict = BTreeMap::new();
-            if content_benc.get_dict_value("src").map_err(|_| anyhow!("todo"))?.is_none() {
-                warn!("missing src");
-                return Ok(None);
-            }
-            let src_ip = content_benc.get_dict_value("src").map_err(|_| anyhow!("todo"))?.unwrap().as_bytes().unwrap();
-            let src_ip = CJDNS_IP6::try_from(src_ip.as_slice())?;
-            if content_benc.get_dict_value("tar").map_err(|_| anyhow!("todo"))?.is_none() {
-                warn!("missing tar");
-                return Ok(None);
-            }
-            let tar_ip = content_benc.get_dict_value("tar").map_err(|_| anyhow!("todo"))?.unwrap().as_bytes().unwrap();
-            let tar_ip = CJDNS_IP6::try_from(tar_ip.as_slice())?;
-            let src = server.nodes.by_ip(&src_ip);
-            let tar = server.nodes.by_ip(&tar_ip);
 
-            let r = get_route(server.clone(), None, None);
-            if let (Ok(route), Some(tar)) = (r, tar) {
-                // use route here
-                dict.insert(Cow::from("n".as_bytes()), BendyValue::Bytes(Cow::from(tar.key.to_vec())));
-                let np_payload = {
-                    let mut np = vec![1];
-                    np.extend_from_slice(tar.version.to_be_bytes().as_ref());
-                    np
-                };
-                dict.insert(Cow::from("np".as_bytes()), BendyValue::Bytes(Cow::from(np_payload)));
+        pub fn src(&self) -> Option<Result<Vec<u8>>> {
+            if let Some(src) = self.src.as_ref().map(BValue::as_bytes) {
+                let src = src.map_err(|_| anyhow!("can't convert 'src' value to bytes"));
+                return Some(src);
             }
-            let recv_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-            dict.insert(Cow::from("recvTime".as_bytes()), BendyValue::Integer(recv_time as i64));
-            ret_msg.route_header.switch_header.label_shift = 0;
-            Some(Content::Benc(BValue(BendyValue::Dict(dict))))
-        },
-        "ann" if content_benc.get_dict_value("ann").map_err(|_| anyhow!("todo"))?.is_some() => {
-            let ann = content_benc.get_dict_value("ann").map_err(|_| anyhow!("todo"))?.unwrap().as_bytes().unwrap();
-            let reply = server.handle_announce_impl(ann, true).await?;
-            let (ann_hash, reply_err) = reply;
-            if server.mut_state.lock().self_node.is_none() {
-                return Err(anyhow!("todo"));
+            None
+        }
+
+        pub fn tar(&self) -> Result<Vec<u8>> {
+            if let Some(tar) = self.tar.as_ref().map(BValue::as_bytes) {
+                let tar = tar.map_err(|_| anyhow!("can't convert 'tar' value to bytes"))?;
+                return Ok(tar);
             }
-            let mut dict = BTreeMap::new();
-            let txid = content_benc.get_dict_value("txid").map_err(|_| anyhow!("todo"))?.unwrap().as_bytes().unwrap();
-            dict.insert(Cow::from("txid".as_bytes()), BendyValue::Bytes(Cow::from(txid)));
-            dict.insert(Cow::from("p".as_bytes()), BendyValue::Integer(server.mut_state.lock().self_node.clone().unwrap().version as i64));
-            let recv_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-            dict.insert(Cow::from("recvTime".as_bytes()), BendyValue::Integer(recv_time as i64));
-            dict.insert(Cow::from("stateHash".as_bytes()), BendyValue::Bytes(Cow::from(ann_hash.clone().into_inner())));
-            dict.insert(Cow::from("error".as_bytes()), BendyValue::Bytes(Cow::from(reply_err.to_string().as_bytes().to_vec())));
-            ret_msg.route_header.switch_header.label_shift = 0;
-            debug!("reply: {:?}", hex::encode(ann_hash.into_inner()));
-            Some(Content::Benc(BValue(BendyValue::Dict(dict))))
-        },
-        "pn" => {
-            let mut dict = BTreeMap::new();
-            let recv_time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-            dict.insert(Cow::from("recvTime".as_bytes()), BendyValue::Integer(recv_time as i64));
-            dict.insert(Cow::from("stateHash".as_bytes()), BendyValue::Bytes(Cow::from(vec![0; 64])));
-            if ret_msg.route_header.ip6.is_none() {
-                return Err(anyhow!("todo"));
+            Err(anyhow!("no 'tar' entry in benc content"))
+        }
+
+        pub fn ann(&self) -> Result<Vec<u8>> {
+            if let Some(ann) = self.ann.as_ref().map(BValue::as_bytes) {
+                let ann = ann.map_err(|_| anyhow!("can't convert 'ann' value to bytes"))?;
+                return Ok(ann);
             }
-            if let Some(n) = server.nodes.by_ip(&ret_msg.route_header.ip6.as_ref().unwrap()) {
-                let n_mut = n.mut_state.read();
-                if let Some(state_hash) = &n_mut.state_hash {
-                    dict.insert(Cow::from("stateHash".as_bytes()), BendyValue::Bytes(Cow::from(state_hash.clone().into_inner())));
+            Err(anyhow!("no 'ann' entry in benc content"))
+        }
+
+        fn try_from_content(content: &Content) -> Option<Self> {
+            let create_content_benc = |dict_bvalue: &BValue| -> Result<Self, ()> {
+                let p = dict_bvalue.get_dict_value("p")?;
+                let txid = dict_bvalue.get_dict_value("txid")?;
+                let sq = dict_bvalue.get_dict_value("sq")?;
+                let src = dict_bvalue.get_dict_value("src")?;
+                let tar = dict_bvalue.get_dict_value("tar")?;
+                let ann = dict_bvalue.get_dict_value("ann")?;
+                Ok(ContentBencQuery {p, txid, sq, src, tar, ann})
+            };
+
+            if let Content::Benc(bvalue) = content {
+                if Self::is_dict_bvalue(&bvalue) {
+                    let ret = create_content_benc(bvalue).expect("internal error: bvalue isn't a dict");
+                    return Some(ret);
                 }
             }
-            ret_msg.route_header.switch_header.label_shift = 0;
-            Some(Content::Benc(BValue(BendyValue::Dict(dict))))
-        },
-        _ => {
-            warn!("contentBenc {:?}", content_benc);
             None
-        },
-    };
-    server.mut_state.lock().current_node = None;
-    if let Some(benc) = content_benc {
-        ret_msg.content = benc;
-        warn!("RETURN MESSAGE {:?}", ret_msg);
-        return Ok(Some(ret_msg));
+        }
+
+        fn is_dict_bvalue(bvalue: &BValue) -> bool {
+            let nonexistent_key = "nonexistent_key";
+            // returns Err(()) if bvalue is not a dict
+            bvalue.get_dict_value(nonexistent_key).is_ok()
+        }
     }
-    Ok(None)
 }
