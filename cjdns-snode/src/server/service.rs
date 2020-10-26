@@ -29,23 +29,22 @@ async fn do_service(server: Arc<Server>) -> Result<(), Error> {
     // setting self node
     let raw_node_info = cjdns.invoke::<_, GenericResponsePayload>("Core_nodeInfo", Empty{}).await?;
     let node_info = node_info::parse(raw_node_info)?;
-    {
-        let ipv6 = CJDNS_IP6::try_from(&node_info.key)?;
-        let mut server_mut = server.mut_state.lock();
-        server_mut.self_node = Some(Arc::new(server.nodes.new_node(
-            node_info.version,
-            node_info.key,
-            Some(node_info.encoding_scheme),
-            mktime(0xffffffffffffffffu64),
-            ipv6,
-            None,
-        )?));
-    }
+
+    let ipv6 = CJDNS_IP6::try_from(&node_info.key)?;
+    server.mut_state.lock().self_node = Some(Arc::new(server.nodes.new_node(
+        node_info.version,
+        node_info.key,
+        Some(node_info.encoding_scheme),
+        mktime(0xffffffffffffffffu64),
+        ipv6,
+        None,
+    )?));
+
     warn!("Got selfNode");
 
     let mut sniffer = Sniffer::sniff_traffic(cjdns, ContentType::Cjdht).await?;
 
-    // todo checking connection
+    // todo check connection impl after implementing new routes for test_srv
 
     // handling subnode message
     loop {
@@ -297,7 +296,6 @@ mod content_benc {
         }
 
         pub(super) fn delete(&mut self, key: &'static str) {
-
             let _ = self.dict_content.delete_dict_value(key);
             self.update_matched_field(key, None);
         }

@@ -1,12 +1,12 @@
 //! Generic Bencode value.
 
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 
 use bendy::{decoding::FromBencode, encoding::ToBencode};
 pub use bendy::decoding::Error as BdecodeError;
 pub use bendy::encoding::Error as BencodeError;
 use bendy::value::Value as BendyValue;
-use std::collections::BTreeMap;
 
 pub trait AsBValue {
     fn as_bvalue(&self) -> Result<BValue, ()>;
@@ -90,6 +90,9 @@ mod as_bendy_impl {
 
     use super::{AsBValue, BValue, BendyValue};
 
+    // TODO I have an intention to simplify in a way, that:
+    // 1) one impl will be used for String, slice and vec
+    // 2) there will be no need to do such things in user code: some_value.as_slice/as_bytes/as_ref.
     impl AsBValue for &[u8] {
         fn as_bvalue(&self) -> Result<BValue, ()> {
             let bendy = BendyValue::Bytes(Cow::Owned(self.to_vec()));
