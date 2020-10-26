@@ -23,6 +23,7 @@ use crate::config::Config;
 use crate::peer::{AnnData, create_peers, Peers};
 use crate::server::link::{Link, LinkStateEntry, mk_link};
 use crate::server::nodes::{Node, Nodes};
+use crate::server::route::Routing;
 use crate::utils::task::periodic_task;
 use crate::utils::timestamp::{mktime, time_diff};
 
@@ -103,10 +104,9 @@ struct Server {
 
 struct ServerMut {
     debug_node: Option<CJDNS_IP6>, //TODO Debugging feature - need to implement log filtering
-    //last_rebuild: Instant, //TODO Milestone 3
     self_node: Option<Arc<Node>>,
-    //route_cache: (), //TODO Milestone 3
     current_node: Option<CJDNS_IP6>,
+    routing: Routing,
 }
 
 #[derive(Debug)]
@@ -130,10 +130,9 @@ impl Server {
             nodes: Nodes::new(peers),
             mut_state: Mutex::new(ServerMut {
                 debug_node: None,
-                //last_rebuild: Instant::now(),
                 self_node: None,
-                //route_cache: (),
                 current_node: None,
+                routing: Routing::new(),
             }),
         }
     }
@@ -542,7 +541,6 @@ mod nodes {
     pub(super) struct Node {
         pub(super) node_type: NodeType,
         pub(super) version: u16,
-        #[allow(dead_code)] //TODO Milestone 3
         pub(super) key: CJDNSPublicKey,
         pub(super) ipv6: CJDNS_IP6,
         pub(super) encoding_scheme: EncodingScheme,
@@ -573,6 +571,12 @@ mod nodes {
                 peers,
                 nodes_by_ip: RwLock::new(HashMap::new()),
             }
+        }
+
+        pub fn all_ips(&self) -> Vec<CJDNS_IP6> {
+            // Cloning all the IP6's can be costy.
+            // Alternative approcah is to lock the original hashmap during the graph rebuild, but isn't it too long?
+            self.nodes_by_ip.read().keys().cloned().collect()
         }
 
         pub fn by_ip(&self, ip: &CJDNS_IP6) -> Option<Arc<Node>> {
@@ -693,11 +697,23 @@ mod nodes {
             }
         }
     }
+
+    impl PartialEq for Node {
+        fn eq(&self, other: &Self) -> bool {
+            self.node_type == other.node_type
+            && self.version == other.version
+            && self.key == other.key
+            && self.ipv6 == other.ipv6
+            && self.encoding_scheme == other.encoding_scheme
+        }
+    }
+
+    impl Eq for Node {}
 }
 
 mod link {
     use std::collections::HashMap;
-    use std::sync::Arc;
+    use std::sync::{Arc, atomic::AtomicU32};
 
     use parking_lot::Mutex;
 
@@ -714,7 +730,7 @@ mod link {
         pub(super) mtu: u32,
         pub(super) flags: u8,
         pub(super) time: u64,
-        //pub(super) cost: (), //TODO Milestone 3
+        pub(super) cost: Arc<AtomicU32>,
     }
 
     #[derive(Clone, Debug)]
@@ -733,7 +749,7 @@ mod link {
             mtu: ann_peer.mtu,
             flags: ann_peer.flags,
             time: ann.header.timestamp,
-            //cost: (),
+            cost: Arc::new(AtomicU32::new(0)),
         }
     }
 }
