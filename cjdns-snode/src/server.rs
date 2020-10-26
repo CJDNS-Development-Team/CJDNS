@@ -489,14 +489,14 @@ impl Server {
 impl std::fmt::Display for ReplyError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match *self {
-            ReplyError::None => write!(f, "None"),
-            ReplyError::FailedParseOrValidate => write!(f, "FailedParseOrValidate"),
-            ReplyError::OldMessage => write!(f, "OldMessage"),
-            ReplyError::WrongSnode => write!(f, "WrongSnode"),
-            ReplyError::ExcessiveClockSkew => write!(f, "ExcessiveClockSkew"),
-            ReplyError::NoEncodingScheme => write!(f, "NoEncodingScheme"),
-            ReplyError::NoVersion => write!(f, "NoVersion"),
-            ReplyError::UnknownNode => write!(f, "UnknownNode"),
+            ReplyError::None => write!(f, "none"),
+            ReplyError::FailedParseOrValidate => write!(f, "failed_parse_or_validate"),
+            ReplyError::OldMessage => write!(f, "old_message"),
+            ReplyError::WrongSnode => write!(f, "wrong_snode"),
+            ReplyError::ExcessiveClockSkew => write!(f, "excessive_clock_skew"),
+            ReplyError::NoEncodingScheme => write!(f, "no_encodingScheme"),
+            ReplyError::NoVersion => write!(f, "no_version"),
+            ReplyError::UnknownNode => write!(f, "unknown_node"),
         }
     }
 }

@@ -75,7 +75,7 @@ async fn do_service(server: Arc<Server>) -> Result<(), Error> {
 /// Handles a massage from local node, and returns a response message that should be sent in return.
 async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<Message>, Error> {
     let mut ret_msg = msg.clone();
-    let msg_content_benc = content_benc::parse(&mut ret_msg.content);
+    let msg_content_benc = content_benc::from(&mut ret_msg.content);
 
     let mut sq = None;
     if let Some(content) = msg_content_benc.as_ref() {
@@ -112,7 +112,7 @@ async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<
 
             if let Some(src_bytes_res) = msg_content_benc.src() {
                 let src_bytes = src_bytes_res?;
-                let src_ip = CJDNS_IP6::try_from(src_bytes.as_slice())?;
+                let src_ip = CJDNS_IP6::try_from(src_bytes.as_slice())?; // todo & instead of as slice
                 src = server.nodes.by_ip(&src_ip);
             } else {
                 warn!("missing src");
@@ -121,7 +121,7 @@ async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<
 
             if let Some(tar_bytes_res) = msg_content_benc.tar() {
                 let tar_bytes = tar_bytes_res?;
-                let tar_ip = CJDNS_IP6::try_from(tar_bytes.as_slice())?;
+                let tar_ip = CJDNS_IP6::try_from(tar_bytes.as_slice())?; // todo & instead of as slice
                 tar = server.nodes.by_ip(&tar_ip);
             } else {
                 warn!("missing tar");
@@ -137,8 +137,8 @@ async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<
                     np.extend_from_slice(&tar.version.to_be_bytes());
                     np
                 };
-                msg_content_benc.set("n", n.as_slice())?; // todo
-                msg_content_benc.set("np", np.as_slice())?; // todo
+                msg_content_benc.set("n", n.as_slice())?; // todo & instead of as slice
+                msg_content_benc.set("np", np.as_slice())?; // todo & instead of as slice
             }
             msg_content_benc.set("recvTime", now_u64())?;
             ret_msg.route_header.switch_header.label_shift = 0;
@@ -164,7 +164,7 @@ async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<
         },
         "pn" => {
             msg_content_benc.set("recvTime", now_u64())?;
-            msg_content_benc.set("stateHash", [0u8; 64].as_ref())?; // todo
+            msg_content_benc.set("stateHash", [0u8; 64].as_ref())?; // todo & instead of as ref
 
             if ret_msg.route_header.ip6.is_none() {
                 return Err(anyhow!("route header ip6 is none"));
@@ -186,7 +186,6 @@ async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<
             warn!("contentBenc {:?}", msg_content_benc);
         },
     };
-    warn!("SENDING MSG {:?}", ret_msg); // todo remove when finished
     server.mut_state.lock().current_node = None;
     Ok(Some(ret_msg))
 }
@@ -271,9 +270,9 @@ mod content_benc {
     use anyhow::{Result, Error};
 
     use cjdns_sniff::Content;
-    use cjdns_bencode::{BValue, AsBendyValue};
+    use cjdns_bencode::{BValue, AsBValue};
 
-    pub(super) fn parse(content: &mut Content) -> Option<ContentBenc> {
+    pub(super) fn from(content: &mut Content) -> Option<ContentBenc> {
         ContentBenc::try_from_content(content)
     }
 
@@ -282,7 +281,6 @@ mod content_benc {
         dict_content: &'a mut BValue,
 
         p: Option<BValue>,
-        txid: Option<BValue>,
         sq: Option<BValue>,
         src: Option<BValue>,
         tar: Option<BValue>,
@@ -290,15 +288,18 @@ mod content_benc {
     }
 
     impl<'a> ContentBenc<'a> {
-        pub(super) fn set<V: AsBendyValue>(&mut self, key: &'static str, value: V) -> Result<(), Error>{
-            let res = self.dict_content.set_dict_value(key, value);
-            res.map_err(|_| anyhow!("setting value can't be b-encoded"))
+        pub(super) fn set<V: AsBValue>(&mut self, key: &'static str, value: V) -> Result<(), Error>{
+            let value = value.as_bvalue().map_err(|_| anyhow!("setting value can't be b-encoded"))?;
+
+            let _ = self.dict_content.set_dict_value(key, value.clone());
+            self.update_matched_field(key, Some(value));
+            Ok(())
         }
 
         pub(super) fn delete(&mut self, key: &'static str) {
-            // error could be returned only if `self.dict_content` is not a dict BValue,
-            // but this condition is already checked during struct construction
+
             let _ = self.dict_content.delete_dict_value(key);
+            self.update_matched_field(key, None);
         }
 
         pub(super) fn p(&self) -> Option<Result<i64>> {
@@ -344,12 +345,11 @@ mod content_benc {
         fn try_from_content(content: &'a mut Content) -> Option<Self> {
             let create_content_benc = |dict_content: &'a mut BValue| -> Result<Self, ()> {
                 let p = dict_content.get_dict_value("p")?;
-                let txid = dict_content.get_dict_value("txid")?;
                 let sq = dict_content.get_dict_value("sq")?;
                 let src = dict_content.get_dict_value("src")?;
                 let tar = dict_content.get_dict_value("tar")?;
                 let ann = dict_content.get_dict_value("ann")?;
-                Ok(ContentBenc {dict_content, p, txid, sq, src, tar, ann})
+                Ok(ContentBenc {dict_content, p, sq, src, tar, ann})
             };
 
             if let Content::Benc(bvalue) = content {
@@ -365,6 +365,18 @@ mod content_benc {
             let test_query = bvalue.get_dict_value("non_existent_key");
             // test_query is Err(()) if bvalue is not a dict
             test_query.is_ok()
+        }
+
+        // Secures access to changed fields
+        fn update_matched_field(&mut self, key: &'static str, value: Option<BValue>) {
+            match key {
+                "p" => self.p = value,
+                "sq" => self.sq = value,
+                "src" => self.src = value,
+                "tar" => self.tar = value,
+                "ann" => self.ann = value,
+                _ => return
+            }
         }
     }
 
