@@ -14,7 +14,7 @@ use cjdns_sniff::{ContentType, Message, ReceiveError, Sniffer};
 
 use crate::server::route::get_route;
 use crate::server::Server;
-use crate::utils::timestamp::{mktime, now_u64};
+use crate::utils::timestamp::{current_timestamp, mktime};
 
 pub(super) async fn service_task(server: Arc<Server>) {
     let res = do_service(server).await;
@@ -139,7 +139,7 @@ async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<
                 msg_content_benc.set("n", n.as_slice())?; // todo & instead of as slice
                 msg_content_benc.set("np", np.as_slice())?; // todo & instead of as slice
             }
-            msg_content_benc.set("recvTime", now_u64())?;
+            msg_content_benc.set("recvTime", current_timestamp())?;
             ret_msg.route_header.switch_header.label_shift = 0;
 
             msg_content_benc.delete("sq");
@@ -151,7 +151,7 @@ async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<
             let (ann_hash, reply_err) = server.handle_announce_impl(ann, true).await?;
             if let Some(node) = server.mut_state.lock().self_node.as_ref() {
                 msg_content_benc.set("p", node.version)?;
-                msg_content_benc.set("recvTime", now_u64())?;
+                msg_content_benc.set("recvTime", current_timestamp())?;
                 msg_content_benc.set("stateHash", ann_hash.bytes())?;
                 msg_content_benc.set("error", reply_err.to_string())?;
 
@@ -162,7 +162,7 @@ async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<
             }
         },
         "pn" => {
-            msg_content_benc.set("recvTime", now_u64())?;
+            msg_content_benc.set("recvTime", current_timestamp())?;
             msg_content_benc.set("stateHash", [0u8; 64].as_ref())?; // todo & instead of as ref
 
             if ret_msg.route_header.ip6.is_none() {
