@@ -1,16 +1,20 @@
 //! Generic Bencode value.
 
-use std::collections::BTreeMap;
 use std::borrow::Cow;
+use std::convert::TryFrom;
 
 use bendy::{decoding::FromBencode, encoding::ToBencode};
 pub use bendy::decoding::Error as BdecodeError;
 pub use bendy::encoding::Error as BencodeError;
-pub use bendy::value::Value as BendyValue;
+use bendy::value::Value as BendyValue;
+
+pub trait AsBendyValue {
+    fn as_bendy_value(&self) -> Result<BendyValue<'static>, ()>;
+}
 
 /// Generic Bencode value.
 #[derive(PartialEq, Eq, Clone, Debug)]
-pub struct BValue(pub BendyValue<'static>);
+pub struct BValue(BendyValue<'static>);
 
 impl BValue {
     /// Create `BValue` from bencoded data bytes.
@@ -62,7 +66,7 @@ impl BValue {
     }
 
     pub fn delete_dict_value(&mut self, key: &str) -> Result<(), ()> {
-        let mut dict = match self {
+        let dict = match self {
             BValue(BendyValue::Dict(d)) => d,
             _ => return Err(()),
         };
@@ -70,12 +74,26 @@ impl BValue {
         Ok(())
     }
 
-    pub fn set_dict_value(&mut self, key: &'static str, value: BendyValue<'static>) -> Result<(), ()> {
-        let mut dict = match self {
+    pub fn set_dict_value<V: AsBendyValue>(&mut self, key: &'static str, value: V) -> Result<(), ()> {
+        let dict = match self {
             BValue(BendyValue::Dict(d)) => d,
             _ => return Err(()),
         };
+        let value = value.as_bendy_value()?;
         let _ = dict.insert(Cow::from(key.as_bytes()), value);
         Ok(())
+    }
+}
+
+impl AsBendyValue for Vec<u8> {
+    fn as_bendy_value(&self) -> Result<BendyValue<'static>, ()> {
+        Ok(BendyValue::Bytes(Cow::Owned(self.clone())))
+    }
+}
+
+impl AsBendyValue for u64 {
+    fn as_bendy_value(&self) -> Result<BendyValue<'static>, ()> {
+        let i = i64::try_from(*self).map_err(|_| ())?;
+        Ok(BendyValue::Integer(i))
     }
 }

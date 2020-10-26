@@ -4,24 +4,17 @@
 
 use std::sync::Arc;
 use std::convert::TryFrom;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::Error;
-use serde::{Deserialize, Serialize};
 use tokio::select;
 
 use cjdns_keys::CJDNS_IP6;
-use cjdns_admin::ReturnValue;
 use cjdns_admin::msgs::{GenericResponsePayload, Empty};
-use cjdns_sniff::{ContentType, Message, ReceiveError, Sniffer, Content};
-use cjdns_bencode::{BValue, BendyValue, to_bytes};
+use cjdns_sniff::{ContentType, Message, ReceiveError, Sniffer};
 
 use crate::server::route::get_route;
 use crate::server::Server;
-use crate::utils::node::parse_node_name;
 use crate::utils::timestamp::{mktime, now_u64};
-use std::collections::BTreeMap;
-use std::borrow::Cow;
 
 pub(super) async fn service_task(server: Arc<Server>) {
     let res = do_service(server).await;
@@ -84,23 +77,22 @@ async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<
     let mut ret_msg = msg.clone();
     let msg_content_benc = content_benc::parse(&mut ret_msg.content);
 
-    // comment for Alex: I know we could do it differently, but I tried to follow js impl style
     if msg_content_benc.is_none() {
         return Ok(None)
     }
-    let msg_content_benc = msg_content_benc.expect("internal error: msg content isn't b-decoded");
+    let mut msg_content_benc = msg_content_benc.expect("internal error: msg content isn't b-decoded");
 
-    if msg_content_benc.sq.is_none() {
+    if msg_content_benc.sq().is_none() {
         return Ok(None)
     }
-    let sq = msg_content_benc.sq.expect("internal error: no 'sq' entry in benc content")?;
+    let sq = msg_content_benc.sq().expect("internal error: no 'sq' entry in benc content")?;
 
     if msg.route_header.version != 0 {
         // no op
-    } else if msg_content_benc.p.is_none() {
+    } else if msg_content_benc.p().is_none() {
         // no op
     } else {
-        let p = msg_content_benc.p.expect("internal error: no 'p' entry in benc content")?;
+        let p = msg_content_benc.p().expect("internal error: no 'p' entry in benc content")?;
         ret_msg.route_header.version = u32::try_from(p)?;
     }
 
@@ -117,7 +109,7 @@ async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<
             let mut src = None;
             let mut tar = None;
 
-            if let Some(src_bytes_res) = msg_content_benc.src {
+            if let Some(src_bytes_res) = msg_content_benc.src() {
                 let src_bytes = src_bytes_res?;
                 let src_ip = CJDNS_IP6::try_from(src_bytes.as_slice())?;
                 src = server.nodes.by_ip(&src_ip);
@@ -126,7 +118,7 @@ async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<
                 return Ok(None);
             }
 
-            if let Some(tar_bytes_res) = msg_content_benc.tar {
+            if let Some(tar_bytes_res) = msg_content_benc.tar() {
                 let tar_bytes = tar_bytes_res?;
                 let tar_ip = CJDNS_IP6::try_from(tar_bytes.as_slice())?;
                 tar = server.nodes.by_ip(&tar_ip);
@@ -137,20 +129,23 @@ async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<
 
             let r = get_route(server.clone(), src.clone(), tar.clone());
             if let (Ok(route), Some(tar)) = (r, tar) {
-                // use route here
+                // todo use route here
                 let n = tar.key.to_vec();
                 let np = {
                     let mut np = vec![1];
                     np.extend_from_slice(&tar.version.to_be_bytes());
                     np
                 };
-                // start here
-                // msg_content_benc.set()/ msg_content_benc.delete
+                msg_content_benc.set("n", n)?;
+                msg_content_benc.set("np", np)?;
             }
             let recv_time = now_u64();
-            // ret_content_benc.set/ ret_content_benc.delete
+            msg_content_benc.set("recvTime", recv_time)?;
             ret_msg.route_header.switch_header.label_shift = 0;
-            // returns nothing
+
+            msg_content_benc.delete("sq");
+            msg_content_benc.delete("src");
+            msg_content_benc.delete("tar");
         },
         // "ann" if content_benc.get_dict_value("ann").map_err(|_| anyhow!("todo"))?.is_some() => {
         //     let ann = content_benc.get_dict_value("ann").map_err(|_| anyhow!("todo"))?.unwrap().as_bytes().unwrap();
@@ -272,53 +267,91 @@ mod node_info {
 }
 
 mod content_benc {
-    use std::convert::TryFrom;
-
     use anyhow::{Result, Error};
 
     use cjdns_sniff::Content;
-    use cjdns_bencode::BValue;
+    use cjdns_bencode::{BValue, AsBendyValue};
 
     pub(super) fn parse(content: &mut Content) -> Option<ContentBenc> {
         ContentBenc::try_from_content(content)
     }
 
+    // Wrapper over message b-encoded content holding mutable reference to it.
     pub(super) struct ContentBenc<'a> {
         dict_content: &'a mut BValue,
 
-        pub(super) p: Option<Result<i64>>,
-        pub(super) txid: Option<Result<i64>>,
-        pub(super) sq: Option<Result<String>>,
-        pub(super) src: Option<Result<Vec<u8>>>,
-        pub(super) tar: Option<Result<Vec<u8>>>,
-        pub(super) ann: Option<Result<Vec<u8>>>,
+        p: Option<BValue>,
+        txid: Option<BValue>,
+        sq: Option<BValue>,
+        src: Option<BValue>,
+        tar: Option<BValue>,
+        ann: Option<BValue>,
     }
 
     impl<'a> ContentBenc<'a> {
+        pub(super) fn set<V: AsBendyValue>(&mut self, key: &'static str, value: V) -> Result<(), Error>{
+            let res = self.dict_content.set_dict_value(key, value);
+            res.map_err(|_| anyhow!("setting value can't be b-encoded"))
+        }
+        pub(super) fn delete(&mut self, key: &'static str) {
+            // error could be returned only if `self.dict_content` is not a dict BValue,
+            // but this condition is already checked during struct construction
+            let _ = self.dict_content.delete_dict_value(key);
+        }
+
+        pub(super) fn p(&self) -> Option<Result<i64>> {
+            if let Some(p) = self.p.as_ref().map(BValue::as_int) {
+                let p = p.map_err(|_| anyhow!("'p' isn't an int"));
+                Some(p);
+            }
+            None
+        }
+
+        pub(super) fn sq(&self) -> Option<Result<String>> {
+            if let Some(sq) = self.sq.as_ref().map(BValue::as_string) {
+                let sq = sq.map_err(|_| anyhow!("'sq' value isn't a string"));
+                return Some(sq);
+            }
+            None
+        }
+
+        pub(super) fn src(&self) -> Option<Result<Vec<u8>>> {
+            if let Some(src) = self.src.as_ref().map(BValue::as_bytes) {
+                let src = src.map_err(|_| anyhow!("can't convert 'src' value to bytes"));
+                return Some(src);
+            }
+            None
+        }
+
+        pub(super) fn tar(&self) -> Option<Result<Vec<u8>>> {
+            if let Some(tar) = self.tar.as_ref().map(BValue::as_bytes) {
+                let tar = tar.map_err(|_| anyhow!("can't convert 'tar' value to bytes"));
+                return Some(tar);
+            }
+            None
+        }
+
+        pub(super) fn ann(&self) -> Result<Vec<u8>> {
+            if let Some(ann) = self.ann.as_ref().map(BValue::as_bytes) {
+                let ann = ann.map_err(|_| anyhow!("can't convert 'ann' value to bytes"))?;
+                return Ok(ann);
+            }
+            Err(anyhow!("no 'ann' entry in benc content"))
+        }
+
         fn try_from_content(content: &'a mut Content) -> Option<Self> {
             let create_content_benc = |dict_content: &'a mut BValue| -> Result<Self, ()> {
                 let p = dict_content.get_dict_value("p")?;
-                let p = p.as_ref().map(|v| v.as_int().map_err(|_| anyhow!("'p' isn't an int")));
-
                 let txid = dict_content.get_dict_value("txid")?;
-                let txid = txid.as_ref().map(|v| v.as_int().map_err(|_| anyhow!("'txid' isn't an int")));
-
                 let sq = dict_content.get_dict_value("sq")?;
-                let sq = sq.as_ref().map(|v| v.as_string().map_err(|_| anyhow!("'sq' value isn't a string")));
-
                 let src = dict_content.get_dict_value("src")?;
-                let src = src.as_ref().map(|v| v.as_bytes().map_err(|_| anyhow!("'src' isn't a bytes vec")));
-
                 let tar = dict_content.get_dict_value("tar")?;
-                let tar = tar.as_ref().map(|v| v.as_bytes().map_err(|_| anyhow!("'tar' isn't a bytes vec")));
-
                 let ann = dict_content.get_dict_value("ann")?;
-                let ann = ann.as_ref().map(|v| v.as_bytes().map_err(|_| anyhow!("'ann' isn't a bytes vec")));
                 Ok(ContentBenc {dict_content, p, txid, sq, src, tar, ann})
             };
 
             if let Content::Benc(bvalue) = content {
-                if Self::is_dict_bvalue(&bvalue) {
+                if Self::is_dict(&bvalue) {
                     let ret = create_content_benc(bvalue).expect("internal error: bvalue isn't a dict");
                     return Some(ret);
                 }
@@ -326,10 +359,10 @@ mod content_benc {
             None
         }
 
-        fn is_dict_bvalue(bvalue: &BValue) -> bool {
-            let nonexistent_key = "nonexistent_key";
-            // returns Err(()) if bvalue is not a dict
-            bvalue.get_dict_value(nonexistent_key).is_ok()
+        fn is_dict(bvalue: &BValue) -> bool {
+            let test_query = bvalue.get_dict_value("non_existent_key");
+            // test_query is Err(()) if bvalue is not a dict
+            test_query.is_ok()
         }
     }
 }
