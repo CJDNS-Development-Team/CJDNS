@@ -71,7 +71,7 @@ async fn do_service(server: Arc<Server>) -> Result<(), Error> {
     }
 }
 
-/// Handles a massage from local node, and returns a response message that should be sent in return.
+/// Handles a message from local node, and returns a response message that should be sent in return.
 async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<Message>, Error> {
     let mut ret_msg = msg.clone();
     let msg_content_benc = content_benc::from(&mut ret_msg.content);
