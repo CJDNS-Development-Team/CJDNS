@@ -77,22 +77,23 @@ async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<
     let mut ret_msg = msg.clone();
     let msg_content_benc = content_benc::parse(&mut ret_msg.content);
 
-    if msg_content_benc.is_none() {
+    let mut sq = None;
+    if let Some(content) = msg_content_benc {
+        if let Some(sq_res) = content.sq() {
+            sq = Some(sq_res?);
+        }
+    }
+    if msg_content_benc.is_none() || sq.is_none() {
         return Ok(None)
     }
-    let mut msg_content_benc = msg_content_benc.expect("internal error: msg content isn't b-decoded");
 
-    if msg_content_benc.sq().is_none() {
-        return Ok(None)
-    }
-    let sq = msg_content_benc.sq().expect("internal error: no 'sq' entry in benc content")?;
+    let mut msg_content_benc = msg_content_benc.expect("internal error: msg content isn't b-decoded");
+    let sq = sq.expect("internal error: no 'sq' entry in benc content");
 
     if msg.route_header.version != 0 {
         // no op
-    } else if msg_content_benc.p().is_none() {
-        // no op
-    } else {
-        let p = msg_content_benc.p().expect("internal error: no 'p' entry in benc content")?;
+    } else if let Some(p_res) =  msg_content_benc.p() {
+        let p = p_res?;
         ret_msg.route_header.version = u32::try_from(p)?;
     }
 
