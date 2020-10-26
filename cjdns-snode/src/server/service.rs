@@ -215,7 +215,7 @@ mod node_info {
         fn try_from_payload(raw_node_info: GenericResponsePayload) -> Result<Self> {
             // myAddr entry
             let node_name = Self::get_node_name(&raw_node_info)?;
-            let (version, _, key) = parse_node_name(node_name)?;
+            let (version, _, key) = parse_node_name(node_name).map_err(|_| anyhow!("malformed node name string"))?;
 
             // encodingScheme entry
             let encoding_scheme_forms = Self::get_encoding_scheme_forms(&raw_node_info)?;

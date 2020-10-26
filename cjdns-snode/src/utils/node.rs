@@ -1,6 +1,7 @@
+//! Node name parsing utilities
+
 use std::convert::TryFrom;
 
-use anyhow::Error;
 use regex::Regex;
 
 use cjdns_core::RoutingLabel;
@@ -14,21 +15,22 @@ lazy_static! {
     ).expect("bad regexp");
 }
 
-/// Gets version, label and public key all together in tuple from `name` argument, if it has valid structure. Otherwise returns error.
-pub fn parse_node_name(name: &str) -> Result<(u16, RoutingLabel<u64>, CJDNSPublicKey), Error> {
+/// Gets version, label and public key all together in tuple from `name` argument, if it has valid structure.
+/// Otherwise returns error.
+pub fn parse_node_name(name: &str) -> Result<(u16, RoutingLabel<u64>, CJDNSPublicKey), ()> {
     if let Some(c) = NODE_NAME_RE.captures(name) {
         let str_from_captured_group = |group_num: usize| -> &str { c.get(group_num).expect("bad group index").as_str() };
         let version = str_from_captured_group(1).parse::<u16>().expect("bad regexp - version");
         let label = RoutingLabel::try_from(str_from_captured_group(2)).expect("bad regexp - label");
-        let public_key = CJDNSPublicKey::try_from(str_from_captured_group(3))?;
+        let public_key = CJDNSPublicKey::try_from(str_from_captured_group(3)).or(Err(()))?;
         Ok((version, label, public_key))
     } else {
-        Err(anyhow!("malformed node name string"))
+        Err(())
     }
 }
 
 #[test]
-fn test_parse_node_name() {
+fn test_parse_node_name_valid() {
     let valid_node_names = vec![
         "v19.0000.0000.0000.0863.2v6dt6f841hzhq2wsqwt263w2dswkt6fz82vcyxqptk88mtp8y50.k",
         "v10.0a20.00ff.00e0.9901.qgkjd0stfvk9r3j28s4gh8rgslbgx2r5xgxzxkgm5vdxqwn8xsu0.k",
@@ -36,7 +38,10 @@ fn test_parse_node_name() {
     for valid_node_name in valid_node_names {
         assert!(parse_node_name(valid_node_name).is_ok());
     }
+}
 
+#[test]
+fn test_parse_node_name_invalid() {
     let invalid_node_names = vec![
         "12foo",
         "",
