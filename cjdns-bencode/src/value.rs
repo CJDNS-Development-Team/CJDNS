@@ -85,9 +85,9 @@ impl BValue {
     }
 }
 
-impl AsBendyValue for Vec<u8> {
+impl AsBendyValue for &[u8] {
     fn as_bendy_value(&self) -> Result<BendyValue<'static>, ()> {
-        Ok(BendyValue::Bytes(Cow::Owned(self.clone())))
+        Ok(BendyValue::Bytes(Cow::Owned(self.to_vec())))
     }
 }
 
@@ -95,5 +95,19 @@ impl AsBendyValue for u64 {
     fn as_bendy_value(&self) -> Result<BendyValue<'static>, ()> {
         let i = i64::try_from(*self).map_err(|_| ())?;
         Ok(BendyValue::Integer(i))
+    }
+}
+
+impl AsBendyValue for u16 {
+    fn as_bendy_value(&self) -> Result<BendyValue<'static>, ()> {
+        let i = i64::from(*self);
+        Ok(BendyValue::Integer(i))
+    }
+}
+
+impl AsBendyValue for String {
+    fn as_bendy_value(&self) -> Result<BendyValue<'static>, ()> {
+        let string_bytes = self.as_bytes().to_vec();
+        Ok(BendyValue::Bytes(Cow::Owned(string_bytes)))
     }
 }
