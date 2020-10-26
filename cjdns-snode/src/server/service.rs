@@ -188,6 +188,7 @@ async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<
             warn!("contentBenc {:?}", msg.content);
         },
     };
+    warn!("SENDING MSG {:?}", ret_msg); // todo remove when finished
     server.mut_state.lock().current_node = None;
     Ok(Some(ret_msg))
 }
