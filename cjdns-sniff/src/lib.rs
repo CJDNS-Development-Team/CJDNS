@@ -149,7 +149,7 @@ impl Sniffer {
 
     /// Send a message. Destination is an optional argument, if `None`, localhost is used.
     pub async fn send(&mut self, msg: Message, dest: Option<&str>) -> Result<(), SendError> {
-        let dest = dest.unwrap_or("fe80::a00c:3e6b:aa58:4921"); // todo change to fc00::1 when finished
+        let dest = dest.unwrap_or("fc00::1");
 
         let mut buf = Vec::new();
 
