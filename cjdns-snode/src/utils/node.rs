@@ -1,9 +1,10 @@
 use std::convert::TryFrom;
 
+use anyhow::Error;
+use regex::Regex;
+
 use cjdns_core::RoutingLabel;
 use cjdns_keys::CJDNSPublicKey;
-use regex::Regex;
-use anyhow::Error;
 
 lazy_static! {
     static ref NODE_NAME_RE: Regex = Regex::new(

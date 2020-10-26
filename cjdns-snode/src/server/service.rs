@@ -2,14 +2,14 @@
 
 #![allow(dead_code)] //TODO remove when done
 
-use std::sync::Arc;
 use std::convert::TryFrom;
+use std::sync::Arc;
 
 use anyhow::Error;
 use tokio::select;
 
+use cjdns_admin::msgs::{Empty, GenericResponsePayload};
 use cjdns_keys::CJDNS_IP6;
-use cjdns_admin::msgs::{GenericResponsePayload, Empty};
 use cjdns_sniff::{ContentType, Message, ReceiveError, Sniffer};
 
 use crate::server::route::get_route;
@@ -194,10 +194,10 @@ mod node_info {
 
     use anyhow::{Error, Result};
 
-    use cjdns_admin::ReturnValue;
     use cjdns_admin::msgs::GenericResponsePayload;
-    use cjdns_keys::CJDNSPublicKey;
+    use cjdns_admin::ReturnValue;
     use cjdns_core::{EncodingScheme, EncodingSchemeForm};
+    use cjdns_keys::CJDNSPublicKey;
 
     use crate::utils::node::parse_node_name;
 
@@ -266,10 +266,10 @@ mod node_info {
 mod content_benc {
     use std::fmt;
 
-    use anyhow::{Result, Error};
+    use anyhow::{Error, Result};
 
+    use cjdns_bencode::{AsBValue, BValue};
     use cjdns_sniff::Content;
-    use cjdns_bencode::{BValue, AsBValue};
 
     pub(super) fn from(content: &mut Content) -> Option<ContentBenc> {
         ContentBenc::try_from_content(content)

@@ -88,7 +88,7 @@ mod as_bendy_impl {
     use std::borrow::Cow;
     use std::convert::TryFrom;
 
-    use super::{AsBValue, BValue, BendyValue};
+    use super::{AsBValue, BendyValue, BValue};
 
     // TODO I have an intention to simplify in a way, that:
     // 1) one impl will be used for String, slice and vec
