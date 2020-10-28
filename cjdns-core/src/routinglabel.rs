@@ -70,6 +70,12 @@ impl<L: LabelBits> RoutingLabel<L> {
         debug_assert!(bits != L::ZERO, "invariant broken");
         bits
     }
+
+    /// Size in bytes of this routing label
+    #[inline]
+    pub fn size(&self) -> usize {
+        L::BIT_SIZE as usize / 8
+    }
 }
 
 impl LabelBits for u32 {

@@ -26,6 +26,11 @@ pub struct CJDNSPublicKey {
     k: [u8; 32],
 }
 
+impl CJDNSPublicKey {
+    /// Size in bytes of the public key
+    pub const SIZE: usize = 32;
+}
+
 impl TryFrom<&str> for CJDNSPublicKey {
     type Error = KeyCreationError;
 

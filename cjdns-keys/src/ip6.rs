@@ -27,6 +27,11 @@ pub struct CJDNS_IP6 {
     k: [u8; 16],
 }
 
+impl CJDNS_IP6 {
+    /// Size in bytes of the IPv6 address
+    pub const SIZE: usize = 16;
+}
+
 impl TryFrom<&CJDNSPublicKey> for CJDNS_IP6 {
     type Error = KeyCreationError;
 
