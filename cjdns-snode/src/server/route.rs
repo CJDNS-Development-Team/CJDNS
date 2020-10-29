@@ -2,7 +2,6 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
 
 use thiserror::Error;
@@ -87,7 +86,7 @@ fn get_route_impl(nodes: &Nodes, routing: &mut Routing, src: Arc<Node>, dst: Arc
                         .iter()
                         .map(|link| {
                             let cost = link_cost(link);
-                            link.cost.store(cost, Ordering::Relaxed);
+                            link.mut_state.lock().cost = cost;
                             cost
                         })
                         .min()

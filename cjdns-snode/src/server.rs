@@ -327,9 +327,11 @@ impl Server {
                         // nothing
                     } else {
                         // only small changes (if any)
-                        stored_link.flags = new_link.flags;
-                        stored_link.mtu = new_link.mtu;
-                        stored_link.time = new_link.time;
+                        let mut stored_link_state = stored_link.mut_state.lock();
+                        let new_link_state = new_link.mut_state.lock();
+                        stored_link_state.flags = new_link_state.flags;
+                        stored_link_state.mtu = new_link_state.mtu;
+                        stored_link_state.time = new_link_state.time;
                         continue 'peer;
                     }
                     // major changes, replace the link and wipe out link state
@@ -725,7 +727,7 @@ mod nodes {
 
 mod link {
     use std::collections::HashMap;
-    use std::sync::{Arc, atomic::AtomicU32};
+    use std::sync::Arc;
 
     use parking_lot::Mutex;
 
@@ -738,11 +740,15 @@ mod link {
         pub(super) encoding_form_number: u8,
         pub(super) peer_num: u16,
         pub(super) link_state: Arc<Mutex<HashMap<u64, LinkStateEntry>>>,
+        pub(super) mut_state: Arc<Mutex<LinkStateMut>>
+    }
 
+    #[derive(Clone, Debug)]
+    pub(super) struct LinkStateMut {
         pub(super) mtu: u32,
         pub(super) flags: u8,
         pub(super) time: u64,
-        pub(super) cost: Arc<AtomicU32>,
+        pub(super) cost: u32,
     }
 
     #[derive(Clone, Debug)]
@@ -758,10 +764,14 @@ mod link {
             encoding_form_number: ann_peer.encoding_form_number,
             peer_num: ann_peer.peer_num,
             link_state: Arc::new(Mutex::new(HashMap::new())),
-            mtu: ann_peer.mtu,
-            flags: ann_peer.flags,
-            time: ann.header.timestamp,
-            cost: Arc::new(AtomicU32::new(0)),
+            mut_state: Arc::new(Mutex::new(
+                LinkStateMut {
+                    mtu: ann_peer.mtu,
+                    flags: ann_peer.flags,
+                    time: ann.header.timestamp,
+                    cost: 0,
+                }
+            ))
         }
     }
 }
