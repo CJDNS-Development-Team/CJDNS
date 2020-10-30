@@ -9,7 +9,7 @@ pub use bendy::encoding::Error as BencodeError;
 use bendy::value::Value as BendyValue;
 
 /// Generic Bencode value.
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct BValue(BendyValue<'static>);
 
 pub struct BValueBuilder(Option<BendyValue<'static>>);
@@ -208,5 +208,68 @@ impl BValueBuilder {
             panic!("expected dict BValue");
         };
         BValueBuilder(Some(value))
+    }
+}
+
+mod debug {
+    use std::borrow::Cow;
+    use std::collections::BTreeMap;
+    use std::fmt;
+
+    use bendy::value::Value as BendyValue;
+
+    use super::BValue;
+
+    impl fmt::Debug for BValue {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            let BValue(bv) = self;
+            dump_value(f, bv)?;
+            Ok(())
+        }
+    }
+
+    fn dump_value(f: &mut fmt::Formatter, value: &BendyValue) -> fmt::Result {
+        match value {
+            BendyValue::Integer(v) => write!(f, "{}", v)?,
+            BendyValue::Bytes(v) if is_ascii(v) => write!(f, "'{}'", String::from_utf8_lossy(v))?,
+            BendyValue::Bytes(v) => write!(f, "0x{}", hex::encode(v))?,
+            BendyValue::Dict(v) => {
+                f.write_str("{")?;
+                dump_dict(f, v)?;
+                f.write_str("}")?;
+            },
+            BendyValue::List(v) => {
+                f.write_str("[")?;
+                dump_list(f, v)?;
+                f.write_str("]")?;
+            },
+        }
+        Ok(())
+    }
+
+    fn dump_dict(f: &mut fmt::Formatter, dict: &BTreeMap<Cow<[u8]>, BendyValue>) -> fmt::Result {
+        for (key, value) in dict {
+            if is_ascii(key) {
+                write!(f, "{}", String::from_utf8_lossy(key))?;
+            } else {
+                write!(f, "0x{}", hex::encode(key))?;
+            }
+            f.write_str(":")?;
+            dump_value(f, value)?;
+            f.write_str(",")?;
+        }
+        Ok(())
+    }
+
+    fn dump_list(f: &mut fmt::Formatter, list: &[BendyValue]) -> fmt::Result {
+        for item in list {
+            dump_value(f, item)?;
+            f.write_str(",")?;
+        }
+        Ok(())
+    }
+
+    fn is_ascii(bytes: &[u8]) -> bool {
+        bytes.iter().all(|&v| v >= 32 && v <= 127)
     }
 }
