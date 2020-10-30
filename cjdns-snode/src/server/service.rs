@@ -100,12 +100,15 @@ async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<
         ;
         Ok(res)
     } else {
-        Err(anyhow!("bad message content - bencode expected"))
+        Ok(None) // Ignore unknown messages
     }
 }
 
 async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader, content_benc: BValue) -> Result<Option<BValue>, Error> {
-    let sq = content_benc.get_dict_value_str("sq").map_err(|_| anyhow!("bad message: 'sq' string entry expected in root dict"))?;
+    if !content_benc.has_dict_entry("sq") {
+        return Ok(None); // Ignore unknown messages
+    }
+    let sq = content_benc.get_dict_value_str("sq").expect("'sq' string entry expected in root dict");
 
     let version = {
         if route_header.version > 0 {
@@ -140,8 +143,8 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
                 return Ok(None);
             }
 
-            let src = content_benc.get_dict_value_bytes("src").map_err(|_| anyhow!("bad message: 'src' bytes entry expected in root dict"))?;
-            let tar = content_benc.get_dict_value_bytes("tar").map_err(|_| anyhow!("bad message: 'tar' bytes entry expected in root dict"))?;
+            let src = content_benc.get_dict_value_bytes("src").expect("bad message: 'src' bytes entry expected in root dict");
+            let tar = content_benc.get_dict_value_bytes("tar").expect("bad message: 'tar' bytes entry expected in root dict");
 
             let src_ip = CJDNS_IP6::try_from(src.as_slice()).map_err(|e| anyhow!("bad 'src' address: {}", e))?;
             let tar_ip = CJDNS_IP6::try_from(tar.as_slice()).map_err(|e| anyhow!("bad 'tar' address: {}", e))?;
