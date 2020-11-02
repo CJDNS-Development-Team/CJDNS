@@ -1,7 +1,5 @@
 //! Route computation
 
-#![allow(unused_variables)] //TODO Remove when done
-
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::sync::Arc;
@@ -116,9 +114,7 @@ fn get_route_impl(nodes: &Nodes, routing: &mut Routing, src: Arc<Node>, dst: Arc
     // Because nodes announce their own reachability instead of reachability of others.
     let path = {
         let dijkstra = routing.dijkstra.as_ref().expect("no path solver");
-        let mut path = dijkstra.path(&dst.ipv6, &src.ipv6);
-        path.reverse();
-        path
+        dijkstra.reverse_path(&dst.ipv6, &src.ipv6)
     };
 
     if path.is_empty() {
@@ -137,7 +133,7 @@ fn get_route_impl(nodes: &Nodes, routing: &mut Routing, src: Arc<Node>, dst: Arc
                 if let Some(last) = last {
                     if let Some(Some(link)) = node.inward_links_by_ip.lock().get(&last.ipv6).map(|ls| ls.get(0)) {
                         let mut label = RoutingLabel::try_new(link.label.bits() as u64)?;
-                        let (cur_form, cur_form_num) = get_encoding_form(label, &last.encoding_scheme).ok()?;
+                        let (_, cur_form_num) = get_encoding_form(label, &last.encoding_scheme).ok()?;
                         if cur_form_num < form_num {
                             label = re_encode(label, &last.encoding_scheme, Some(form_num)).ok()?;
                         }
@@ -203,34 +199,194 @@ impl Routing {
 }
 
 mod dijkstra {
-    use std::marker::PhantomData;
+    use std::cmp::Reverse;
+    use std::collections::{HashMap, HashSet};
+    use std::hash::Hash;
+    use std::ops::Add;
 
-    pub(super) trait GraphBuilder<T, W: Eq + Ord> {
-        fn add_node<I: Iterator<Item=(T, W)>>(&mut self, node: T, inward_links: I);
+    /// Graph building functions.
+    pub(super) trait GraphBuilder<T: Eq + Hash, W: Eq + Ord> {
+        fn add_node<I: IntoIterator<Item=(T, W)>>(&mut self, node_tag: T, links: I);
     }
 
-    pub(super) trait GraphSolver<T, W: Eq + Ord> {
+    /// Path finding functions.
+    pub(super) trait GraphSolver<T: Eq + Hash, W: Eq + Ord> {
+        /// Find a path from `from` node to `to` node.
         fn path(&self, from: &T, to: &T) -> Vec<T>;
+
+        /// Find a reverse path from `to` node to `from` node.
+        fn reverse_path(&self, from: &T, to: &T) -> Vec<T>;
     }
 
-    //TODO Implement Dijkstra algorithm
-    pub(super) struct Dijkstra<T, W> (PhantomData<T>, PhantomData<W>);
+    /// Dijkstra path search implementation.
+    pub(super) struct Dijkstra<T, W> {
+        /// Links node with tag `<T>` to the list of ajacent nodest with corresponding weights `<W>`.
+        nodes: HashMap<T, Vec<(T, W)>>
+    }
+
+    /// Forntier for the Dijkstra algorithm.
+    struct Frontier<T, W> {
+        /// Stores items in cost-descending order,
+        /// so the item with the lowest cost is placed at the end of the array.
+        queue: Vec<(T, W)>,
+
+        /// Links node tag `<T>` to the index in the `queue`.
+        index: HashMap<T, usize>,
+    }
+
+    pub(super) trait Zero {
+        const ZERO: Self;
+    }
+
+    impl Zero for u32 {
+        const ZERO: u32 = 0;
+    }
 
     impl<T, W> Dijkstra<T, W> {
         pub(super) fn new() -> Self {
-            Dijkstra(PhantomData, PhantomData)
+            Dijkstra {
+                nodes: HashMap::new()
+            }
         }
     }
 
-    impl<T, W: Eq + Ord> GraphBuilder<T, W> for Dijkstra<T, W> {
-        fn add_node<I: Iterator<Item=(T, W)>>(&mut self, _node: T, _inward_links: I) {
-            todo!()
+    impl<T: Eq + Hash, W: Eq + Ord> GraphBuilder<T, W> for Dijkstra<T, W> {
+        fn add_node<I: IntoIterator<Item=(T, W)>>(&mut self, node_tag: T, links: I) {
+            self.nodes.insert(node_tag, links.into_iter().collect());
         }
     }
 
-    impl<T, W: Eq + Ord> GraphSolver<T, W> for Dijkstra<T, W> {
+    impl<T: Clone + Eq + Ord + Hash, W: Clone + Eq + Ord + Add<Output=W> + Zero> GraphSolver<T, W> for Dijkstra<T, W> {
         fn path(&self, from: &T, to: &T) -> Vec<T> {
-            todo!()
+            let mut path = self.reverse_path(from, to);
+
+            // Reverse the path, so the result will be from `from` to `to`
+            path.reverse();
+
+            path
         }
+
+        fn reverse_path(&self, from: &T, to: &T) -> Vec<T> {
+            // Don't run when we don't have nodes set
+            if self.nodes.is_empty() {
+                return Vec::new();
+            }
+
+            // Algorithm state
+            let mut explored = HashSet::<T>::new();
+            let mut frontier = Frontier::<T, W>::new();
+            let mut previous = HashMap::<T, T>::new();
+
+            // The resulting reversed path
+            let mut rev_path = Vec::<T>::new();
+
+            // Add the starting point to the frontier, it will be the first node visited
+            frontier.push(from.clone(), W::ZERO);
+
+            // Run until we have visited every node in the frontier
+            while let Some((id, cost)) = frontier.pop() {
+                // When the node with the lowest cost in the frontier is our goal node, we're done.
+                if id == *to {
+                    let mut cur_id = id;
+                    while let Some(prev) = previous.get(&cur_id) {
+                        rev_path.push(cur_id.clone());
+                        cur_id = prev.clone();
+                    }
+                    break;
+                }
+
+                // Add the current node to the explored set
+                explored.insert(id.clone());
+
+                // Loop all the neighboring nodes
+                if let Some(neighbors) = self.nodes.get(&id) {
+                    for (n_node, n_cost) in neighbors.iter() {
+                        // If we already explored the node - skip it
+                        if explored.contains(n_node) {
+                            continue;
+                        }
+
+                        let node_cost = cost.clone() + n_cost.clone();
+
+                        // If the neighboring node is not yet in the frontier, we add it with the correct cost.
+                        // Otherwise we only update the cost of this node in the frontier when it's below what's currently set.
+                        let updated = frontier.try_insert_or_decrease_cost(n_node, node_cost);
+                        if updated {
+                            previous.insert(n_node.clone(), id.clone());
+                        }
+                    }
+                }
+            }
+
+            // Check if path not found
+            if rev_path.is_empty() {
+                return rev_path;
+            }
+
+            // Add the origin waypoint at the end of the array
+            rev_path.push(from.clone());
+
+            rev_path
+        }
+    }
+
+    impl<T: Clone + Ord + Eq + Hash, W: Clone + Ord> Frontier<T, W> {
+        pub fn new() -> Frontier<T, W> {
+            Frontier {
+                queue: Vec::new(),
+                index: HashMap::new(),
+            }
+        }
+
+        /// Sorts by cost in descending order, then by tag
+        fn key_fn(item: &(T, W)) -> impl Ord {
+            let (t, w) = item;
+            (Reverse(w.clone()), t.clone())
+        }
+
+        pub fn push(&mut self, tag: T, weight: W) {
+            let item = (tag.clone(), weight);
+            match self.queue.binary_search_by_key(&Self::key_fn(&item), Self::key_fn) {
+                Ok(index) | Err(index) => {
+                    self.queue.insert(index, item);
+                    self.index.iter_mut().for_each(|(_, old_idx)| if *old_idx >= index { *old_idx += 1; });
+                    self.index.insert(tag, index);
+                }
+            }
+        }
+
+        pub fn pop(&mut self) -> Option<(T, W)> {
+            if let Some((tag, weight)) = self.queue.pop() {
+                self.index.remove(&tag);
+                Some((tag, weight))
+            } else {
+                None
+            }
+        }
+
+        pub fn try_insert_or_decrease_cost(&mut self, tag: &T, new_cost: W) -> bool {
+            if let Some(&i) = self.index.get(tag) {
+                if new_cost < self.queue[i].1 {
+                    self.queue[i].1 = new_cost;
+                    true
+                } else {
+                    false
+                }
+            } else {
+                self.push(tag.clone(), new_cost);
+                true
+            }
+        }
+    }
+
+    #[test]
+    fn test_search() {
+        let mut g = Dijkstra::new();
+        g.add_node("A", vec![("B", 1)]);
+        g.add_node("B", vec![("A", 1), ("C", 2), ("D", 4)]);
+        g.add_node("C", vec![("B", 2), ("D", 1)]);
+        g.add_node("D", vec![("C", 1), ("B", 4)]);
+        assert_eq!(g.path(&"A", &"D"), vec!["A", "B", "C", "D"]);
+        assert_eq!(g.reverse_path(&"A", &"D"), vec!["D", "C", "B", "A"]);
     }
 }
