@@ -63,6 +63,13 @@ impl<L: LabelBits> RoutingLabel<L> {
         }
     }
 
+    /// Create a new label which is a self-reference.
+    /// Corresponds to director with value of `1`.
+    pub fn self_reference() -> Self {
+        let bits = L::ONE;
+        RoutingLabel(bits)
+    }
+
     /// Raw data of this routing label. Always non-zero.
     #[inline]
     pub fn bits(&self) -> L {
@@ -142,5 +149,12 @@ mod tests {
         assert_eq!(<u128 as LabelBits>::highest_set_bit(&14574489829), Some(33));
         assert_eq!(<u64 as LabelBits>::highest_set_bit(&(1 << 63)), Some(63));
         assert_eq!(<u128 as LabelBits>::highest_set_bit(&(1 << 100)), Some(100));
+    }
+
+    #[test]
+    fn test_self_reference() {
+        assert_eq!("0000.0001", RoutingLabel::<u32>::self_reference().to_string());
+        assert_eq!("0000.0000.0000.0001", RoutingLabel::<u64>::self_reference().to_string());
+        assert_eq!("0000.0000.0000.0000.0000.0000.0000.0001", RoutingLabel::<u128>::self_reference().to_string());
     }
 }

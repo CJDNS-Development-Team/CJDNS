@@ -1,7 +1,6 @@
 //! Route computation
 
 use std::collections::HashMap;
-use std::convert::TryFrom;
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
@@ -156,7 +155,7 @@ fn get_route_impl(nodes: &Nodes, routing: &mut Routing, src: Arc<Node>, dst: Arc
             }
         }
 
-        labels.push(RoutingLabel::try_from("0000.0000.0000.0001").expect("bad self route")); //TODO duplicate constant
+        labels.push(RoutingLabel::self_reference());
         labels.reverse();
 
         (labels, hops)
@@ -181,7 +180,7 @@ fn link_cost(_link: &Link) -> u32 {
 impl Route {
     fn identity() -> Self {
         Route {
-            label: RoutingLabel::try_from("0000.0000.0000.0001").expect("bad self route"), //TODO duplicate constant
+            label: RoutingLabel::self_reference(),
             hops: Vec::new(),
             path: Vec::new(),
         }
