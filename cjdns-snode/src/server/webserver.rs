@@ -121,8 +121,8 @@ mod handlers {
 
     #[derive(Error, Debug)]
     enum WebServerError {
-        #[error("Bad IPv6 address: {0}")]
-        BadIP6Address(String),
+        #[error("Bad IPv6 address '{0}': {1}")]
+        BadIP6Address(String, String),
     }
 
     impl Reject for WebServerError {}
@@ -151,7 +151,7 @@ mod handlers {
     }
 
     pub(super) async fn handle_debug_node(ip6: String, server: Arc<Server>) -> Result<StatusCode, Rejection> {
-        let ip = CJDNS_IP6::try_from(ip6.as_str()).map_err(|_| warp::reject::custom(WebServerError::BadIP6Address(ip6)))?;
+        let ip = CJDNS_IP6::try_from(ip6.as_str()).map_err(|e| warp::reject::custom(WebServerError::BadIP6Address(ip6, e.to_string())))?;
         server.mut_state.lock().debug_node = Some(ip);
         return Ok(StatusCode::OK);
     }
@@ -161,8 +161,8 @@ mod handlers {
     }
 
     pub(super) async fn handle_path(src: String, tar: String, server: Arc<Server>) -> Result<impl Reply, Rejection> {
-        let src_ip = CJDNS_IP6::try_from(src.as_str()).map_err(|_| warp::reject::custom(WebServerError::BadIP6Address(src)))?;
-        let tar_ip = CJDNS_IP6::try_from(tar.as_str()).map_err(|_| warp::reject::custom(WebServerError::BadIP6Address(tar)))?;
+        let src_ip = CJDNS_IP6::try_from(src.as_str()).map_err(|e| warp::reject::custom(WebServerError::BadIP6Address(src, e.to_string())))?;
+        let tar_ip = CJDNS_IP6::try_from(tar.as_str()).map_err(|e| warp::reject::custom(WebServerError::BadIP6Address(tar, e.to_string())))?;
         let src = server.nodes.by_ip(&src_ip);
         let tar = server.nodes.by_ip(&tar_ip);
         warn!("http getRoute req {} {}", src_ip, tar_ip);

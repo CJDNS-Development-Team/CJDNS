@@ -5,7 +5,7 @@ pub enum KeyCreationError {
     #[error("Base32 string must encode exactly 255 bits integer in little-endian")]
     NotDecodableString,
 
-    #[error("Wrong key string format")]
+    #[error("Wrong string format")]
     BadString,
 
     #[error("Resulting IP6 address must start with 0xFC byte")]
