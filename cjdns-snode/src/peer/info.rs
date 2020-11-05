@@ -1,17 +1,13 @@
 //! Info about connections to peer supernodes
 
-use serde::Serialize;
-
 use crate::peer::{Peer, PeerList, Peers};
 
-#[derive(Serialize)]
 pub struct PeersInfo {
     pub peers: Vec<PeerInfo>,
     pub announcements: usize,
     pub ann_by_hash_len: usize,
 }
 
-#[derive(Serialize)]
 pub struct PeerInfo {
     pub addr: String,
     pub outstanding_requests: usize,
@@ -41,8 +37,8 @@ impl Peer {
         PeerInfo {
             addr: self.addr.clone(),
             outstanding_requests: self.get_outstanding_reqs_count(),
-            msgs_on_wire: 0, //TODO useless?
-            msg_queue: 0, //self.msg_queue.len(), //TODO possible?
+            msgs_on_wire: 0, //TODO No such concept in rust code - ask CJ what to do with it, remove or keep 0 for compatibility?
+            msg_queue: 0, //TODO originally "self.msg_queue.len()", not easy to get in Rust code - is it really needed, or can be dropped?
         }
     }
 }

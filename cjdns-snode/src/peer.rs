@@ -78,8 +78,16 @@ impl Peers {
             match res {
                 Ok((ws_stream, _)) => {
                     info!("Connected to {}", uri);
-                    let addr = format!("{}:{}", uri.host().expect("host"), uri.port().expect("port"));
-                    let res = self.outgoing(addr, ws_stream).await;
+                    let ipv6_addr = { // Trim brackets: '[1:2:3:4]' -> '1:2:3:4'
+                        let host = uri.host().expect("host");
+                        let n = host.len();
+                        if n >= 2 && host.starts_with('[') && host.ends_with(']') {
+                            &host[1..n-2]
+                        } else {
+                            host
+                        }
+                    }.to_string();
+                    let res = self.outgoing(ipv6_addr, ws_stream).await;
                     if let Err(e) = res {
                         debug!("Error reading from peer: {}", e);
                     }
