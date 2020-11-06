@@ -2,11 +2,13 @@
 
 use std::convert::TryFrom;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Error;
-use tokio::select;
+use tokio::{select, time};
 
-use cjdns_admin::msgs::Empty;
+use cjdns_admin::{ArgValues, Connection, ReturnValue};
+use cjdns_admin::msgs::{Empty, GenericResponsePayload};
 use cjdns_bencode::BValue;
 use cjdns_hdr::RouteHeader;
 use cjdns_keys::{CJDNS_IP6, CJDNSPublicKey};
@@ -21,9 +23,11 @@ use crate::utils::timestamp::{current_timestamp, mktime};
 use self::core_node_info::CoreNodeInfoPayload;
 
 pub(super) async fn service_task(server: Arc<Server>) {
-    let res = do_service(server).await;
-    if let Err(err) = res {
-        error!("Failed to service local node: {}", err)
+    loop {
+        let res = do_service(server.clone()).await;
+        if let Err(err) = res {
+            error!("Failed to service local node: {}. Reconecting...", err);
+        }
     }
 }
 
@@ -44,38 +48,56 @@ async fn do_service(server: Arc<Server>) -> Result<(), Error> {
         mktime(0xffffffffffffffff),
         ipv6,
         None,
-    )?;
+    ).expect("internal error: unknown encoding scheme"); // Safe because encoding scheme is specified explicitly
     server.mut_state.lock().self_node = Some(Arc::new(self_node));
 
     debug!("Got selfNode");
 
     // Starting to sniff traffic
-    let mut sniffer = Sniffer::sniff_traffic(cjdns, ContentType::Cjdht).await?;
+    let sniffer = Sniffer::sniff_traffic(cjdns.clone(), ContentType::Cjdht).await?;
 
-    // todo check connection impl after implementing new routes for test_srv
+    select! {
+        res = handle_subnode_messages(sniffer, server) => res,
+        res = check_connection_alive(cjdns) => res,
+    }
+}
 
-    // Handling subnode messages
+async fn handle_subnode_messages(mut sniffer: Sniffer, server: Arc<Server>) -> Result<(), Error> {
     loop {
-        select! {
-            msg = sniffer.receive() => {
-                match msg {
-                    Ok(msg) => {
-                        let ret_msg_opt = on_subnode_message(server.clone(), msg).await?;
-                        if let Some(ret_msg) = ret_msg_opt {
-                            sniffer.send(ret_msg, None).await?;
-                        }
-                    }
-
-                    Err(err @ ReceiveError::SocketError(_)) => {
-                        return Err(err.into());
-                    }
-
-                    Err(ReceiveError::ParseError(err, data)) => {
-                        debug!("Bad message received:\n{}\n{}", hex::encode(data), anyhow!(err));
-                    }
+        match sniffer.receive().await {
+            Ok(msg) => {
+                let ret_msg_opt = on_subnode_message(server.clone(), msg).await?;
+                if let Some(ret_msg) = ret_msg_opt {
+                    sniffer.send(ret_msg, None).await?;
                 }
             }
+            Err(err @ ReceiveError::SocketError(_)) => {
+                return Err(err.into());
+            }
+            Err(ReceiveError::ParseError(err, data)) => {
+                debug!("Bad message received:\n{}\n{}", hex::encode(data), anyhow!(err));
+            }
         }
+    }
+}
+
+async fn check_connection_alive(mut cjdns: Connection) -> Result<(), Error> {
+    const CHECK_CONNECTION_DELAY: Duration = Duration::from_secs(5);
+
+    loop {
+        time::delay_for(CHECK_CONNECTION_DELAY).await;
+
+        if count_handlers(&mut cjdns).await? == 0 {
+            return Err(anyhow!("Call to UpperDistributor_listHandlers returned 0 handlers - connection aborted?"));
+        }
+    }
+}
+
+async fn count_handlers(cjdns: &mut Connection) -> Result<usize, Error> {
+    let ret: GenericResponsePayload = cjdns.invoke("UpperDistributor_listHandlers", ArgValues::new().add("page", 0)).await?;
+    match ret.get("handlers").ok_or(anyhow!("no 'handler' key in response"))? {
+        ReturnValue::List(handlers) => Ok(handlers.len()),
+        _ => Err(anyhow!("unrecognized 'handlers' value format"))
     }
 }
 

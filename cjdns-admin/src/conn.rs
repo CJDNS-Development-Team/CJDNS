@@ -2,10 +2,12 @@
 
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
+use std::sync::Arc;
 
 use sodiumoxide::crypto::hash::sha256::hash;
 use tokio::net::UdpSocket;
 use tokio::time;
+use tokio::sync::Mutex;
 
 use crate::ConnectionOptions;
 use crate::errors::{ConnOptions, Error};
@@ -17,10 +19,13 @@ const PING_TIMEOUT: Duration = Duration::from_millis(1_000);
 const DEFAULT_TIMEOUT: Duration = Duration::from_millis(10_000);
 
 /// Admin connection to the CJDNS node.
+///
+/// Cloneable: cloned connection uses same underlying UDP socket and is thread-safe.
+#[derive(Clone)]
 pub struct Connection {
-    socket: UdpSocket,
+    socket: Arc<Mutex<UdpSocket>>,
     password: String,
-    counter: Counter,
+    counter: Arc<Counter>,
 
     /// List of available remote functions.
     pub functions: Funcs,
@@ -29,9 +34,9 @@ pub struct Connection {
 impl Connection {
     pub(super) async fn new(opts: ConnectionOptions) -> Result<Self, Error> {
         let mut conn = Connection {
-            socket: create_udp_socket_sender(&opts.addr, opts.port).await?,
+            socket: Arc::new(Mutex::new(create_udp_socket_sender(&opts.addr, opts.port).await?)),
             password: opts.password.clone(),
-            counter: Counter::new_random(),
+            counter: Arc::new(Counter::new_random()),
             functions: Funcs::default(),
         };
 
@@ -164,13 +169,14 @@ impl Connection {
         // Send encoded request
         let msg = req.to_bencode()?;
         //dbg!(String::from_utf8_lossy(&msg));
-        self.socket.send(&msg).await.map_err(|e| Error::NetworkOperation(e))?;
+        let mut socket = self.socket.lock().await;
+        socket.send(&msg).await.map_err(|e| Error::NetworkOperation(e))?;
 
         // Limit receive packet lenght to typical Ethernet MTU for now; need to check actual max packet length on CJDNS Node side though.
         let mut buf = [0; 1500];
 
         // Reseive encoded response synchronously
-        let received = self.socket.recv(&mut buf).await.map_err(|e| Error::NetworkOperation(e))?;
+        let received = socket.recv(&mut buf).await.map_err(|e| Error::NetworkOperation(e))?;
         let response = &buf[..received];
         //dbg!(String::from_utf8_lossy(&response));
 
