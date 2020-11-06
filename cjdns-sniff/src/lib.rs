@@ -149,7 +149,8 @@ impl Sniffer {
 
     /// Send a message. Destination is an optional argument, if `None`, localhost is used.
     pub async fn send(&mut self, msg: Message, dest: Option<&str>) -> Result<(), SendError> {
-        let dest = dest.unwrap_or("fc00::1");
+        // By default use the "magic address" `fc00::1` with port `1`, which is intercepted internally by cjdns router.
+        let dest = dest.unwrap_or("[fc00::1]:1");
 
         let mut buf = Vec::new();
 
