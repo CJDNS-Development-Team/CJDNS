@@ -85,8 +85,10 @@ pub fn splice<L: LabelBits>(labels: &[RoutingLabel<L>]) -> Result<RoutingLabel<L
 /// ```
 ///
 /// See: [EncodingScheme_getFormNum()](https://github.com/cjdelisle/cjdns/blob/cjdns-v20.2/switch/EncodingScheme.c#L23)
-pub fn get_encoding_form<L: LabelBits>(label: RoutingLabel<L>, scheme: &EncodingScheme) -> Result<(EncodingSchemeForm, usize)> {
+pub fn get_encoding_form<L: LabelBits>(label: RoutingLabel<L>, scheme: &EncodingScheme) -> Result<(EncodingSchemeForm, u8)> {
+    debug_assert!(scheme.len() < 256); // Enforced by EncodingScheme's invariant
     for (i, form) in scheme.iter().enumerate() {
+        let i = i as u8; // cast is safe due to the assert above
         let (_, prefix_len, prefix) = form.params();
         if 0 == prefix_len {
             return Ok((*form, i));
@@ -188,11 +190,12 @@ fn find_shortest_form<L: LabelBits>(dir: L, scheme: &EncodingScheme) -> Result<E
 /// ```
 ///
 /// See: [EncodingScheme_convertLabel()](https://github.com/cjdelisle/cjdns/blob/cjdns-v20.2/switch/EncodingScheme.c#L56)
-pub fn re_encode<L: LabelBits>(label: RoutingLabel<L>, scheme: &EncodingScheme, desired_form_num: Option<usize>) -> Result<RoutingLabel<L>> {
+pub fn re_encode<L: LabelBits>(label: RoutingLabel<L>, scheme: &EncodingScheme, desired_form_num: Option<u8>) -> Result<RoutingLabel<L>> {
     let (form, _) = get_encoding_form(label, scheme)?;
     let mut dir = get_director(label, form);
 
     let mut desired_form = if let Some(num) = desired_form_num {
+        let num = num as usize;
         if num >= scheme.len() {
             return Err(SpliceError::BadArgument);
         }
@@ -621,8 +624,10 @@ mod tests {
     #[test]
     fn test_reencode_big() {
         fn test_scheme(scheme: &EncodingScheme) {
+            assert!(scheme.len() > 0 && scheme.len() < 256, "bad test");
+            let n = scheme.len() as u8;
             let biggest_form = *(scheme.last().expect("bad test"));
-            let biggest_form_num = scheme.len() - 1;
+            let biggest_form_num = n - 1;
             let (bit_count, prefix_len, prefix) = biggest_form.params();
             let max = ((1u64 << (bit_count as u64)) - 1) as u32;
 
@@ -634,6 +639,7 @@ mod tests {
 
                 let dir_bit_count = director_bit_length(i as u64);
                 for (form_num, form) in scheme.into_iter().enumerate() {
+                    let form_num = form_num as u8;
                     if (form.params().0 as u32) < dir_bit_count {
                         continue;
                     }
@@ -645,6 +651,7 @@ mod tests {
                     );
 
                     for (smaller_form_num, smaller_form) in scheme.into_iter().enumerate() {
+                        let smaller_form_num = smaller_form_num as u8;
                         if smaller_form_num >= form_num || (smaller_form.params().0 as u32) < dir_bit_count {
                             continue;
                         }
@@ -674,7 +681,7 @@ mod tests {
     #[test]
     fn test_reencode_358() {
         for i in 1..256 {
-            let (form_num, label): (usize, RoutingLabel<u64>) = match director_bit_length(i) {
+            let (form_num, label): (u8, RoutingLabel<u64>) = match director_bit_length(i) {
                 1..=3 => (0, RoutingLabel::try_new((1 << 4) | (i << 1) | 1).expect("bad test data")),
                 4 | 5 => (1, RoutingLabel::try_new((1 << 7) | (i << 2) | (0b10)).expect("bad test data")),
                 6..=8 => (2, RoutingLabel::try_new((1 << 10) | (i << 2)).expect("bad test data")),

@@ -37,7 +37,7 @@ struct Hop {
     label: RoutingLabel<u64>,
     orig_label: RoutingLabel<u32>,
     scheme: Arc<EncodingScheme>,
-    inverse_form_num: usize, //TODO probably `usize` is too big, smth like `u8` is more than enough - needs refactoring
+    inverse_form_num: u8,
 }
 
 #[derive(PartialEq, Eq, Clone, Debug, Error)]
@@ -143,7 +143,7 @@ fn get_route_impl(nodes: &Nodes, routing: &mut Routing, src: Arc<Node>, dst: Arc
                             inverse_form_num: form_num,
                         };
                         hops.push(hop);
-                        form_num = link.encoding_form_number as usize;
+                        form_num = link.encoding_form_number;
                     } else {
                         return None;
                     }
