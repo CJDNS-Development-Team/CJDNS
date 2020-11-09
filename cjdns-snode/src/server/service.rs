@@ -44,7 +44,7 @@ async fn do_service(server: Arc<Server>) -> Result<(), Error> {
     let self_node = server.nodes.new_node(
         version,
         pub_key,
-        Some(encoding_scheme),
+        Some(Arc::new(encoding_scheme)),
         mktime(0xffffffffffffffff),
         ipv6,
         None,

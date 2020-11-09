@@ -36,7 +36,7 @@ pub struct Route {
 struct Hop {
     label: RoutingLabel<u64>,
     orig_label: RoutingLabel<u32>,
-    scheme: EncodingScheme, //TODO use `Arc<EncodingScheme>` everywhere to avoid expensive copying
+    scheme: Arc<EncodingScheme>,
     inverse_form_num: usize, //TODO probably `usize` is too big, smth like `u8` is more than enough - needs refactoring
 }
 

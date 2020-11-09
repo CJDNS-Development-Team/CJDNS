@@ -230,7 +230,7 @@ impl Server {
 
         let scheme = {
             if let Some(s) = ann_opt.as_ref().map(utils::encoding_scheme_from_announcement) {
-                s.cloned()
+                s.cloned().map(Arc::new)
             } else if let Some(node) = node.as_ref() {
                 Some(node.encoding_scheme.clone())
             } else if ann_opt.is_some() {
@@ -555,7 +555,7 @@ mod nodes {
         pub(super) version: u16,
         pub(super) key: CJDNSPublicKey,
         pub(super) ipv6: CJDNS_IP6,
-        pub(super) encoding_scheme: EncodingScheme,
+        pub(super) encoding_scheme: Arc<EncodingScheme>,
         pub(super) inward_links_by_ip: Mutex<HashMap<CJDNS_IP6, Vec<Link>>>,
         pub(super) mut_state: RwLock<NodeMut>,
     }
@@ -635,7 +635,7 @@ mod nodes {
             &self,
             version: u16,
             key: CJDNSPublicKey,
-            encoding_scheme: Option<EncodingScheme>,
+            encoding_scheme: Option<Arc<EncodingScheme>>,
             timestamp: SystemTime,
             ipv6: CJDNS_IP6,
             announcement: Option<Announcement>
@@ -716,7 +716,7 @@ mod nodes {
             && self.version == other.version
             && self.key == other.key
             && self.ipv6 == other.ipv6
-            && self.encoding_scheme == other.encoding_scheme
+            && *self.encoding_scheme == *other.encoding_scheme
         }
     }
 
