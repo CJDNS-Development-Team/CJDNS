@@ -119,8 +119,6 @@ enum ReplyError {
 }
 
 impl Server {
-    //const VERSION: u32 = 1; //TODO Milestone 3
-
     fn new(peers: Arc<Peers>) -> Self {
         Server {
             peers: peers.clone(),

@@ -1,7 +1,5 @@
 //! Connecting to other supernodes
 
-#![allow(dead_code)] //TODO Remove when done
-
 use std::time::{Duration, Instant};
 
 use anyhow::Error;
