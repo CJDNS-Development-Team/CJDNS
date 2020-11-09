@@ -64,8 +64,6 @@ impl Peers {
     /// Asynchronously start connecting to the specified peer supernode.
     /// If the connection can't be established or closed by the remote side,
     /// it will be reconnected automatically after a delay.
-    ///
-    /// TODO never returns (should return after async disconnect() call)
     pub async fn connect_to(&self, uri: Uri) {
         debug!("Connecting to {}", uri);
         loop {
@@ -99,16 +97,11 @@ impl Peers {
             let delay = if sucessfully_connected { Duration::from_secs(1) } else { Duration::from_secs(10) };
             time::delay_for(delay).await;
         }
-        //TODO break the loop by using select!() on external interupt channel
     }
 
     pub async fn accept_incoming_connection(&self, from_ipv6: String, ws_stream: impl WebSock) -> Result<(), Error> {
         info!("Incoming connection from {}", from_ipv6);
         self.incoming(from_ipv6, ws_stream).await
-    }
-
-    pub async fn disconnect_all(&self) {
-        //TODO close all existing connections, prevent from reconnecting
     }
 
     pub async fn add_ann(&self, hash: AnnHash, binary: AnnData) {

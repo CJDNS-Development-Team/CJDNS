@@ -85,10 +85,6 @@ pub async fn main(config: Config) -> Result<()> {
         }
     }
 
-    // Disconnect all peers on interrupt
-    //TODO call this only on interrupt
-    peers.disconnect_all().await;
-
     // Await all spawned tasks
     try_join_all(tasks).await.map(|_| ()).map_err(|e| e.into())
 }
