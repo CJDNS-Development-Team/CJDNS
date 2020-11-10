@@ -199,37 +199,32 @@ impl Server {
             }
         }
 
-        let max_clock_skew = {
-            if from_node {
-                let self_node = self_node.ok_or_else(|| anyhow!("no self_node"))?;
-                if let Some(ann) = ann_opt.as_ref() {
-                    if ann.node_ip != self_node.ipv6 {
-                        warn!("announcement from peer which is one of ours");
-                        reply_error = ReplyError::WrongSnode;
-                        ann_opt = None;
-                    }
+        if from_node {
+            let self_node = self_node.ok_or_else(|| anyhow!("no self_node"))?;
+            if let Some(ann) = ann_opt.as_ref() {
+                if ann.node_ip != self_node.ipv6 {
+                    warn!("announcement meant for other snode");
+                    reply_error = ReplyError::WrongSnode;
+                    ann_opt = None;
                 }
-                MAX_CLOCKSKEW
-            } else {
-                if let (Some(self_node), Some(ann)) = (self_node, ann_opt.as_ref()) {
-                    if ann.node_ip == self_node.ipv6 {
-                        warn!("announcement meant for other snode");
-                        reply_error = ReplyError::WrongSnode;
-                        ann_opt = None;
-                    }
-                }
-                MAX_GLOBAL_CLOCKSKEW
             }
-        };
-
-        if let Some(ann) = ann_opt.as_ref() {
-            let clock_skew = time_diff(SystemTime::now(), mktime(ann.header.timestamp));
-            if clock_skew > max_clock_skew {
-                warn!("unacceptably large clock skew {}h", clock_skew.as_secs_f64() / 60.0 / 60.0);
-                reply_error = ReplyError::ExcessiveClockSkew;
-                ann_opt = None;
-            } else {
-                trace!("clock skew {}ms", clock_skew.as_millis());
+            if let Some(ann) = ann_opt.as_ref() {
+                let clock_skew = time_diff(SystemTime::now(), mktime(ann.header.timestamp));
+                if clock_skew > MAX_CLOCKSKEW {
+                    warn!("unacceptably large clock skew {}h", clock_skew.as_secs_f64() / 60.0 / 60.0);
+                    reply_error = ReplyError::ExcessiveClockSkew;
+                    ann_opt = None;
+                } else {
+                    trace!("clock skew {}ms", clock_skew.as_millis());
+                }
+            }
+        } else {
+            if let (Some(self_node), Some(ann)) = (self_node, ann_opt.as_ref()) {
+                if ann.node_ip == self_node.ipv6 {
+                    warn!("announcement received by gossip which is meant for us");
+                    reply_error = ReplyError::WrongSnode;
+                    ann_opt = None;
+                }
             }
         }
 
@@ -443,6 +438,16 @@ impl Server {
                     !drop
                 });
 
+                {
+                    let mut link_mut = link.mut_state.lock();
+                    debug_assert!(link_mut.most_recent_ls_slot >= ts, "broken invariant");
+                    let decay_slots = link_mut.most_recent_ls_slot - ts;
+                    link_mut.most_recent_ls_slot = ts;
+                    if decay_slots > 0 {
+                        link_mut.value /= 1.0 + (decay_slots as f64 * Link::DECAY_PER_TIMESLOT);
+                    }
+                }
+
                 // The `starting_point` is the index of the *oldest* entry, newer entries continue forward from
                 // this entry. To save space, cjdns doesn't send any more entries than it needs to, which
                 // means while deserializing, the nonexistant entries will be filled by `None`s.
@@ -473,6 +478,11 @@ impl Server {
                             lag: lag_slot,
                             kb_recv: kb_recv_slot,
                         };
+                        let lsv = new_state.ls_value();
+                        assert!(lsv >= 0.0, "lsv {} for ls {:?}", lsv, new_state);
+                        let delta_v = lsv / (1.0 + (ts - time) as f64 * Link::DECAY_PER_TIMESLOT);
+                        assert!(delta_v >= 0.0);
+                        link.mut_state.lock().value += delta_v;
                         debug!(
                             "LINK_STATE_UPDATE: time={}, node_ip={}, ips_by_num[{}]={}, label={}, new_state={:?}",
                             time, ann.node_ip, ls.node_id, ips_by_num[&ls.node_id], link.label, new_state

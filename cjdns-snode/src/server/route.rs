@@ -10,7 +10,6 @@ use cjdns_core::{EncodingScheme, RoutingLabel};
 use cjdns_core::splice::{get_encoding_form, re_encode, splice};
 use cjdns_keys::CJDNS_IP6;
 
-use crate::server::link::Link;
 use crate::server::nodes::{Node, Nodes};
 use crate::server::Server;
 
@@ -19,7 +18,7 @@ use self::dijkstra::*;
 pub struct Routing {
     last_rebuild: Instant,
     route_cache: HashMap<CacheKey, Option<Route>>,
-    dijkstra: Option<Dijkstra<CJDNS_IP6, u32>>,
+    dijkstra: Option<Dijkstra<CJDNS_IP6, f64>>,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -82,17 +81,22 @@ fn get_route_impl(nodes: &Nodes, routing: &mut Routing, src: Arc<Node>, dst: Arc
                     if reverse.inward_links_by_ip.lock().get(&nip).is_none() {
                         continue;
                     }
-                    let min = peer_links
+                    let total_cmp = |a: &f64, b: &f64| { // Replace with `f64::total_cmp` when it is stabilized
+                        let mut a = a.to_bits() as i64;
+                        let mut b = b.to_bits() as i64;
+                        a ^= (((a >> 63) as u64) >> 1) as i64;
+                        b ^= (((b >> 63) as u64) >> 1) as i64;
+                        a.cmp(&b)
+                    };
+                    let max_value = peer_links
                         .iter()
-                        .map(|link| {
-                            let cost = link_cost(link);
-                            link.mut_state.lock().cost = cost;
-                            cost
-                        })
-                        .min()
+                        .map(|link| link.mut_state.lock().value)
+                        .max_by(total_cmp) // Replace with `f64::total_cmp` when it is stabilized (unstable as of Rust 1.46)
                         .expect("no links") // Safe because of the above `peer_links.is_empty()` check
                     ;
-                    l.insert(pip.clone(), min);
+                    let max_value = if max_value == 0.0 { 1e-20 } else { max_value };
+                    let min_cost = max_value.recip();
+                    l.insert(pip.clone(), min_cost);
                 }
             }
             debug!("building dijkstra tree {} {:?}", nip, l);
@@ -172,10 +176,6 @@ fn get_route_impl(nodes: &Nodes, routing: &mut Routing, src: Arc<Node>, dst: Arc
     Some(route)
 }
 
-fn link_cost(_link: &Link) -> u32 {
-    1
-}
-
 impl Route {
     fn identity() -> Self {
         Route {
@@ -203,12 +203,12 @@ mod dijkstra {
     use std::ops::Add;
 
     /// Graph building functions.
-    pub(super) trait GraphBuilder<T: Eq + Hash, W: Eq + Ord> {
+    pub(super) trait GraphBuilder<T, W> {
         fn add_node<I: IntoIterator<Item=(T, W)>>(&mut self, node_tag: T, links: I);
     }
 
     /// Path finding functions.
-    pub(super) trait GraphSolver<T: Eq + Hash, W: Eq + Ord> {
+    pub(super) trait GraphSolver<T, W> {
         /// Find a path from `from` node to `to` node.
         fn path(&self, from: &T, to: &T) -> Vec<T>;
 
@@ -232,12 +232,33 @@ mod dijkstra {
         index: HashMap<T, usize>,
     }
 
+    /// Helper trait providing zero value for numeric types.
     pub(super) trait Zero {
         const ZERO: Self;
     }
 
-    impl Zero for u32 {
-        const ZERO: u32 = 0;
+    impl Zero for f64 {
+        const ZERO: f64 = 0.0;
+    }
+
+    /// Helper trait, providing total ordering for non-`Ord` types,
+    /// such as `f64`, given its value is finite (i.e. not `NaN`, `Infinity` etc.)
+    pub(super) trait IntoOrd where Self::Output: Ord {
+        /// Some substitute `Ord` type which can be used instead of `Self` for ordering purposes.
+        /// Only should be used for comparisons, its value itself is meaningless.
+        type Output;
+        fn into_ord(self) -> Self::Output;
+    }
+
+    impl IntoOrd for f64 {
+        type Output = i64;
+
+        fn into_ord(self) -> Self::Output {
+            // For the explanation of this black magic,
+            // see implementation of `f64::total_ord()` (unstable as of Rust 1.46)
+            let x = self.to_bits() as i64;
+            x ^ (((x >> 63) as u64) >> 1) as i64
+        }
     }
 
     impl<T, W> Dijkstra<T, W> {
@@ -248,13 +269,13 @@ mod dijkstra {
         }
     }
 
-    impl<T: Eq + Hash, W: Eq + Ord> GraphBuilder<T, W> for Dijkstra<T, W> {
+    impl<T, W> GraphBuilder<T, W> for Dijkstra<T, W> where T: Eq + Hash, W: PartialEq + PartialOrd {
         fn add_node<I: IntoIterator<Item=(T, W)>>(&mut self, node_tag: T, links: I) {
             self.nodes.insert(node_tag, links.into_iter().collect());
         }
     }
 
-    impl<T: Clone + Eq + Ord + Hash, W: Clone + Eq + Ord + Add<Output=W> + Zero> GraphSolver<T, W> for Dijkstra<T, W> {
+    impl<T, W> GraphSolver<T, W> for Dijkstra<T, W> where T: Clone + Eq + Ord + Hash, W: Clone + PartialEq + PartialOrd + IntoOrd + Add<Output=W> + Zero {
         fn path(&self, from: &T, to: &T) -> Vec<T> {
             let mut path = self.reverse_path(from, to);
 
@@ -328,7 +349,7 @@ mod dijkstra {
         }
     }
 
-    impl<T: Clone + Ord + Eq + Hash, W: Clone + Ord> Frontier<T, W> {
+    impl<T, W> Frontier<T, W> where T: Clone + Ord + Eq + Hash, W: Clone + PartialOrd + IntoOrd {
         pub fn new() -> Frontier<T, W> {
             Frontier {
                 queue: Vec::new(),
@@ -339,7 +360,7 @@ mod dijkstra {
         /// Sorts by cost in descending order, then by tag
         fn key_fn(item: &(T, W)) -> impl Ord {
             let (t, w) = item;
-            (Reverse(w.clone()), t.clone())
+            (Reverse(w.clone().into_ord()), t.clone())
         }
 
         pub fn push(&mut self, tag: T, weight: W) {
@@ -380,10 +401,10 @@ mod dijkstra {
     #[test]
     fn test_search() {
         let mut g = Dijkstra::new();
-        g.add_node("A", vec![("B", 1)]);
-        g.add_node("B", vec![("A", 1), ("C", 2), ("D", 4)]);
-        g.add_node("C", vec![("B", 2), ("D", 1)]);
-        g.add_node("D", vec![("C", 1), ("B", 4)]);
+        g.add_node("A", vec![("B", 1.0)]);
+        g.add_node("B", vec![("A", 1.0), ("C", 2.0), ("D", 4.0)]);
+        g.add_node("C", vec![("B", 2.0), ("D", 1.0)]);
+        g.add_node("D", vec![("C", 1.0), ("B", 4.0)]);
         assert_eq!(g.path(&"A", &"D"), vec!["A", "B", "C", "D"]);
         assert_eq!(g.reverse_path(&"A", &"D"), vec!["D", "C", "B", "A"]);
     }

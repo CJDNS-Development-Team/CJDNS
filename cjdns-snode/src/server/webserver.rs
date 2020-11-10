@@ -204,7 +204,7 @@ mod handlers {
                                     "mut": json!{{
                                         "time": link_state.time,
                                         "mtu": link_state.mtu,
-                                        "cost": link_state.cost,
+                                        "value": link_state.value,
                                         "flags": link_state.flags,
                                     }},
                                 }}
