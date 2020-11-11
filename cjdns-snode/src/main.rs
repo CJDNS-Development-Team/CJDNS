@@ -93,6 +93,7 @@ mod config {
 }
 
 mod message;
+mod pathsearch;
 mod peer;
 mod server;
 mod utils;
