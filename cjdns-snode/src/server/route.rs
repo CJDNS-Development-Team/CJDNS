@@ -66,42 +66,7 @@ fn get_route_impl(nodes: &Nodes, routing: &mut Routing, src: Arc<Node>, dst: Arc
     const REBUILD_INTERVAL: Duration = Duration::from_secs(3);
     if routing.last_rebuild + REBUILD_INTERVAL < now || routing.dijkstra.is_none() {
         routing.route_cache.clear();
-        let mut d = Dijkstra::new();
-
-        for nip in nodes.all_ips() {
-            let node = nodes.by_ip(&nip).unwrap();
-            let links = node.inward_links_by_ip.lock();
-            let mut l = HashMap::new();
-            for (pip, peer_links) in links.iter() {
-                if peer_links.is_empty() {
-                    continue; // Shouldn't happen but let's be safe
-                }
-                if let Some(reverse) = nodes.by_ip(pip) {
-                    if reverse.inward_links_by_ip.lock().get(&nip).is_none() {
-                        continue;
-                    }
-                    let total_cmp = |a: &f64, b: &f64| { // Replace with `f64::total_cmp` when it is stabilized
-                        let mut a = a.to_bits() as i64;
-                        let mut b = b.to_bits() as i64;
-                        a ^= (((a >> 63) as u64) >> 1) as i64;
-                        b ^= (((b >> 63) as u64) >> 1) as i64;
-                        a.cmp(&b)
-                    };
-                    let max_value = peer_links
-                        .iter()
-                        .map(|link| link.mut_state.lock().value)
-                        .max_by(total_cmp) // Replace with `f64::total_cmp` when it is stabilized (unstable as of Rust 1.46)
-                        .expect("no links") // Safe because of the above `peer_links.is_empty()` check
-                    ;
-                    let max_value = if max_value == 0.0 { 1e-20 } else { max_value };
-                    let min_cost = max_value.recip();
-                    l.insert(pip.clone(), min_cost);
-                }
-            }
-            debug!("building dijkstra tree {} {:?}", nip, l);
-            d.add_node(nip, l.into_iter());
-        }
-
+        let d = build_node_graph(nodes);
         routing.dijkstra = Some(d);
         routing.last_rebuild = now;
     }
@@ -111,6 +76,54 @@ fn get_route_impl(nodes: &Nodes, routing: &mut Routing, src: Arc<Node>, dst: Arc
         return Some(cached_entry);
     }
 
+    let route = compute_route(nodes, routing, src, dst);
+
+    routing.route_cache.insert(cache_key, route.clone());
+
+    route
+}
+
+fn build_node_graph(nodes: &Nodes) -> Dijkstra<CJDNS_IP6, f64> {
+    let mut d = Dijkstra::new();
+
+    for nip in nodes.all_ips() {
+        let node = nodes.by_ip(&nip).unwrap();
+        let links = node.inward_links_by_ip.lock();
+        let mut l = HashMap::new();
+        for (pip, peer_links) in links.iter() {
+            if peer_links.is_empty() {
+                continue; // Shouldn't happen but let's be safe
+            }
+            if let Some(reverse) = nodes.by_ip(pip) {
+                if reverse.inward_links_by_ip.lock().get(&nip).is_none() {
+                    continue;
+                }
+                let total_cmp = |a: &f64, b: &f64| { // Replace with `f64::total_cmp` when it is stabilized
+                    let mut a = a.to_bits() as i64;
+                    let mut b = b.to_bits() as i64;
+                    a ^= (((a >> 63) as u64) >> 1) as i64;
+                    b ^= (((b >> 63) as u64) >> 1) as i64;
+                    a.cmp(&b)
+                };
+                let max_value = peer_links
+                    .iter()
+                    .map(|link| link.mut_state.lock().value)
+                    .max_by(total_cmp) // Replace with `f64::total_cmp` when it is stabilized (unstable as of Rust 1.46)
+                    .expect("no links") // Safe because of the above `peer_links.is_empty()` check
+                    ;
+                let max_value = if max_value == 0.0 { 1e-20 } else { max_value };
+                let min_cost = max_value.recip();
+                l.insert(pip.clone(), min_cost);
+            }
+        }
+        debug!("building dijkstra tree {} {:?}", nip, l);
+        d.add_node(nip, l.into_iter());
+    }
+
+    d
+}
+
+fn compute_route(nodes: &Nodes, routing: &mut Routing, src: Arc<Node>, dst: Arc<Node>) -> Option<Route> {
     // We ask for the path in reverse because we build the graph in reverse.
     // Because nodes announce their own reachability instead of reachability of others.
     let path = {
@@ -119,17 +132,24 @@ fn get_route_impl(nodes: &Nodes, routing: &mut Routing, src: Arc<Node>, dst: Arc
     };
 
     if path.is_empty() {
-        routing.route_cache.insert(cache_key, None);
         return None;
     }
 
+    let (label, hops) = compute_routing_label(nodes, &path)?;
+
+    let route = Route { label, hops, path };
+
+    Some(route)
+}
+
+fn compute_routing_label(nodes: &Nodes, rev_path: &[CJDNS_IP6]) -> Option<(RoutingLabel<u64>, Vec<Hop>)> {
     let (labels, hops) = {
         let mut last: Option<Arc<Node>> = None;
         let mut hops = Vec::new();
         let mut labels = Vec::new();
         let mut form_num = 0;
 
-        for nip in path.iter() {
+        for nip in rev_path.iter() {
             if let Some(node) = nodes.by_ip(nip) {
                 if let Some(last) = last {
                     if let Some(Some(link)) = node.inward_links_by_ip.lock().get(&last.ipv6).map(|ls| ls.get(0)) {
@@ -164,15 +184,8 @@ fn get_route_impl(nodes: &Nodes, routing: &mut Routing, src: Arc<Node>, dst: Arc
     };
 
     let spliced = splice(&labels).ok()?;
-    let route = Route {
-        label: spliced,
-        hops,
-        path,
-    };
 
-    routing.route_cache.insert(cache_key, Some(route.clone()));
-
-    Some(route)
+    Some((spliced, hops))
 }
 
 impl Route {
