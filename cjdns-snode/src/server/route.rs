@@ -1,10 +1,13 @@
 //! Route computation
 
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use parking_lot::{Mutex, RwLock, RwLockWriteGuard};
 use thiserror::Error;
+use tokio::task;
 
 use cjdns_core::{EncodingScheme, RoutingLabel};
 use cjdns_core::splice::{get_encoding_form, re_encode, splice};
@@ -15,9 +18,14 @@ use crate::server::nodes::{Node, Nodes};
 use crate::server::Server;
 
 pub struct Routing {
+    state: RwLock<Option<RoutingState>>,
+}
+
+struct RoutingState {
+    rebuild_lock: Mutex<bool>,
     last_rebuild: Instant,
-    route_cache: HashMap<CacheKey, Option<Route>>,
-    dijkstra: Option<Dijkstra<CJDNS_IP6, f64>>,
+    route_cache: HashMap<CacheKey, Arc<Mutex<Option<Route>>>>,
+    dijkstra: Dijkstra<CJDNS_IP6, f64>,
 }
 
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
@@ -42,6 +50,7 @@ struct Hop {
 pub enum RoutingError {
     #[error("Can't build route - either start or end node is not specified")]
     NoInput,
+
     #[error("Route not found between {0} and {1}")]
     RouteNotFound(CJDNS_IP6, CJDNS_IP6),
 }
@@ -51,34 +60,71 @@ pub(super) fn get_route(server: Arc<Server>, src: Option<Arc<Node>>, dst: Option
         if src == dst {
             Ok(Route::identity())
         } else {
-            let nodes = &server.nodes;
-            let routing = &mut server.mut_state.lock().routing;
             let error = RoutingError::RouteNotFound(src.ipv6.clone(), dst.ipv6.clone());
-            get_route_impl(nodes, routing, src, dst).ok_or(error)
+            get_route_impl(server, src, dst).ok_or(error)
         }
     } else {
         Err(RoutingError::NoInput)
     }
 }
 
-fn get_route_impl(nodes: &Nodes, routing: &mut Routing, src: Arc<Node>, dst: Arc<Node>) -> Option<Route> {
-    let now = Instant::now();
-    const REBUILD_INTERVAL: Duration = Duration::from_secs(3);
-    if routing.last_rebuild + REBUILD_INTERVAL < now || routing.dijkstra.is_none() {
-        routing.route_cache.clear();
-        let d = build_node_graph(nodes);
-        routing.dijkstra = Some(d);
-        routing.last_rebuild = now;
+fn get_route_impl(server: Arc<Server>, src: Arc<Node>, dst: Arc<Node>) -> Option<Route> {
+    let (routing, cache_entry, exists) = {
+        let mut routing = server.routing.state.write();
+
+        // Check if routing state is not initialized yet
+        if routing.is_none() {
+            *routing = Some(RoutingState::new(build_node_graph(&server.nodes)));
+        }
+
+        let cache = &mut routing.as_mut().expect("routing state").route_cache;
+        let cache_key = CacheKey(dst.ipv6.clone(), src.ipv6.clone());
+        let (exists, entry) = match cache.entry(cache_key) {
+            Entry::Occupied(e) => (true, e.into_mut()),
+            Entry::Vacant(e) => (false, e.insert(Arc::new(Mutex::new(None)))),
+        };
+        let cache_entry = Arc::clone(&entry);
+
+        (routing, cache_entry, exists)
+    };
+
+    // Need to lock this cache entry exclusively **before** we downgrade cache's exclusive lock to shared.
+    // This is needed so no other thread could see this entry in inconsistent state (possibly just created with `None` value).
+    let mut cache_entry = cache_entry.lock();
+
+    // Now we no longer need the exclusive lock to the cache, so downgrade it to shared lock.
+    let routing = RwLockWriteGuard::downgrade(routing);
+    let routing = routing.as_ref().expect("routing state");
+
+    // Check if routing state needs rebuild, and run it in background if necessary
+    if let Some(mut locked) = routing.rebuild_lock.try_lock() {
+        let is_locked = *locked;
+        if !is_locked && routing.need_rebuild() {
+            *locked = true;
+            let server = Arc::clone(&server);
+            task::spawn(async move {
+                let d = build_node_graph(&server.nodes);
+                let mut routing = server.routing.state.write();
+                let routing = routing.as_mut().expect("routing state");
+                routing.route_cache.clear();
+                routing.dijkstra = d;
+                routing.last_rebuild = Instant::now();
+                let mut locked = routing.rebuild_lock.lock();
+                *locked = false;
+            });
+        }
     }
 
-    let cache_key = CacheKey(dst.ipv6.clone(), src.ipv6.clone());
-    if let Some(Some(cached_entry)) = routing.route_cache.get(&cache_key).cloned() {
-        return Some(cached_entry);
+    // Check if route already cached
+    if exists {
+        return cache_entry.clone();
     }
 
-    let route = compute_route(nodes, routing, src, dst);
+    // Compute route
+    let route = compute_route(&server.nodes, routing, src, dst);
 
-    routing.route_cache.insert(cache_key, route.clone());
+    // Store route in the cache -- now the cache entry's state is consistent
+    *cache_entry = route.clone();
 
     route
 }
@@ -110,7 +156,7 @@ fn build_node_graph(nodes: &Nodes) -> Dijkstra<CJDNS_IP6, f64> {
                     .map(|link| link.mut_state.lock().value)
                     .max_by(total_cmp) // Replace with `f64::total_cmp` when it is stabilized (unstable as of Rust 1.46)
                     .expect("no links") // Safe because of the above `peer_links.is_empty()` check
-                    ;
+                ;
                 let max_value = if max_value == 0.0 { 1e-20 } else { max_value };
                 let min_cost = max_value.recip();
                 l.insert(pip.clone(), min_cost);
@@ -123,13 +169,10 @@ fn build_node_graph(nodes: &Nodes) -> Dijkstra<CJDNS_IP6, f64> {
     d
 }
 
-fn compute_route(nodes: &Nodes, routing: &mut Routing, src: Arc<Node>, dst: Arc<Node>) -> Option<Route> {
+fn compute_route(nodes: &Nodes, routing: &RoutingState, src: Arc<Node>, dst: Arc<Node>) -> Option<Route> {
     // We ask for the path in reverse because we build the graph in reverse.
     // Because nodes announce their own reachability instead of reachability of others.
-    let path = {
-        let dijkstra = routing.dijkstra.as_ref().expect("no path solver");
-        dijkstra.reverse_path(&dst.ipv6, &src.ipv6)
-    };
+    let path = routing.dijkstra.reverse_path(&dst.ipv6, &src.ipv6);
 
     if path.is_empty() {
         return None;
@@ -201,9 +244,24 @@ impl Route {
 impl Routing {
     pub(super) fn new() -> Self {
         Routing {
+            state: RwLock::new(None)
+        }
+    }
+}
+
+impl RoutingState {
+    pub(super) fn new(d: Dijkstra<CJDNS_IP6, f64>) -> Self {
+        RoutingState {
+            rebuild_lock: Mutex::new(false),
             last_rebuild: Instant::now(),
             route_cache: HashMap::new(),
-            dijkstra: None,
+            dijkstra: d,
         }
+    }
+
+    pub(super) fn need_rebuild(&self) -> bool {
+        const REBUILD_INTERVAL: Duration = Duration::from_secs(3);
+        let now = Instant::now();
+        self.last_rebuild + REBUILD_INTERVAL < now
     }
 }

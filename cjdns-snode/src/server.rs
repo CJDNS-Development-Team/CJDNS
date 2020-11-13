@@ -101,6 +101,7 @@ pub async fn main(config: Config) -> Result<()> {
 struct Server {
     peers: Arc<Peers>,
     nodes: Nodes,
+    routing: Routing,
     mut_state: Mutex<ServerMut>,
 }
 
@@ -108,7 +109,6 @@ struct ServerMut {
     debug_node: Option<CJDNS_IP6>, //TODO Debugging feature - need to implement log filtering
     self_node: Option<Arc<Node>>,
     current_node: Option<CJDNS_IP6>,
-    routing: Routing,
 }
 
 #[derive(Debug)]
@@ -128,11 +128,11 @@ impl Server {
         Server {
             peers: peers.clone(),
             nodes: Nodes::new(peers),
+            routing: Routing::new(),
             mut_state: Mutex::new(ServerMut {
                 debug_node: None,
                 self_node: None,
                 current_node: None,
-                routing: Routing::new(),
             }),
         }
     }
