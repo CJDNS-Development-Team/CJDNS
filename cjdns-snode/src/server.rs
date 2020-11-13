@@ -440,12 +440,11 @@ impl Server {
 
                 {
                     let mut link_mut = link.mut_state.lock();
-                    debug_assert!(link_mut.most_recent_ls_slot >= ts, "broken invariant");
-                    let decay_slots = link_mut.most_recent_ls_slot - ts;
-                    link_mut.most_recent_ls_slot = ts;
-                    if decay_slots > 0 {
+                    if link_mut.most_recent_ls_slot > ts {
+                        let decay_slots = link_mut.most_recent_ls_slot - ts;
                         link_mut.value /= 1.0 + (decay_slots as f64 * Link::DECAY_PER_TIMESLOT);
                     }
+                    link_mut.most_recent_ls_slot = ts;
                 }
 
                 // The `starting_point` is the index of the *oldest* entry, newer entries continue forward from
