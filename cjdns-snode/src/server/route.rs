@@ -117,7 +117,7 @@ fn build_node_graph(nodes: &Nodes) -> Dijkstra<CJDNS_IP6, f64> {
                 l.insert(pip.clone(), min_cost);
             }
         }
-        debug!("building dijkstra tree {} {:?}", nip, l);
+        trace!("building dijkstra tree {} {:?}", nip, l);
         d.add_node(nip, l.into_iter());
     }
 
