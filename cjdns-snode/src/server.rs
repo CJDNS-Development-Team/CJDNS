@@ -218,8 +218,8 @@ impl Server {
         if from_node {
             let self_node = self_node.ok_or_else(|| anyhow!("no self_node"))?;
             if let Some(ann) = ann_opt.as_ref() {
-                if ann.node_ip != self_node.ipv6 {
-                    warn!("announcement meant for other snode");
+                if ann.header.snode_ip != self_node.ipv6 {
+                    warn!("announcement meant for other snode, we are {} got {}", self_node.ipv6, ann.header.snode_ip);
                     reply_error = ReplyError::WrongSnode;
                     ann_opt = None;
                 }
