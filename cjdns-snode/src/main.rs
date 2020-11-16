@@ -99,7 +99,9 @@ mod config {
 
     /// Load config file
     pub(super) async fn load(file_path: &Path) -> Result<Config, Error> {
-        let json = fs::read(file_path).await.map_err(|e| anyhow!("failed to load config file '{}': {}", file_path.display(), e))?;
+        let json = fs::read(file_path)
+            .await
+            .map_err(|e| anyhow!("failed to load config file '{}': {}", file_path.display(), e))?;
         let config = serde_json::from_slice(&json).map_err(|e| anyhow!("failed to parse config file '{}': {}", file_path.display(), e))?;
         Ok(config)
     }

@@ -7,16 +7,16 @@ use std::time::Duration;
 use anyhow::Error;
 use tokio::{select, time};
 
-use cjdns_admin::{ArgValues, Connection, ReturnValue};
 use cjdns_admin::msgs::{Empty, GenericResponsePayload};
+use cjdns_admin::{ArgValues, Connection, ReturnValue};
 use cjdns_bencode::BValue;
 use cjdns_hdr::RouteHeader;
-use cjdns_keys::{CJDNS_IP6, CJDNSPublicKey};
+use cjdns_keys::{CJDNSPublicKey, CJDNS_IP6};
 use cjdns_sniff::{Content, ContentType, Message, ReceiveError, Sniffer};
 
 use crate::server::route::get_route;
-use crate::server::Server;
 use crate::server::service::core_node_info::try_parse_encoding_scheme;
+use crate::server::Server;
 use crate::utils::node::parse_node_name;
 use crate::utils::timestamp::{current_timestamp, mktime};
 
@@ -35,20 +35,17 @@ async fn do_service(server: Arc<Server>) -> Result<(), Error> {
     let mut cjdns = cjdns_admin::connect(None).await?;
 
     // Querying local node info
-    let node_info = cjdns.invoke::<_, CoreNodeInfoPayload>("Core_nodeInfo", Empty{}).await?;
+    let node_info = cjdns.invoke::<_, CoreNodeInfoPayload>("Core_nodeInfo", Empty {}).await?;
 
     let (version, _, pub_key) = parse_node_name(&node_info.my_addr).map_err(|_| anyhow!("malformed node name string returned by Core_nodeInfo()"))?;
     let ipv6 = CJDNS_IP6::try_from(&pub_key).map_err(|e| anyhow!("bad node public key returned by Core_nodeInfo(): {}", e))?;
-    let encoding_scheme = try_parse_encoding_scheme(node_info.encoding_scheme).map_err(|e| anyhow!("bad encoding scheme returned by Core_nodeInfo(): {}", e))?;
+    let encoding_scheme =
+        try_parse_encoding_scheme(node_info.encoding_scheme).map_err(|e| anyhow!("bad encoding scheme returned by Core_nodeInfo(): {}", e))?;
 
-    let self_node = server.nodes.new_node(
-        version,
-        pub_key,
-        Some(Arc::new(encoding_scheme)),
-        mktime(0xffffffffffffffff),
-        ipv6,
-        None,
-    ).expect("internal error: unknown encoding scheme"); // Safe because encoding scheme is specified explicitly
+    let self_node = server
+        .nodes
+        .new_node(version, pub_key, Some(Arc::new(encoding_scheme)), mktime(0xffffffffffffffff), ipv6, None)
+        .expect("internal error: unknown encoding scheme"); // Safe because encoding scheme is specified explicitly
     server.mut_state.lock().self_node = Some(Arc::new(self_node));
 
     debug!("Got selfNode");
@@ -97,7 +94,7 @@ async fn count_handlers(cjdns: &mut Connection) -> Result<usize, Error> {
     let ret: GenericResponsePayload = cjdns.invoke("UpperDistributor_listHandlers", ArgValues::new().add("page", 0)).await?;
     match ret.get("handlers").ok_or(anyhow!("no 'handler' key in response"))? {
         ReturnValue::List(handlers) => Ok(handlers.len()),
-        _ => Err(anyhow!("unrecognized 'handlers' value format"))
+        _ => Err(anyhow!("unrecognized 'handlers' value format")),
     }
 }
 
@@ -110,16 +107,12 @@ async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<
             h.switch_header.label_shift = 0;
             h
         };
-        let res = on_subnode_message_impl(server, route_header, content_benc).await?
-            .map(|res_benc| {
-                Message {
-                    route_header: res_route_header,
-                    content_type,
-                    content: Content::Benc(res_benc),
-                    raw_bytes: None
-                }
-            })
-        ;
+        let res = on_subnode_message_impl(server, route_header, content_benc).await?.map(|res_benc| Message {
+            route_header: res_route_header,
+            content_type,
+            content: Content::Benc(res_benc),
+            raw_bytes: None,
+        });
         Ok(res)
     } else {
         Ok(None) // Ignore unknown messages
@@ -136,7 +129,12 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
         if route_header.version > 0 {
             Some(route_header.version)
         } else if let Some(p) = content_benc.get_dict_value("p").ok().flatten() {
-            let p = p.as_int().ok().filter(|&p| p > 0).map(|p| p as u32).ok_or(anyhow!("bad message: 'p' expected to be positive int"))?;
+            let p = p
+                .as_int()
+                .ok()
+                .filter(|&p| p > 0)
+                .map(|p| p as u32)
+                .ok_or(anyhow!("bad message: 'p' expected to be positive int"))?;
             Some(p)
         } else {
             None
@@ -171,8 +169,12 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
                 return Ok(None);
             }
 
-            let src = content_benc.get_dict_value_bytes("src").expect("bad message: 'src' bytes entry expected in root dict");
-            let tar = content_benc.get_dict_value_bytes("tar").expect("bad message: 'tar' bytes entry expected in root dict");
+            let src = content_benc
+                .get_dict_value_bytes("src")
+                .expect("bad message: 'src' bytes entry expected in root dict");
+            let tar = content_benc
+                .get_dict_value_bytes("tar")
+                .expect("bad message: 'tar' bytes entry expected in root dict");
 
             let src_ip = CJDNS_IP6::try_from(src.as_slice()).map_err(|e| anyhow!("bad 'src' address: {}", e))?;
             let tar_ip = CJDNS_IP6::try_from(tar.as_slice()).map_err(|e| anyhow!("bad 'tar' address: {}", e))?;
@@ -187,8 +189,7 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
             let res = BValue::builder()
                 .set_dict()
                 .add_dict_entry_opt("txid", txid)
-                .add_dict_entry("recvTime", |b| b.set_int(current_timestamp() as i64))
-            ;
+                .add_dict_entry("recvTime", |b| b.set_int(current_timestamp() as i64));
 
             let route = get_route(server.clone(), src.clone(), tar.clone());
 
@@ -225,7 +226,7 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
             let (state_hash, reply_err) = server.handle_announce_impl(ann, true, Some(debug_noisy)).await?;
             if let Some(self_node) = server.mut_state.lock().self_node.as_ref() {
                 if debug_noisy {
-                debug!("reply: {:?}", hex::encode(state_hash.bytes()));
+                    debug!("reply: {:?}", hex::encode(state_hash.bytes()));
                 }
 
                 let res = BValue::builder()
@@ -235,8 +236,7 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
                     .add_dict_entry("recvTime", |b| b.set_int(current_timestamp() as i64))
                     .add_dict_entry("stateHash", |b| b.set_bytes(state_hash.into_inner()))
                     .add_dict_entry("error", |b| b.set_str(reply_err.to_string()))
-                    .build()
-                ;
+                    .build();
 
                 Some(res)
             } else {
@@ -252,8 +252,7 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
                 .set_dict()
                 .add_dict_entry_opt("txid", txid)
                 .add_dict_entry("recvTime", |b| b.set_int(current_timestamp() as i64))
-                .add_dict_entry("stateHash", |b| b.set_bytes([0u8; 64].to_vec()))
-            ;
+                .add_dict_entry("stateHash", |b| b.set_bytes([0u8; 64].to_vec()));
 
             if let Some(ip6) = route_header.ip6.as_ref() {
                 if let Some(node) = server.nodes.by_ip(ip6) {

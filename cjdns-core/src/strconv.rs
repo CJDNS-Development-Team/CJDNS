@@ -40,12 +40,7 @@ impl fmt::Display for RoutingLabel<u128> {
 impl fmt::LowerHex for RoutingLabel<u32> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let bits = self.bits();
-        write!(
-            f,
-            "{:04x}.{:04x}",
-            (bits >> 16) & 0xFFFFu32,
-            bits & 0xFFFFu32
-        )
+        write!(f, "{:04x}.{:04x}", (bits >> 16) & 0xFFFFu32, bits & 0xFFFFu32)
     }
 }
 
@@ -84,12 +79,7 @@ impl fmt::LowerHex for RoutingLabel<u128> {
 impl fmt::UpperHex for RoutingLabel<u32> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let bits = self.bits();
-        write!(
-            f,
-            "{:04X}.{:04X}",
-            (bits >> 16) & 0xFFFFu32,
-            bits & 0xFFFFu32
-        )
+        write!(f, "{:04X}.{:04X}", (bits >> 16) & 0xFFFFu32, bits & 0xFFFFu32)
     }
 }
 
@@ -128,12 +118,7 @@ impl fmt::UpperHex for RoutingLabel<u128> {
 impl fmt::Binary for RoutingLabel<u32> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let bits = self.bits();
-        write!(
-            f,
-            "{:016b}.{:016b}",
-            (bits >> 16) & 0xFFFFu32,
-            bits & 0xFFFFu32
-        )
+        write!(f, "{:016b}.{:016b}", (bits >> 16) & 0xFFFFu32, bits & 0xFFFFu32)
     }
 }
 
@@ -174,9 +159,7 @@ impl TryFrom<&str> for RoutingLabel<u32> {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         lazy_static! {
-            static ref RE: Regex = Regex::new(
-                "^([[:xdigit:]]{4})\\.([[:xdigit:]]{4})$"
-            ).expect("inavlid regexp");
+            static ref RE: Regex = Regex::new("^([[:xdigit:]]{4})\\.([[:xdigit:]]{4})$").expect("inavlid regexp");
         }
 
         fn capture2u32(c: &regex::Captures, group_num: usize) -> u32 {
@@ -185,10 +168,7 @@ impl TryFrom<&str> for RoutingLabel<u32> {
         }
 
         if let Some(c) = RE.captures(value) {
-            Self::try_new(
-                (capture2u32(&c, 1) << 16)
-                    | capture2u32(&c, 2),
-            ).ok_or(LabelError::ZeroRoutingLabel)
+            Self::try_new((capture2u32(&c, 1) << 16) | capture2u32(&c, 2)).ok_or(LabelError::ZeroRoutingLabel)
         } else {
             Err(LabelError::MalformedRoutingLabelStringValue)
         }
@@ -200,9 +180,7 @@ impl TryFrom<&str> for RoutingLabel<u64> {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         lazy_static! {
-            static ref RE: Regex = Regex::new(
-                "^([[:xdigit:]]{4})\\.([[:xdigit:]]{4})\\.([[:xdigit:]]{4})\\.([[:xdigit:]]{4})$"
-            ).expect("inavlid regexp");
+            static ref RE: Regex = Regex::new("^([[:xdigit:]]{4})\\.([[:xdigit:]]{4})\\.([[:xdigit:]]{4})\\.([[:xdigit:]]{4})$").expect("inavlid regexp");
         }
 
         fn capture2u64(c: &regex::Captures, group_num: usize) -> u64 {
@@ -211,12 +189,8 @@ impl TryFrom<&str> for RoutingLabel<u64> {
         }
 
         if let Some(c) = RE.captures(value) {
-            Self::try_new(
-                (capture2u64(&c, 1) << 48)
-                    | (capture2u64(&c, 2) << 32)
-                    | (capture2u64(&c, 3) << 16)
-                    | capture2u64(&c, 4),
-            ).ok_or(LabelError::ZeroRoutingLabel)
+            Self::try_new((capture2u64(&c, 1) << 48) | (capture2u64(&c, 2) << 32) | (capture2u64(&c, 3) << 16) | capture2u64(&c, 4))
+                .ok_or(LabelError::ZeroRoutingLabel)
         } else {
             Err(LabelError::MalformedRoutingLabelStringValue)
         }
@@ -239,7 +213,8 @@ impl TryFrom<&str> for RoutingLabel<u128> {
                 ([[:xdigit:]]{4})\\.\
                 ([[:xdigit:]]{4})\\.\
                 ([[:xdigit:]]{4})$"
-            ).expect("inavlid regexp");
+            )
+            .expect("inavlid regexp");
         }
 
         fn capture2u128(c: &regex::Captures, group_num: usize) -> u128 {
@@ -257,7 +232,8 @@ impl TryFrom<&str> for RoutingLabel<u128> {
                     | (capture2u128(&c, 6) << 32)
                     | (capture2u128(&c, 7) << 16)
                     | capture2u128(&c, 8),
-            ).ok_or(LabelError::ZeroRoutingLabel)
+            )
+            .ok_or(LabelError::ZeroRoutingLabel)
         } else {
             Err(LabelError::MalformedRoutingLabelStringValue)
         }
@@ -270,8 +246,8 @@ mod tests {
 
     use std::convert::TryFrom;
 
-    use rand::{RngCore, SeedableRng};
     use rand::rngs::SmallRng;
+    use rand::{RngCore, SeedableRng};
 
     use crate::RoutingLabel;
 
@@ -299,25 +275,25 @@ mod tests {
         assert_eq!(l64(1).to_string(), "0000.0000.0000.0001");
         assert_eq!(l64(14574489829).to_string(), "0000.0003.64b5.10e5");
 
-        assert_eq!(
-            l128(1).to_string(),
-            "0000.0000.0000.0000.0000.0000.0000.0001"
-        );
-        assert_eq!(
-            l128(14574489829).to_string(),
-            "0000.0000.0000.0000.0000.0003.64b5.10e5"
-        );
+        assert_eq!(l128(1).to_string(), "0000.0000.0000.0000.0000.0000.0000.0001");
+        assert_eq!(l128(14574489829).to_string(), "0000.0000.0000.0000.0000.0003.64b5.10e5");
     }
 
     #[test]
     fn label_from_string() {
         assert_eq!(RoutingLabel::<u64>::try_from("0000.0000.0000.0000"), Err(LabelError::ZeroRoutingLabel));
         assert_eq!(RoutingLabel::<u64>::try_from("0000.0000.0000.0001"), Ok(l64(1)));
-        assert_eq!(RoutingLabel::<u128>::try_from("0000.0000.0000.0000.0000.0000.0000.0000"), Err(LabelError::ZeroRoutingLabel));
+        assert_eq!(
+            RoutingLabel::<u128>::try_from("0000.0000.0000.0000.0000.0000.0000.0000"),
+            Err(LabelError::ZeroRoutingLabel)
+        );
         assert_eq!(RoutingLabel::<u128>::try_from("0000.0000.0000.0000.0000.0000.0000.0001"), Ok(l128(1)));
         assert_eq!(RoutingLabel::<u64>::try_from("0000.0003.64b5.10e5"), Ok(l64(14574489829)));
         assert_eq!(RoutingLabel::<u64>::try_from("0002.0003.64b5.10e5"), Ok(l64(562964527911141u64)));
-        assert_eq!(RoutingLabel::<u128>::try_from("0000.0000.0000.0000.0002.0003.64b5.10e5"), Ok(l128(562964527911141u128)));
+        assert_eq!(
+            RoutingLabel::<u128>::try_from("0000.0000.0000.0000.0002.0003.64b5.10e5"),
+            Ok(l128(562964527911141u128))
+        );
 
         assert!(RoutingLabel::<u64>::try_from("0000.0000.0000.001").is_err());
         assert!(RoutingLabel::<u64>::try_from("0000.0003.64b5.k0e5").is_err());

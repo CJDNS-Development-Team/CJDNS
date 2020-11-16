@@ -78,7 +78,7 @@ impl Funcs {
 
     /// Iterator over functions in this list returned in alphabetical order.
     #[inline]
-    pub fn iter(&self) -> impl Iterator<Item=&Func> {
+    pub fn iter(&self) -> impl Iterator<Item = &Func> {
         let Funcs(list) = self;
         list.iter()
     }
@@ -95,7 +95,7 @@ impl Args {
     /// Iterator over arguments in this list.
     /// Returns required args first in alphabetical order, then non-required in alphabetical order.
     #[inline]
-    pub fn iter(&self) -> impl Iterator<Item=&Arg> {
+    pub fn iter(&self) -> impl Iterator<Item = &Arg> {
         let Args(list) = self;
         list.iter()
     }
@@ -170,9 +170,7 @@ mod tests {
                 ("fn_a", mk_args(vec![])),
                 ("fn_c", mk_args(vec![("arg1", true, "Int"), ("arg2", true, "String")])),
             ]);
-            let fns2 = mk_funcs(vec![
-                ("fn_b", mk_args(vec![("c", false, "Int"), ("b", true, "Int"), ("a", false, "Int")])),
-            ]);
+            let fns2 = mk_funcs(vec![("fn_b", mk_args(vec![("c", false, "Int"), ("b", true, "Int"), ("a", false, "Int")]))]);
 
             let mut funcs = Funcs::new();
             funcs.add_funcs(fns1);
@@ -181,20 +179,27 @@ mod tests {
             funcs
         };
 
-        let a = |nm: &str, req: bool, typ: ArgType| {
-            Arg {
-                name: nm.to_string(),
-                required: req,
-                typ,
-            }
+        let a = |nm: &str, req: bool, typ: ArgType| Arg {
+            name: nm.to_string(),
+            required: req,
+            typ,
         };
 
         assert_eq!(
             funcs,
             Funcs(vec![
-                Func { name: "fn_a".to_string(), args: Args(vec![]) },
-                Func { name: "fn_b".to_string(), args: Args(vec![a("b", true, ArgType::Int), a("a", false, ArgType::Int), a("c", false, ArgType::Int)]) },
-                Func { name: "fn_c".to_string(), args: Args(vec![a("arg1", true, ArgType::Int), a("arg2", true, ArgType::String)]) },
+                Func {
+                    name: "fn_a".to_string(),
+                    args: Args(vec![])
+                },
+                Func {
+                    name: "fn_b".to_string(),
+                    args: Args(vec![a("b", true, ArgType::Int), a("a", false, ArgType::Int), a("c", false, ArgType::Int)])
+                },
+                Func {
+                    name: "fn_c".to_string(),
+                    args: Args(vec![a("arg1", true, ArgType::Int), a("arg2", true, ArgType::String)])
+                },
             ])
         );
     }
@@ -210,7 +215,10 @@ mod tests {
     fn mk_args(list: Vec<(&str, bool, &str)>) -> RemoteFnArgsDescr {
         let mut res = BTreeMap::new();
         for (name, req, typ) in list {
-            let descr = RemoteFnArgDescr { required: if req { 1 } else { 0 }, typ: typ.to_string() };
+            let descr = RemoteFnArgDescr {
+                required: if req { 1 } else { 0 },
+                typ: typ.to_string(),
+            };
             res.insert(name.to_string(), descr);
         }
         res

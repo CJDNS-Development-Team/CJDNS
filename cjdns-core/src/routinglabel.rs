@@ -30,13 +30,13 @@ pub trait LabelBits:
     Sized
     + Copy
     + From<u32>
-    + Shl<u32, Output=Self>
-    + Shr<u32, Output=Self>
-    + BitXor<Output=Self>
-    + BitOr<Output=Self>
-    + BitAnd<Output=Self>
-    + Add<Output=Self>
-    + Sub<Output=Self>
+    + Shl<u32, Output = Self>
+    + Shr<u32, Output = Self>
+    + BitXor<Output = Self>
+    + BitOr<Output = Self>
+    + BitAnd<Output = Self>
+    + Add<Output = Self>
+    + Sub<Output = Self>
     + Eq
     + fmt::Display // should output user-friendly hex label
 {

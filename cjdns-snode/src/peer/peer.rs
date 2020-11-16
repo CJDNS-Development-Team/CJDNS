@@ -23,7 +23,10 @@ pub struct Peer {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub(super) enum PeerType { Incoming, Outgoing }
+pub(super) enum PeerType {
+    Incoming,
+    Outgoing,
+}
 
 /// Error type for the situation when peer connection already closed while trying to do something with like (like send a message).
 #[derive(thiserror::Error, Debug)]

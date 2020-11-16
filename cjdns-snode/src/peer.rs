@@ -74,15 +74,17 @@ impl Peers {
             match res {
                 Ok((ws_stream, _)) => {
                     info!("Connected to {}", uri);
-                    let ipv6_addr = { // Trim brackets: '[1:2:3:4]' -> '1:2:3:4'
+                    let ipv6_addr = {
+                        // Trim brackets: '[1:2:3:4]' -> '1:2:3:4'
                         let host = uri.host().expect("host");
                         let n = host.len();
                         if n >= 2 && host.starts_with('[') && host.ends_with(']') {
-                            &host[1..n-2]
+                            &host[1..n - 2]
                         } else {
                             host
                         }
-                    }.to_string();
+                    }
+                    .to_string();
                     let res = self.outgoing(ipv6_addr, ws_stream).await;
                     if let Err(e) = res {
                         debug!("Error reading from peer: {}", e);
@@ -94,7 +96,11 @@ impl Peers {
                 }
             }
 
-            let delay = if sucessfully_connected { Duration::from_secs(1) } else { Duration::from_secs(10) };
+            let delay = if sucessfully_connected {
+                Duration::from_secs(1)
+            } else {
+                Duration::from_secs(10)
+            };
             time::delay_for(delay).await;
         }
     }
@@ -169,7 +175,7 @@ impl Peers {
         res
     }
 
-    fn create_peer<'a>(&'a self, addr: String, ws_stream: impl WebSock + 'a, peer_type: PeerType) -> (Peer, impl Future<Output=Result<(), Error>> + 'a) {
+    fn create_peer<'a>(&'a self, addr: String, ws_stream: impl WebSock + 'a, peer_type: PeerType) -> (Peer, impl Future<Output = Result<(), Error>> + 'a) {
         // Create bounded channel to send messages
         const QUEUE_SIZE: usize = 1024;
         let (msg_tx, msg_rx) = mpsc::channel(QUEUE_SIZE);
@@ -190,7 +196,13 @@ impl Peers {
         self.peers.remove_peer(peer.id);
     }
 
-    async fn run_websocket(&self, peer: Peer, ws_stream: impl WebSock, mut msg_rx: mpsc::Receiver<Message>, mut ann_tx: mpsc::Sender<AnnData>) -> Result<(), Error> {
+    async fn run_websocket(
+        &self,
+        peer: Peer,
+        ws_stream: impl WebSock,
+        mut msg_rx: mpsc::Receiver<Message>,
+        mut ann_tx: mpsc::Sender<AnnData>,
+    ) -> Result<(), Error> {
         // Split the socket
         let (mut ws_write, mut ws_read) = ws_stream.ws_split();
 
@@ -256,9 +268,7 @@ impl Peers {
                 peer.send_msg(msg![id, "ACK"]).await?;
             }
 
-            ACK => {
-                /* no-op */
-            }
+            ACK => { /* no-op */ }
 
             INV(hash_list) => {
                 if peer.peer_type == PeerType::Outgoing {

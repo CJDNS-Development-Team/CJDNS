@@ -8,7 +8,7 @@ pub use crate::config::Opts;
 pub use crate::conn::Connection;
 pub use crate::errors::Error;
 pub use crate::func_args::{ArgName, ArgValue, ArgValues};
-pub use crate::func_list::{Arg, Args, ArgType, Func, Funcs};
+pub use crate::func_list::{Arg, ArgType, Args, Func, Funcs};
 pub use crate::func_ret::ReturnValue;
 
 mod config;
@@ -17,8 +17,8 @@ mod errors;
 mod func_args;
 mod func_list;
 mod func_ret;
-mod txid;
 pub mod msgs;
+mod txid;
 
 #[derive(Clone, Default, PartialEq, Eq, Debug)]
 struct ConnectionOptions {

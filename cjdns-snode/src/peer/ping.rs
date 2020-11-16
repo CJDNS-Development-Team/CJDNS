@@ -23,7 +23,9 @@ impl Peers {
         for mut peer in ping_list {
             let seq = self.msg_id_seq.next();
             let res = peer.send_msg(msg![seq, "PING"]).await;
-            if res.is_err() { continue; } // Skip already closed connections
+            if res.is_err() {
+                continue;
+            } // Skip already closed connections
             info!("<PING {}", seq);
         }
 

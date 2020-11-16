@@ -11,7 +11,10 @@ impl Zero for f64 {
 
 /// Helper trait, providing total ordering for non-`Ord` types,
 /// such as `f64`, given its value is finite (i.e. not `NaN`, `Infinity` etc.)
-pub trait IntoOrd where Self::Output: Ord {
+pub trait IntoOrd
+where
+    Self::Output: Ord,
+{
     /// Some substitute `Ord` type which can be used instead of `Self` for ordering purposes.
     /// Only should be used for comparisons, its value itself is meaningless.
     type Output;

@@ -1,6 +1,6 @@
 //! Logic for parsing and serializing the data header, providing type of content
 
-use cjdns_bytes::{ParseError, SerializeError, ExpectedSize};
+use cjdns_bytes::{ExpectedSize, ParseError, SerializeError};
 use cjdns_bytes::{Reader, Writer};
 
 use crate::content_type::ContentType;
@@ -123,10 +123,8 @@ mod tests {
     fn test_parse_unknown_content_type() {
         let hex_data = [
             // content type number out of IP6 range - 32000
-            "10007d00",
-            // content type number in IP6 range - 100
-            "10000064",
-            // content type out of available range (greater than 0x8000)
+            "10007d00", // content type number in IP6 range - 100
+            "10000064", // content type out of available range (greater than 0x8000)
             "10008001", "1000fff0",
         ];
         for data in hex_data.iter() {

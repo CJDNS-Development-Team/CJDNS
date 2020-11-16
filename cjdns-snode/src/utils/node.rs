@@ -12,7 +12,8 @@ lazy_static! {
         "^v([0-9]+)\\.\
         ([[:xdigit:]]{4}\\.[[:xdigit:]]{4}\\.[[:xdigit:]]{4}\\.[[:xdigit:]]{4})\\.\
         ([a-z0-9]{52}\\.k)"
-    ).expect("bad regexp");
+    )
+    .expect("bad regexp");
 }
 
 /// Gets version, label and public key all together in tuple from `name` argument, if it has valid structure.

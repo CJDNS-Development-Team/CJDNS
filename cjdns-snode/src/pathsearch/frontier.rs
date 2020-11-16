@@ -17,7 +17,11 @@ pub(super) struct Frontier<T, W> {
     index: HashMap<T, usize>,
 }
 
-impl<T, W> Frontier<T, W> where T: Clone + Ord + Eq + Hash, W: Clone + PartialOrd + IntoOrd {
+impl<T, W> Frontier<T, W>
+where
+    T: Clone + Ord + Eq + Hash,
+    W: Clone + PartialOrd + IntoOrd,
+{
     /// Create new empty instance.
     pub fn new() -> Frontier<T, W> {
         Frontier {
@@ -35,7 +39,7 @@ impl<T, W> Frontier<T, W> where T: Clone + Ord + Eq + Hash, W: Clone + PartialOr
     /// Find position in the queue where to insert a new item.
     fn insertion_pos(&self, item: &(T, W)) -> usize {
         match self.queue.binary_search_by_key(&Self::key_fn(item), Self::key_fn) {
-            Ok(index) | Err(index) => index
+            Ok(index) | Err(index) => index,
         }
     }
 
@@ -44,7 +48,11 @@ impl<T, W> Frontier<T, W> where T: Clone + Ord + Eq + Hash, W: Clone + PartialOr
         let item = (tag.clone(), weight);
         let index = self.insertion_pos(&item);
         self.queue.insert(index, item);
-        self.index.iter_mut().for_each(|(_, old_idx)| if *old_idx >= index { *old_idx += 1; });
+        self.index.iter_mut().for_each(|(_, old_idx)| {
+            if *old_idx >= index {
+                *old_idx += 1;
+            }
+        });
         self.index.insert(tag, index);
     }
 
@@ -70,13 +78,21 @@ impl<T, W> Frontier<T, W> where T: Clone + Ord + Eq + Hash, W: Clone + PartialOr
                 // Remove old item
                 self.queue.remove(i);
                 self.index.remove(tag);
-                self.index.iter_mut().for_each(|(_, old_idx)| if *old_idx >= i { *old_idx -= 1; });
+                self.index.iter_mut().for_each(|(_, old_idx)| {
+                    if *old_idx >= i {
+                        *old_idx -= 1;
+                    }
+                });
 
                 // Re-insert with updated cost
                 let new_item = (tag.clone(), new_cost);
                 let new_index = self.insertion_pos(&new_item);
                 self.queue.insert(new_index, new_item);
-                self.index.iter_mut().for_each(|(_, old_idx)| if *old_idx >= new_index { *old_idx += 1; });
+                self.index.iter_mut().for_each(|(_, old_idx)| {
+                    if *old_idx >= new_index {
+                        *old_idx += 1;
+                    }
+                });
                 self.index.insert(tag.clone(), new_index);
 
                 true

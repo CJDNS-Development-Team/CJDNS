@@ -35,12 +35,11 @@ impl ReturnValue {
     /// Access stored List value, converting each list element.
     /// Returns a new `Vec` where each element is converted from another `ReturnValue` to the appropriate type.
     pub fn as_list<'rv, T, F>(&'rv self, mut item_convert: F) -> Result<Vec<T>, ()>
-        where F: FnMut(&'rv ReturnValue) -> Result<T, ()>
+    where
+        F: FnMut(&'rv ReturnValue) -> Result<T, ()>,
     {
         match self {
-            ReturnValue::List(list) => {
-                list.iter().map(|v| item_convert(v)).collect()
-            }
+            ReturnValue::List(list) => list.iter().map(|v| item_convert(v)).collect(),
             _ => Err(()),
         }
     }
@@ -48,12 +47,11 @@ impl ReturnValue {
     /// Access stored Map value, converting each entry value element.
     /// Returns a new `BTreeMap` where each key is `String` and each value is converted from another `ReturnValue` to the appropriate type.
     pub fn as_map<'rv, T, F>(&'rv self, mut value_convert: F) -> Result<BTreeMap<String, T>, ()>
-        where F: FnMut(&'rv ReturnValue) -> Result<T, ()>
+    where
+        F: FnMut(&'rv ReturnValue) -> Result<T, ()>,
     {
         match self {
-            ReturnValue::Map(map) => {
-                map.iter().map(|(k, v)| value_convert(v).map(|v| (k.clone(), v))).collect()
-            }
+            ReturnValue::Map(map) => map.iter().map(|(k, v)| value_convert(v).map(|v| (k.clone(), v))).collect(),
             _ => Err(()),
         }
     }
@@ -120,8 +118,8 @@ mod deserialize {
     use std::collections::BTreeMap;
     use std::fmt;
 
-    use serde::{Deserialize, Deserializer};
     use serde::de::{Error, MapAccess, SeqAccess, Unexpected, Visitor};
+    use serde::{Deserialize, Deserializer};
 
     use super::ReturnValue;
 

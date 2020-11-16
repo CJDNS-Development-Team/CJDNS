@@ -17,8 +17,8 @@ use cjdns_ann::{AnnHash, Announcement, AnnouncementPacket, Entity, LINK_STATE_SL
 use cjdns_keys::CJDNS_IP6;
 
 use crate::config::Config;
-use crate::peer::{AnnData, create_peers, Peers};
-use crate::server::link::{Link, LinkStateEntry, mk_link};
+use crate::peer::{create_peers, AnnData, Peers};
+use crate::server::link::{mk_link, Link, LinkStateEntry};
 use crate::server::nodes::{Node, Nodes};
 use crate::server::route::Routing;
 use crate::utils::task::periodic_task;
@@ -62,7 +62,9 @@ pub async fn main(config: Config) -> Result<()> {
     // Run announcements handling task
     {
         let server = Arc::clone(&server);
-        let h = task::spawn(async move { announces.for_each(|ann| { server.handle_announce(ann, false) }).await; });
+        let h = task::spawn(async move {
+            announces.for_each(|ann| server.handle_announce(ann, false)).await;
+        });
         tasks.push(h);
     }
 
@@ -87,7 +89,7 @@ pub async fn main(config: Config) -> Result<()> {
                 let peers = Arc::clone(&peers);
                 let h = task::spawn(async move { peers.connect_to(uri).await });
                 tasks.push(h);
-            },
+            }
             Err(err) => {
                 error!("Unable to connect to {}: {}", peer_addr, err);
             }
@@ -283,7 +285,8 @@ impl Server {
 
         if let Some(node) = node.as_ref() {
             let node_timestamp = node.mut_state.read().timestamp;
-            if node_timestamp > ann_timestamp { //TODO suspicious - duplicate check? Ask CJ
+            if node_timestamp > ann_timestamp {
+                //TODO suspicious - duplicate check? Ask CJ
                 warn!("old announcement [{}] most recent [{:?}]", ann.header.timestamp, node_timestamp);
                 return Ok((hash::node_announcement_hash(Some(node.clone()), debug_noisy), reply_error));
             }

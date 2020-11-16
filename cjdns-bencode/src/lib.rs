@@ -1,10 +1,10 @@
 //! CJDNS Bencode library.
 
-pub use bendy::serde::Error;
 pub use bendy::serde::from_bytes;
 pub use bendy::serde::to_bytes;
+pub use bendy::serde::Error;
 
-pub use crate::value::{BencodeError, BValue};
+pub use crate::value::{BValue, BencodeError};
 
 mod value;
 

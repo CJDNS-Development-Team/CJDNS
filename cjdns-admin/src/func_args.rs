@@ -2,8 +2,8 @@
 
 use std::collections::BTreeMap;
 
-use serde::{Serialize, Serializer};
 use serde::ser::SerializeMap;
+use serde::{Serialize, Serializer};
 
 /// Argument name (alias to `String`).
 pub type ArgName = String;
@@ -87,7 +87,9 @@ impl From<&str> for ArgValue {
 
 #[test]
 fn test_arg_value_conversion() {
-    fn arg<T: Into<ArgValue>>(v: T) -> ArgValue { v.into() }
+    fn arg<T: Into<ArgValue>>(v: T) -> ArgValue {
+        v.into()
+    }
 
     assert_eq!(arg(42), ArgValue::Int(42));
     assert_eq!(arg(-42), ArgValue::Int(-42));

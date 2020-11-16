@@ -6,8 +6,8 @@ use std::time::{Duration, Instant};
 
 use thiserror::Error;
 
-use cjdns_core::{EncodingScheme, RoutingLabel};
 use cjdns_core::splice::{get_encoding_form, re_encode, splice};
+use cjdns_core::{EncodingScheme, RoutingLabel};
 use cjdns_keys::CJDNS_IP6;
 
 use crate::pathsearch::{Dijkstra, GraphBuilder, GraphSolver};
@@ -98,7 +98,8 @@ fn build_node_graph(nodes: &Nodes) -> Dijkstra<CJDNS_IP6, f64> {
                 if reverse.inward_links_by_ip.lock().get(&nip).is_none() {
                     continue;
                 }
-                let total_cmp = |a: &f64, b: &f64| { // Replace with `f64::total_cmp` when it is stabilized
+                let total_cmp = |a: &f64, b: &f64| {
+                    // Replace with `f64::total_cmp` when it is stabilized
                     let mut a = a.to_bits() as i64;
                     let mut b = b.to_bits() as i64;
                     a ^= (((a >> 63) as u64) >> 1) as i64;

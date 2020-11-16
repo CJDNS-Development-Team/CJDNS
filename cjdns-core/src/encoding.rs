@@ -32,9 +32,9 @@
 //! assert_eq!(deserialized, forms_to_scheme(forms.as_ref()));
 //! ```
 
-pub use encoding_serialization::{deserialize_scheme, serialize_scheme};
 pub use encoding_scheme::*;
-pub use errors::{SchemeValidationError, EncodingSerializationError};
+pub use encoding_serialization::{deserialize_scheme, serialize_scheme};
+pub use errors::{EncodingSerializationError, SchemeValidationError};
 
 mod encoding_serialization {
     //! Serialization and deserialization logic
@@ -122,15 +122,9 @@ mod encoding_serialization {
             // if prefix_len == 0 we simply read 0 bits from current position, receiving prefix = 0
             let prefix = read_bits(scheme_bytes, cur_pos, prefix_len as u8);
 
-            result.push(
-                EncodingSchemeForm::try_new(
-                    bit_count as u8,
-                    prefix_len as u8,
-                    prefix
-                )
-                .expect("invalid encoding scheme form")
-            );
-            if cur_pos < (5 + 5) { // minimum size of scheme from (prefix_len == 0)
+            result.push(EncodingSchemeForm::try_new(bit_count as u8, prefix_len as u8, prefix).expect("invalid encoding scheme form"));
+            if cur_pos < (5 + 5) {
+                // minimum size of scheme from (prefix_len == 0)
                 break;
             }
         }
@@ -193,24 +187,16 @@ mod encoding_serialization {
 
         #[test]
         fn test_is_sane_forms() {
-            let mut input = [
-                encoding_form(4, 1, 1),
-                encoding_form(8, 1, 0),
-            ].to_vec();
+            let mut input = [encoding_form(4, 1, 1), encoding_form(8, 1, 0)].to_vec();
 
             assert!(validate(&input).is_ok());
 
             // test non-empty prefix in single form
-            input = [
-                encoding_form(4, 1, 1),
-            ].to_vec();
+            input = [encoding_form(4, 1, 1)].to_vec();
             assert_eq!(validate(&input), Err(SchemeValidationError::SingleFormWithPrefix));
 
             // test non valid prefix_len
-            input = [
-                encoding_form(4, 0, 0),
-                encoding_form(4, 4, 2),
-            ].to_vec();
+            input = [encoding_form(4, 0, 0), encoding_form(4, 4, 2)].to_vec();
             assert_eq!(validate(&input), Err(SchemeValidationError::MultiFormBadPrefix));
 
             // test bit_count not in ascending order
@@ -220,23 +206,16 @@ mod encoding_serialization {
                 encoding_form(5, 5, 3),
                 encoding_form(4, 6, 4),
                 encoding_form(8, 7, 5),
-            ].to_vec();
+            ]
+            .to_vec();
             assert_eq!(validate(&input), Err(SchemeValidationError::BitCountNotSorted));
 
             // test too big form size (bit_count + prefix_len > 59)
-            input = [
-                encoding_form(3, 3, 1),
-                encoding_form(31, 29, 5),
-            ].to_vec();
+            input = [encoding_form(3, 3, 1), encoding_form(31, 29, 5)].to_vec();
             assert_eq!(validate(&input), Err(SchemeValidationError::TooBigForm));
 
             // test non-unique prefix in multiple forms
-            input = [
-                encoding_form(3, 3, 1),
-                encoding_form(4, 4, 2),
-                encoding_form(5, 5, 6),
-                encoding_form(8, 9, 2),
-            ].to_vec();
+            input = [encoding_form(3, 3, 1), encoding_form(4, 4, 2), encoding_form(5, 5, 6), encoding_form(8, 9, 2)].to_vec();
             assert_eq!(validate(&input), Err(SchemeValidationError::DuplicatePrefix));
         }
 
@@ -246,12 +225,7 @@ mod encoding_serialization {
             // hex: '8000'
             // 80        00
             // 1000 0000 0000 0000
-            let mut input = encoding_scheme(
-                [
-                    encoding_form(4, 0, 0),
-                ]
-                .as_ref()
-            );
+            let mut input = encoding_scheme([encoding_form(4, 0, 0)].as_ref());
 
             let mut serialized = serialize_scheme(&input).expect("failed to serialize");
             // https://github.com/cjdelisle/cjdnsencode/blob/89216230daa82eb43689c6af48de3c6a138002f1/test.js#L8
@@ -264,12 +238,7 @@ mod encoding_serialization {
             // hex: '0001'
             // 00        01
             // 0000 0000 0000 0001
-            input = encoding_scheme(
-                [
-                    encoding_form(8, 0, 0),
-                ]
-                .as_ref()
-            );
+            input = encoding_scheme([encoding_form(8, 0, 0)].as_ref());
 
             serialized = serialize_scheme(&input).expect("failed to serialize");
             // https://github.com/cjdelisle/cjdnsencode/blob/89216230daa82eb43689c6af48de3c6a138002f1/test.js#L13
@@ -285,13 +254,7 @@ mod encoding_serialization {
             // { bitCount: 8, prefix: "00", prefixLen: 1 },
             // 81        0c        08
             // 1000 0001 0000 1100 0000 1000
-            let mut input = encoding_scheme(
-                [
-                    encoding_form(4, 1, 1),
-                    encoding_form(8, 1, 0),
-                ]
-                .as_ref()
-            );
+            let mut input = encoding_scheme([encoding_form(4, 1, 1), encoding_form(8, 1, 0)].as_ref());
 
             let mut serialized = serialize_scheme(&input).expect("failed to serialize");
             // https://github.com/cjdelisle/cjdnsencode/blob/89216230daa82eb43689c6af48de3c6a138002f1/test.js#L21
@@ -309,14 +272,7 @@ mod encoding_serialization {
             // hex: '6114458100'
             // 61        14        45        81  :      00
             // 0110 0001 0001 0100 0100 0101 1000 0001 0000 0000
-            input = encoding_scheme(
-                [
-                    encoding_form(3, 1, 1),
-                    encoding_form(5, 2, 2),
-                    encoding_form(8, 2, 0),
-                ]
-                .as_ref()
-            );
+            input = encoding_scheme([encoding_form(3, 1, 1), encoding_form(5, 2, 2), encoding_form(8, 2, 0)].as_ref());
 
             serialized = serialize_scheme(&input).expect("failed to serialize");
             // https://github.com/cjdelisle/cjdnsencode/blob/89216230daa82eb43689c6af48de3c6a138002f1/test.js#L30
@@ -351,10 +307,10 @@ mod encoding_serialization {
 mod encoding_scheme {
     //! Routing label encoding scheme.
 
-    use std::ops::Deref;
     use std::collections::HashSet;
+    use std::ops::Deref;
 
-    use crate::encoding::errors::{SchemeValidationError, FormValidationError};
+    use crate::encoding::errors::{FormValidationError, SchemeValidationError};
 
     /// In the old days every label needed to be topped with 0001.
     /// To make sure that no label would ever go over 64 bits even with 0001 spliced on the top of it, we use this reservation.
@@ -493,7 +449,7 @@ mod encoding_scheme {
     pub mod schemes {
         //! Well-known encoding schemes
 
-        use super::{EncodingSchemeForm, EncodingScheme};
+        use super::{EncodingScheme, EncodingSchemeForm};
 
         lazy_static! {
             /// Fixed-length 4 bit scheme.
@@ -561,7 +517,7 @@ mod encoding_scheme {
         }
 
         /// Returns an iterator over all the well-known encoding schemes
-        pub fn all() -> impl Iterator<Item=&'static EncodingScheme> + 'static {
+        pub fn all() -> impl Iterator<Item = &'static EncodingScheme> + 'static {
             lazy_static! {
                 static ref ALL: [EncodingScheme; 5] = [F4.clone(), F8.clone(), V48.clone(), V358.clone(), V37.clone()];
             }
@@ -575,18 +531,14 @@ mod encoding_scheme {
 
     #[cfg(test)]
     mod tests {
-        use super::{EncodingScheme, EncodingSchemeForm, schemes};
-        
+        use super::{schemes, EncodingScheme, EncodingSchemeForm};
+
         fn encoding_scheme(forms: &[EncodingSchemeForm]) -> EncodingScheme {
             EncodingScheme::try_new(forms).expect("invalid scheme")
         }
 
         fn encoding_form(bit_count: u8, prefix_len: u8, prefix: u32) -> EncodingSchemeForm {
-            EncodingSchemeForm {
-                bit_count,
-                prefix_len,
-                prefix,
-            }
+            EncodingSchemeForm { bit_count, prefix_len, prefix }
         }
 
         #[test]
@@ -650,7 +602,7 @@ mod errors {
 
         /// Encoded prefix length is insufficient for the provided prefix
         #[error("Invalid encoding form: `prefix_len` is to little for provided `prefix`")]
-        InvalidPrefixData
+        InvalidPrefixData,
     }
 
     /// Error returned when encoding scheme for serialization/deserialization fails

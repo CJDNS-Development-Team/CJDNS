@@ -38,7 +38,7 @@ impl Peer {
             addr: self.addr.clone(),
             outstanding_requests: self.get_outstanding_reqs_count(),
             msgs_on_wire: 0, //TODO No such concept in rust code - ask CJ what to do with it, remove or keep 0 for compatibility?
-            msg_queue: 0, //TODO originally "self.msg_queue.len()", not easy to get in Rust code - is it really needed, or can be dropped?
+            msg_queue: 0,    //TODO originally "self.msg_queue.len()", not easy to get in Rust code - is it really needed, or can be dropped?
         }
     }
 }

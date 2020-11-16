@@ -113,21 +113,21 @@ pub type GenericResponsePayload = BTreeMap<String, ReturnValue>;
 #[derive(Deserialize, Default, Clone, PartialEq, Eq, Debug)]
 pub(crate) struct CookieResponsePayload {
     #[serde(rename = "cookie")]
-    pub(crate) cookie: String
+    pub(crate) cookie: String,
 }
 
 /// Arguments for `Admin_availableFunctions` remote function.
 #[derive(Serialize, Clone, PartialEq, Eq, Debug)]
 pub(crate) struct AvailableFnsQueryArg {
     #[serde(rename = "page")]
-    pub(crate) page: usize
+    pub(crate) page: usize,
 }
 
 /// Return value for `Admin_availableFunctions` remote function.
 #[derive(Deserialize, Default, Clone, PartialEq, Eq, Debug)]
 pub(crate) struct AvailableFnsResponsePayload {
     #[serde(rename = "availableFunctions", default)]
-    pub(crate) available_fns: RemoteFnDescrs
+    pub(crate) available_fns: RemoteFnDescrs,
 }
 
 /// Map of remote function names to map of arguments.

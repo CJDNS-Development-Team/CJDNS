@@ -21,13 +21,13 @@ pub enum MessageData {
     ACK,
     GET_DATA(AnnHash),
     DATA(AnnData),
-    INV(Vec<AnnHash>)
+    INV(Vec<AnnHash>),
 }
 
 #[derive(Error, Clone, PartialEq, Eq, Debug)]
 pub enum EncodingError {
     #[error("Failed to serialize MsgPack message: {0}")]
-    MsgpackSerializeError(String)
+    MsgpackSerializeError(String),
 }
 
 #[derive(Error, Clone, PartialEq, Eq, Debug)]
@@ -114,7 +114,7 @@ impl MessageData {
             ("GET_DATA", None, Some(hashes), None) if hashes.len() == 1 => MessageData::GET_DATA(hashes[0].clone()),
             ("DATA", None, None, Some(data)) => MessageData::DATA(data.clone()),
             ("INV", Some(0), Some(hashes), None) => MessageData::INV(hashes.iter().cloned().collect()),
-            _ => return None
+            _ => return None,
         };
         Some(res)
     }
@@ -163,7 +163,8 @@ impl MessageData {
             "GET_DATA" => {
                 check_data_len(1)?;
                 if let Value::Binary(hash) = &data[0] {
-                    if hash.len() > 0 { // Hash str can't be empty
+                    if hash.len() > 0 {
+                        // Hash str can't be empty
                         return Ok(MessageData::GET_DATA(AnnHash(hash.clone())));
                     }
                 }
@@ -209,7 +210,7 @@ impl MessageData {
                 Ok(MessageData::INV(hashes))
             }
 
-            _ => Err(DecodingError::UnrecognizedMessageType(type_str.to_string()))
+            _ => Err(DecodingError::UnrecognizedMessageType(type_str.to_string())),
         }
     }
 
@@ -218,21 +219,21 @@ impl MessageData {
             MessageData::HELLO(a) => {
                 res.push(Value::from("HELLO"));
                 res.push(Value::from(*a));
-            },
+            }
             MessageData::OLLEH(a) => {
                 res.push(Value::from("OLLEH"));
                 res.push(Value::from(*a));
-            },
+            }
             MessageData::PING => {
                 res.push(Value::from("PING"));
-            },
+            }
             MessageData::ACK => {
                 res.push(Value::from("ACK"));
-            },
+            }
             MessageData::GET_DATA(data) => {
                 res.push(Value::from("GET_DATA"));
                 res.push(Value::from(data.bytes()));
-            },
+            }
             MessageData::DATA(data) => {
                 res.push(Value::from("DATA"));
                 if data.is_empty() {
@@ -240,12 +241,12 @@ impl MessageData {
                 } else {
                     res.push(Value::from(data.as_slice()));
                 }
-            },
+            }
             MessageData::INV(data) => {
                 res.push(Value::from("INV"));
                 res.push(Value::from(0)); // Dummy 0 integer
                 res.push(data.iter().map(|v| Value::from(v.bytes())).collect());
-            },
+            }
         }
         res
     }
@@ -288,7 +289,7 @@ mod tests {
     macro_rules! hex {
         ( $hex:literal ) => {
             &hex::decode($hex).expect("bad hex value")
-        }
+        };
     }
 
     macro_rules! hash {
@@ -338,14 +339,20 @@ mod tests {
         test(msg![0, "OLLEH", 42], hex!("9300a54f4c4c45482a"));
         test(msg![1, "PING"], hex!("9201a450494e47"));
         test(msg![1, "ACK"], hex!("9201a341434b"));
-        test(msg![2, "GET_DATA" | hash = hash![0xA1, 0xB2, 0xC3, 0xD4]], hex!("9302a84745545f44415441c404a1b2c3d4"));
+        test(
+            msg![2, "GET_DATA" | hash = hash![0xA1, 0xB2, 0xC3, 0xD4]],
+            hex!("9302a84745545f44415441c404a1b2c3d4"),
+        );
         test(msg![2, "DATA" | data = vec![0xA1, 0xB2, 0xC3, 0xD4]], hex!("9302a444415441c404a1b2c3d4"));
-        test(msg![0, "INV", 0 => hashes = &[ hash![0xA1, 0xB2, 0xC3, 0xD4], hash![0xE5, 0xF6, 0x01, 0x02], hash![0x12, 0x34, 0x56, 0x78] ]], hex!("9400a3494e560093c404a1b2c3d4c404e5f60102c40412345678"));
+        test(
+            msg![0, "INV", 0 => hashes = &[ hash![0xA1, 0xB2, 0xC3, 0xD4], hash![0xE5, 0xF6, 0x01, 0x02], hash![0x12, 0x34, 0x56, 0x78] ]],
+            hex!("9400a3494e560093c404a1b2c3d4c404e5f60102c40412345678"),
+        );
     }
 
     #[test]
     fn test_message_decode_err() {
-        let test = |bytes:  &[u8], err: DecodingError| {
+        let test = |bytes: &[u8], err: DecodingError| {
             let decoded_err = Message::decode_msgpack(bytes).expect_err("decode not failed");
             assert_eq!(decoded_err, err, "decode failed with different error: {}", hex::encode(bytes));
         };
@@ -355,18 +362,36 @@ mod tests {
         // len < 2
         test(&[0x91, 0xa5, 0x48, 0x45, 0x4c, 0x4c, 0x4f], DecodingError::BadMessageRootArrayLength(1));
         // len > 4
-        test(&[0x95, 0xa5, 0x48, 0x45, 0x4c, 0x4c, 0x4f, 0x00, 0x01, 0x02, 0x3], DecodingError::BadMessageRootArrayLength(5));
+        test(
+            &[0x95, 0xa5, 0x48, 0x45, 0x4c, 0x4c, 0x4f, 0x00, 0x01, 0x02, 0x3],
+            DecodingError::BadMessageRootArrayLength(5),
+        );
         // got string instead of int
         test(&[0x92, 0xa5, 0x48, 0x45, 0x4c, 0x4c, 0x4f, 0x01], DecodingError::BadIdFieldType);
         // message type isn't string
         test(&[0x92, 0x01, 0x1], DecodingError::BadTypeFieldType);
         // unrecognized msg type
-        test(&[0x92, 0x01, 0xa6, 0x53, 0x55, 0x50, 0x4d, 0x41, 0x4e], DecodingError::UnrecognizedMessageType("SUPMAN".to_string()));
-        test(&[0x93, 0x01, 0xa6, 0x53, 0x55, 0x50, 0x4d, 0x41, 0x4e, 0x01], DecodingError::UnrecognizedMessageType("SUPMAN".to_string()));
-        test(&[0x93, 0x00, 0xa5, 0x48, 0x45, 0x4c, 0x4c, 0x4f, 0xa5, 0x48, 0x45, 0x4c, 0x4c, 0x4f], DecodingError::BadHelloVersionFieldType);
+        test(
+            &[0x92, 0x01, 0xa6, 0x53, 0x55, 0x50, 0x4d, 0x41, 0x4e],
+            DecodingError::UnrecognizedMessageType("SUPMAN".to_string()),
+        );
+        test(
+            &[0x93, 0x01, 0xa6, 0x53, 0x55, 0x50, 0x4d, 0x41, 0x4e, 0x01],
+            DecodingError::UnrecognizedMessageType("SUPMAN".to_string()),
+        );
+        test(
+            &[0x93, 0x00, 0xa5, 0x48, 0x45, 0x4c, 0x4c, 0x4f, 0xa5, 0x48, 0x45, 0x4c, 0x4c, 0x4f],
+            DecodingError::BadHelloVersionFieldType,
+        );
         // GET_DATA msg with empty hash
-        test(&[0x93, 0x02, 0xa8, 0x47, 0x45, 0x54, 0x5f, 0x44, 0x41, 0x54, 0x41, 0xc4, 0x00], DecodingError::BadArgType("GET_DATA".to_string()));
+        test(
+            &[0x93, 0x02, 0xa8, 0x47, 0x45, 0x54, 0x5f, 0x44, 0x41, 0x54, 0x41, 0xc4, 0x00],
+            DecodingError::BadArgType("GET_DATA".to_string()),
+        );
         // INV message with non-array type
-        test(&[0x94, 0x02, 0xa3, 0x49, 0x4e, 0x56, 0x00, 0x93, 0x01, 0x02, 0x03], DecodingError::BadArgType("INV".to_string()))
+        test(
+            &[0x94, 0x02, 0xa3, 0x49, 0x4e, 0x56, 0x00, 0x93, 0x01, 0x02, 0x03],
+            DecodingError::BadArgType("INV".to_string()),
+        )
     }
 }

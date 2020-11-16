@@ -1,19 +1,19 @@
 //! UDP connection to the CJDNS Router.
 
 use std::net::{IpAddr, SocketAddr};
-use std::time::Duration;
 use std::sync::Arc;
+use std::time::Duration;
 
 use sodiumoxide::crypto::hash::sha256::hash;
 use tokio::net::UdpSocket;
-use tokio::time;
 use tokio::sync::Mutex;
+use tokio::time;
 
-use crate::ConnectionOptions;
 use crate::errors::{ConnOptions, Error};
 use crate::func_list::Funcs;
 use crate::msgs::{self, Empty, Request};
 use crate::txid::Counter;
+use crate::ConnectionOptions;
 
 const PING_TIMEOUT: Duration = Duration::from_millis(1_000);
 const DEFAULT_TIMEOUT: Duration = Duration::from_millis(10_000);
@@ -48,10 +48,14 @@ impl Connection {
     }
 
     async fn probe_connection(&mut self, opts: ConnectionOptions) -> Result<(), Error> {
-        self.call_func::<(), Empty>("ping", (), true, PING_TIMEOUT).await.map_err(|_| Error::ConnectError(ConnOptions::wrap(&opts)))?;
+        self.call_func::<(), Empty>("ping", (), true, PING_TIMEOUT)
+            .await
+            .map_err(|_| Error::ConnectError(ConnOptions::wrap(&opts)))?;
 
         if !self.password.is_empty() {
-            self.call_func::<(), Empty>("AuthorizedPasswords_list", (), false, DEFAULT_TIMEOUT).await.map_err(|_| Error::AuthError(ConnOptions::wrap(&opts)))?;
+            self.call_func::<(), Empty>("AuthorizedPasswords_list", (), false, DEFAULT_TIMEOUT)
+                .await
+                .map_err(|_| Error::AuthError(ConnOptions::wrap(&opts)))?;
         }
 
         Ok(())
@@ -61,7 +65,9 @@ impl Connection {
         let mut res = Funcs::new();
 
         for i in 0.. {
-            let ret: msgs::AvailableFnsResponsePayload = self.call_func("Admin_availableFunctions", msgs::AvailableFnsQueryArg { page: i }, false, DEFAULT_TIMEOUT).await?;
+            let ret: msgs::AvailableFnsResponsePayload = self
+                .call_func("Admin_availableFunctions", msgs::AvailableFnsQueryArg { page: i }, false, DEFAULT_TIMEOUT)
+                .await?;
             let funcs = ret.available_fns;
 
             if funcs.is_empty() {
@@ -163,8 +169,9 @@ impl Connection {
     }
 
     async fn send_msg<RQ, RS>(&mut self, req: &RQ) -> Result<RS, Error>
-        where RQ: msgs::Request,
-              RS: msgs::Response
+    where
+        RQ: msgs::Request,
+        RS: msgs::Response,
     {
         // Send encoded request
         let msg = req.to_bencode()?;
@@ -201,7 +208,10 @@ fn check_txid(sent_txid: &String, received_txid: &String) -> Result<(), Error> {
     if sent_txid == received_txid {
         Ok(())
     } else {
-        Err(Error::BrokenTx { sent_txid: sent_txid.clone(), received_txid: received_txid.clone() })
+        Err(Error::BrokenTx {
+            sent_txid: sent_txid.clone(),
+            received_txid: received_txid.clone(),
+        })
     }
 }
 

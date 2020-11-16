@@ -23,26 +23,18 @@ pub(super) fn version_from_announcement(ann: &Announcement) -> Option<u16> {
     None
 }
 
-pub(super) fn peers_from_announcement(ann: &Announcement) -> impl Iterator<Item=&PeerData> {
-    ann.entities
-        .iter()
-        .filter_map(|e| {
-            match e {
-                Entity::Peer(data) => Some(data),
-                _ => None,
-            }
-        })
+pub(super) fn peers_from_announcement(ann: &Announcement) -> impl Iterator<Item = &PeerData> {
+    ann.entities.iter().filter_map(|e| match e {
+        Entity::Peer(data) => Some(data),
+        _ => None,
+    })
 }
 
-pub(super) fn link_states_from_announcement(ann: &Announcement) -> impl Iterator<Item=&LinkStateData> {
-    ann.entities
-        .iter()
-        .filter_map(|e| {
-            match e {
-                Entity::LinkState(data) => Some(data),
-                _ => None,
-            }
-        })
+pub(super) fn link_states_from_announcement(ann: &Announcement) -> impl Iterator<Item = &LinkStateData> {
+    ann.entities.iter().filter_map(|e| match e {
+        Entity::LinkState(data) => Some(data),
+        _ => None,
+    })
 }
 
 pub(super) fn ann_id(ann: &Announcement) -> impl fmt::Display {

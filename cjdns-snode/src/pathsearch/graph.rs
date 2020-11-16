@@ -2,7 +2,7 @@
 
 /// Graph building functions.
 pub trait GraphBuilder<T, W> {
-    fn add_node<I: IntoIterator<Item=(T, W)>>(&mut self, node_tag: T, links: I);
+    fn add_node<I: IntoIterator<Item = (T, W)>>(&mut self, node_tag: T, links: I);
 }
 
 /// Path finding functions.
