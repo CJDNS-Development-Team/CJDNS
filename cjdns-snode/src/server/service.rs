@@ -164,6 +164,12 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
         ms.debug_node.is_some() && ms.debug_node == route_header.ip6
     };
 
+    let self_version = if let Some(self_node) = server.mut_state.lock().self_node.as_ref() {
+        self_node.version as i64
+    } else {
+        return Err(anyhow!("self node isn't set"));
+    } as i64;
+
     let res = match sq.as_str() {
         "gr" => {
             if !content_benc.has_dict_entry("src") {
@@ -195,6 +201,7 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
             let res = BValue::builder()
                 .set_dict()
                 .add_dict_entry_opt("txid", txid)
+                .add_dict_entry("p", |b| b.set_int(self_version))
                 .add_dict_entry("recvTime", |b| b.set_int(current_timestamp() as i64));
 
             let route = get_route(server.clone(), src.clone(), tar.clone());
@@ -230,24 +237,20 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
             let ann = content_benc.get_dict_value_bytes("ann").expect("benc 'ann' entry"); // Safe because of the check above
 
             let (state_hash, reply_err) = server.handle_announce_impl(ann, true, Some(debug_noisy)).await?;
-            if let Some(self_node) = server.mut_state.lock().self_node.as_ref() {
-                if debug_noisy {
-                    debug!("reply: {:?}", hex::encode(state_hash.bytes()));
-                }
-
-                let res = BValue::builder()
-                    .set_dict()
-                    .add_dict_entry_opt("txid", txid)
-                    .add_dict_entry("p", |b| b.set_int(self_node.version as i64))
-                    .add_dict_entry("recvTime", |b| b.set_int(current_timestamp() as i64))
-                    .add_dict_entry("stateHash", |b| b.set_bytes(state_hash.into_inner()))
-                    .add_dict_entry("error", |b| b.set_str(reply_err.to_string()))
-                    .build();
-
-                Some((res, version))
-            } else {
-                return Err(anyhow!("self node isn't set"));
+            if debug_noisy {
+                debug!("reply: {:?}", hex::encode(state_hash.bytes()));
             }
+
+            let res = BValue::builder()
+                .set_dict()
+                .add_dict_entry_opt("txid", txid)
+                .add_dict_entry("p", |b| b.set_int(self_version))
+                .add_dict_entry("recvTime", |b| b.set_int(current_timestamp() as i64))
+                .add_dict_entry("stateHash", |b| b.set_bytes(state_hash.into_inner()))
+                .add_dict_entry("error", |b| b.set_str(reply_err.to_string()))
+                .build();
+
+            Some((res, version))
         }
 
         "pn" => {
@@ -258,6 +261,7 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
                 .set_dict()
                 .add_dict_entry_opt("txid", txid)
                 .add_dict_entry("recvTime", |b| b.set_int(current_timestamp() as i64))
+                .add_dict_entry("p", |b| b.set_int(self_version))
                 .add_dict_entry("stateHash", |b| b.set_bytes([0u8; 64].to_vec()));
 
             if let Some(ip6) = route_header.ip6.as_ref() {
