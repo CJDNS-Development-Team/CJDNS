@@ -102,16 +102,19 @@ async fn count_handlers(cjdns: &mut Connection) -> Result<usize, Error> {
 async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<Message>, Error> {
     let (route_header, content_type, content) = (msg.route_header, msg.content_type, msg.content);
     if let Content::Benc(content_benc) = content {
-        let res_route_header = {
+        let mut res_route_header = {
             let mut h = route_header.clone();
             h.switch_header.label_shift = 0;
             h
         };
-        let res = on_subnode_message_impl(server, route_header, content_benc).await?.map(|res_benc| Message {
-            route_header: res_route_header,
-            content_type,
-            content: Content::Benc(res_benc),
-            raw_bytes: None,
+        let res = on_subnode_message_impl(server, route_header, content_benc).await?.map(|(res_benc, ver)| {
+            res_route_header.version = ver;
+            Message {
+                route_header: res_route_header,
+                content_type,
+                content: Content::Benc(res_benc),
+                raw_bytes: None,
+            }
         });
         Ok(res)
     } else {
@@ -119,7 +122,7 @@ async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<
     }
 }
 
-async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader, content_benc: BValue) -> Result<Option<BValue>, Error> {
+async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader, content_benc: BValue) -> Result<Option<(BValue, u32)>, Error> {
     if !content_benc.has_dict_entry("sq") {
         return Ok(None); // Ignore unknown messages
     }
@@ -127,7 +130,7 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
 
     let version = {
         if route_header.version > 0 {
-            Some(route_header.version)
+            route_header.version
         } else if let Some(p) = content_benc.get_dict_value("p").ok().flatten() {
             let p = p
                 .as_int()
@@ -135,15 +138,18 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
                 .filter(|&p| p > 0)
                 .map(|p| p as u32)
                 .ok_or(anyhow!("bad message: 'p' expected to be positive int"))?;
-            Some(p)
+            p
         } else {
-            None
+            if let Some(ip) = route_header.ip6.as_ref() {
+                warn!("message from {} with missing version: {:?} {:?}", ip, route_header, content_benc);
+            }
+            return Ok(None);
         }
     };
 
-    if version.is_none() || route_header.public_key.is_none() || route_header.ip6.is_none() {
+    if route_header.public_key.is_none() || route_header.ip6.is_none() {
         if let Some(ip) = route_header.ip6.as_ref() {
-            warn!("message from {} with missing key or version: {:?} {:?}", ip, route_header, content_benc);
+            warn!("message from {} with missing key: {:?} {:?}", ip, route_header, content_benc);
         }
         return Ok(None);
     }
@@ -217,7 +223,7 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
                 res
             };
 
-            Some(res.build())
+            Some((res.build(), version))
         }
 
         "ann" if content_benc.has_dict_entry("ann") => {
@@ -238,7 +244,7 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
                     .add_dict_entry("error", |b| b.set_str(reply_err.to_string()))
                     .build();
 
-                Some(res)
+                Some((res, version))
             } else {
                 return Err(anyhow!("self node isn't set"));
             }
@@ -264,7 +270,7 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
                 return Err(anyhow!("no ip6 (ctrl message?)"));
             }
 
-            Some(res.build())
+            Some((res.build(), version))
         }
 
         _ => {
