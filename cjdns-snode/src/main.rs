@@ -42,7 +42,7 @@ fn short_file(file: &str) -> &str {
 /// Main function.
 async fn run() -> Result<()> {
     // Initialize logger
-    env_logger::Builder::new()
+    env_logger::Builder::from_default_env()
         .format(|buf, record| {
             writeln!(
                 buf,
@@ -54,7 +54,6 @@ async fn run() -> Result<()> {
                 record.args()
             )
         })
-        .filter(None, log::LevelFilter::Debug)
         .init();
 
     // Parse command line arguments
