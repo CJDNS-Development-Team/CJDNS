@@ -154,6 +154,12 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
 
     server.mut_state.lock().current_node = route_header.ip6.clone();
 
+    let debug_noisy = {
+        let mut ms = server.mut_state.lock();
+        ms.current_node = route_header.ip6.clone();
+        ms.debug_node.is_some() && ms.debug_node == route_header.ip6
+    };
+
     let res = match sq.as_str() {
         "gr" => {
             if !content_benc.has_dict_entry("src") {
@@ -170,6 +176,10 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
 
             let src_ip = CJDNS_IP6::try_from(src.as_slice()).map_err(|e| anyhow!("bad 'src' address: {}", e))?;
             let tar_ip = CJDNS_IP6::try_from(tar.as_slice()).map_err(|e| anyhow!("bad 'tar' address: {}", e))?;
+
+            if debug_noisy {
+                debug!("gr {} -> {}", src_ip, tar_ip);
+            }
 
             let src = server.nodes.by_ip(&src_ip);
             let tar = server.nodes.by_ip(&tar_ip);
@@ -212,9 +222,11 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
         "ann" if content_benc.has_dict_entry("ann") => {
             let ann = content_benc.get_dict_value_bytes("ann").expect("benc 'ann' entry"); // Safe because of the check above
 
-            let (state_hash, reply_err) = server.handle_announce_impl(ann, true).await?;
+            let (state_hash, reply_err) = server.handle_announce_impl(ann, true, Some(debug_noisy)).await?;
             if let Some(self_node) = server.mut_state.lock().self_node.as_ref() {
+                if debug_noisy {
                 debug!("reply: {:?}", hex::encode(state_hash.bytes()));
+                }
 
                 let res = BValue::builder()
                     .set_dict()
@@ -233,6 +245,9 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
         }
 
         "pn" => {
+            if debug_noisy {
+                debug!("pn");
+            }
             let mut res = BValue::builder()
                 .set_dict()
                 .add_dict_entry_opt("txid", txid)

@@ -98,6 +98,16 @@ pub async fn main(config: Config) -> Result<()> {
     try_join_all(tasks).await.map(|_| ()).map_err(|e| e.into())
 }
 
+fn print_entity(e: &cjdns_ann::Entity) -> String {
+    match e {
+        cjdns_ann::Entity::Peer(p) => format!("{}/{}", p.ipv6, p.peer_num),
+        _ => format!("{:?}", e),
+    }
+}
+fn print_entities(it: Vec<&cjdns_ann::Entity>) -> String {
+    it.iter().map(|e| print_entity(&e)).collect::<Vec<String>>().join(", ")
+}
+
 struct Server {
     peers: Arc<Peers>,
     nodes: Nodes,
@@ -146,18 +156,19 @@ const GLOBAL_TIMEOUT: Duration = Duration::from_secs(MAX_GLOBAL_CLOCKSKEW.as_sec
 
 impl Server {
     async fn handle_announce(&self, announce: AnnData, from_node: bool) {
-        let res = self.handle_announce_impl(announce, from_node).await;
+        let res = self.handle_announce_impl(announce, from_node, None).await;
         if let Err(err) = res {
             warn!("Bad announcement: {}", err);
         }
     }
 
-    async fn handle_announce_impl(&self, announce: Vec<u8>, from_node: bool) -> Result<(AnnHash, ReplyError), Error> {
+    async fn handle_announce_impl(&self, announce: Vec<u8>, from_node: bool, maybe_debug_noisy: Option<bool>) -> Result<(AnnHash, ReplyError), Error> {
         let mut reply_error = ReplyError::None;
 
         let mut ann_opt = None;
         let mut self_node = None;
         let mut node = None;
+        let mut debug_noisy = if let Some(dn) = maybe_debug_noisy { dn } else { false };
 
         if let Ok(announcement_packet) = AnnouncementPacket::try_new(announce) {
             if announcement_packet.check().is_ok() {
@@ -172,10 +183,13 @@ impl Server {
             self_node = {
                 let mut state = self.mut_state.lock();
                 state.current_node = Some(ann.node_ip.clone());
+                if maybe_debug_noisy.is_none() {
+                    debug_noisy = if let Some(dn) = &state.debug_node { dn.eq(&ann.node_ip) } else { false };
+                }
                 state.self_node.as_ref().map(|n| n.clone())
             };
             node = self.nodes.by_ip(&ann.node_ip);
-            if log_enabled!(log::Level::Debug) {
+            if log_enabled!(log::Level::Debug) && debug_noisy {
                 debug!(
                     "ANN from [{}] ts [{}] isReset [{}] peers [{}] ls [{}] known [{}]{}",
                     ann.node_ip,
@@ -262,7 +276,7 @@ impl Server {
             if let Some(ann) = ann_opt {
                 ann
             } else {
-                return Ok((hash::node_announcement_hash(node), reply_error));
+                return Ok((hash::node_announcement_hash(node, debug_noisy), reply_error));
             }
         };
         let ann_timestamp = mktime(ann.header.timestamp);
@@ -271,7 +285,7 @@ impl Server {
             let node_timestamp = node.mut_state.read().timestamp;
             if node_timestamp > ann_timestamp { //TODO suspicious - duplicate check? Ask CJ
                 warn!("old announcement [{}] most recent [{:?}]", ann.header.timestamp, node_timestamp);
-                return Ok((hash::node_announcement_hash(Some(node.clone())), reply_error));
+                return Ok((hash::node_announcement_hash(Some(node.clone()), debug_noisy), reply_error));
             }
         }
 
@@ -287,11 +301,11 @@ impl Server {
             let try_node = self.nodes.add_node(n, true);
             node = Some(try_node.map_err(|()| anyhow!("internal error: add_node() failed"))?);
         } else if let Some(node) = node.as_ref() {
-            self.add_announcement(node.clone(), &ann);
+            self.add_announcement(node.clone(), &ann, debug_noisy);
         } else {
             warn!("no node and no reset message");
             reply_error = ReplyError::UnknownNode;
-            return Ok((hash::node_announcement_hash(None), reply_error));
+            return Ok((hash::node_announcement_hash(None, debug_noisy), reply_error));
         }
 
         let node = node.expect("internal error: node expected"); // Due to the above checks it should be valid node here
@@ -344,7 +358,7 @@ impl Server {
             }
         }
 
-        self.link_state_update1(&ann, node.clone());
+        self.link_state_update1(&ann, node.clone(), debug_noisy);
 
         let has_ann = {
             let node_mut = node.mut_state.read();
@@ -354,10 +368,10 @@ impl Server {
             self.peers.add_ann(ann.hash.clone(), ann.binary.clone()).await;
         }
 
-        return Ok((hash::node_announcement_hash(Some(node)), reply_error));
+        return Ok((hash::node_announcement_hash(Some(node), debug_noisy), reply_error));
     }
 
-    fn add_announcement(&self, node: Arc<Node>, ann: &Announcement) {
+    fn add_announcement(&self, node: Arc<Node>, ann: &Announcement, debug_noisy: bool) {
         let time = mktime(ann.header.timestamp);
         let since_time = time - AGREED_TIMEOUT;
         let mut drop_announce = Vec::new();
@@ -366,7 +380,9 @@ impl Server {
         node_mut.announcements.insert(0, ann.clone()); //TODO ask CJ whether the order of the announces matters
         node_mut.announcements.retain(|a| {
             if mktime(a.header.timestamp) < since_time {
-                debug!("Expiring ann [{}] because it is too old", utils::ann_id(a));
+                if debug_noisy {
+                    debug!("Expiring ann [{}] because it is too old", utils::ann_id(a));
+                }
                 drop_announce.push(a.clone());
                 return false;
             }
@@ -389,19 +405,31 @@ impl Server {
             // in which case it's an empty announce just to let the snode know the node is still here...
             if safe || *a == *ann {
                 if *a == *ann {
-                    debug!("Keeping ann [{}] because it was announced just now", utils::ann_id(a));
+                    if debug_noisy {
+                        debug!("Keeping ann [{}] because it was announced just now", utils::ann_id(a));
+                    }
                 } else {
-                    debug!("Keeping ann [{}] for entities [{:?}]", utils::ann_id(a), justifications);
+                    if debug_noisy {
+                        debug!("Keeping ann [{}] for entities [{}]", utils::ann_id(a), print_entities(justifications));
+                    }
                 }
                 return true;
             } else {
-                debug!("Dropping ann [{}] because all entities [{:?}] have been re-announced", utils::ann_id(a), justifications);
+                if debug_noisy {
+                    debug!(
+                        "Dropping ann [{}] because all entities [{}] have been re-announced",
+                        utils::ann_id(a),
+                        print_entities(justifications)
+                    );
+                }
                 drop_announce.push(a.clone());
                 return false;
             }
         });
 
-        debug!("Finally there are {} anns in the state", node_mut.announcements.len());
+        if debug_noisy {
+            debug!("Finally there are {} anns in the state", node_mut.announcements.len());
+        }
         for a in drop_announce {
             if node_mut.reset_msg.as_ref().map(|reset_msg| a != *reset_msg).unwrap_or(true) {
                 self.peers.del_ann(&a.hash);
@@ -410,7 +438,7 @@ impl Server {
         node_mut.timestamp = time;
     }
 
-    fn link_state_update1(&self, ann: &Announcement, node: Arc<Node>) {
+    fn link_state_update1(&self, ann: &Announcement, node: Arc<Node>, debug_noisy: bool) {
         let time = ann.header.timestamp;
         let ts = time / 1000 / 10;
         // Timeslots older than AGREED_TIMEOUT will be dropped
@@ -482,10 +510,9 @@ impl Server {
                         let delta_v = lsv / (1.0 + (ts - time) as f64 * Link::DECAY_PER_TIMESLOT);
                         assert!(delta_v >= 0.0);
                         link.mut_state.lock().value += delta_v;
-                        debug!(
-                            "LINK_STATE_UPDATE: time={}, node_ip={}, ips_by_num[{}]={}, label={}, new_state={:?}",
-                            time, ann.node_ip, ls.node_id, ips_by_num[&ls.node_id], link.label, new_state
-                        );
+                        if debug_noisy {
+                            debug!("LSU {} <- {}/{} : {:?}", ann.node_ip, ips_by_num[&ls.node_id], ls.node_id, new_state);
+                        }
                         link_state.insert(time, new_state);
                         time -= 1;
                     }

@@ -20,6 +20,8 @@ extern crate lazy_static;
 extern crate log;
 
 use anyhow::Result;
+use std::io::Write;
+use std::time::SystemTime;
 
 /// Program entry point.
 #[tokio::main]
@@ -29,10 +31,31 @@ async fn main() {
     }
 }
 
+fn now_sec() -> u64 {
+    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs()
+}
+
+fn short_file(file: &str) -> &str {
+    file.rsplit('/').next().unwrap_or(file)
+}
+
 /// Main function.
 async fn run() -> Result<()> {
     // Initialize logger
-    env_logger::init();
+    env_logger::Builder::new()
+        .format(|buf, record| {
+            writeln!(
+                buf,
+                "{} {} {}:{} {}",
+                now_sec(),
+                record.level(),
+                short_file(record.file().unwrap_or("?")),
+                record.line().unwrap_or(0),
+                record.args()
+            )
+        })
+        .filter(None, log::LevelFilter::Debug)
+        .init();
 
     // Parse command line arguments
     let opts = args::parse();

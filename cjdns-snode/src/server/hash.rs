@@ -8,7 +8,7 @@ use cjdns_ann::AnnHash;
 
 use crate::server::nodes::Node;
 
-pub(super) fn node_announcement_hash(node: Option<Arc<Node>>) -> AnnHash {
+pub(super) fn node_announcement_hash(node: Option<Arc<Node>>, debug_noisy: bool) -> AnnHash {
     let mut carry = sha512::Digest([0; 64]);
     let mut state = 0;
     if let Some(node) = node {
@@ -22,6 +22,8 @@ pub(super) fn node_announcement_hash(node: Option<Arc<Node>>) -> AnnHash {
         }
         node_mut.state_hash = Some(AnnHash::from_digest(carry));
     }
-    debug!("node announcement hash - {}, state - {}", hex::encode(carry), state);
+    if debug_noisy {
+        debug!("node announcement hash - {}, state - {}", hex::encode(carry), state);
+    }
     AnnHash::from_digest(carry)
 }
