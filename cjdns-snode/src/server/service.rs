@@ -102,20 +102,22 @@ async fn count_handlers(cjdns: &mut Connection) -> Result<usize, Error> {
 async fn on_subnode_message(server: Arc<Server>, msg: Message) -> Result<Option<Message>, Error> {
     let (route_header, content_type, content) = (msg.route_header, msg.content_type, msg.content);
     if let Content::Benc(content_benc) = content {
-        let mut res_route_header = {
-            let mut h = route_header.clone();
-            h.switch_header.label_shift = 0;
-            h
-        };
-        let res = on_subnode_message_impl(server, route_header, content_benc).await?.map(|(res_benc, ver)| {
-            res_route_header.version = ver;
-            Message {
-                route_header: res_route_header,
-                content_type,
-                content: Content::Benc(res_benc),
-                raw_bytes: None,
-            }
-        });
+        let res = on_subnode_message_impl(server, route_header.clone(), content_benc)
+            .await?
+            .map(|(res_benc, ver)| {
+                let route_header = {
+                    let mut h = route_header;
+                    h.switch_header.label_shift = 0;
+                    h.version = ver;
+                    h
+                };
+                Message {
+                    route_header,
+                    content_type,
+                    content: Content::Benc(res_benc),
+                    raw_bytes: None,
+                }
+            });
         Ok(res)
     } else {
         Ok(None) // Ignore unknown messages
@@ -168,7 +170,7 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
         self_node.version as i64
     } else {
         return Err(anyhow!("self node isn't set"));
-    } as i64;
+    };
 
     let res = match sq.as_str() {
         "gr" => {

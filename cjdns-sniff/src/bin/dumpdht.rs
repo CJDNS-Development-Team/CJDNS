@@ -68,15 +68,7 @@ fn dump_msg(msg: Message) -> Result<(), Error> {
 }
 
 fn dump_bencode(benc: BValue, buf: &mut Vec<String>) -> Result<(), ()> {
-    let q = if let Some(q) = benc.get_dict_value("q")? {
-        Some(q)
-    } else if let Some(sq) = benc.get_dict_value("sq")? {
-        Some(sq)
-    } else {
-        None
-    };
-
-    if let Some(qb) = q {
+    if let Some(qb) = benc.get_dict_value("q")?.or(benc.get_dict_value("sq")?) {
         let q = qb.as_string()?;
         let is_fn = q == "fn";
         buf.push(q);
@@ -91,7 +83,7 @@ fn dump_bencode(benc: BValue, buf: &mut Vec<String>) -> Result<(), ()> {
         buf.push("reply".to_string())
     }
     if let Some(txid) = benc.get_dict_value("txid")? {
-        buf.push(hex::encode(txid.as_bytes().unwrap_or(Vec::new())));
+        buf.push(hex::encode(txid.as_bytes().unwrap_or_default()));
     }
     Ok(())
 }
