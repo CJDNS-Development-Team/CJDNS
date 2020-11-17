@@ -1,5 +1,7 @@
 //! Routing label splice/unsplice routines.
 
+#![deny(missing_docs)]
+
 use thiserror::Error;
 
 use crate::{EncodingScheme, EncodingSchemeForm, LabelBits, PathHop, RoutingLabel, schemes};
@@ -7,19 +9,30 @@ use crate::{EncodingScheme, EncodingSchemeForm, LabelBits, PathHop, RoutingLabel
 /// Result type alias.
 pub type Result<T> = std::result::Result<T, SpliceError>;
 
-/// Error type.
+/// Routing label splice failure.
 #[derive(Error, Debug, PartialEq, Eq)]
 pub enum SpliceError {
+    /// Label requires more bits than it is available in underlying `LabelBits`.
     #[error("Label is too long")]
     LabelTooLong,
+
+    /// Array argument must contain at least 2 items.
     #[error("Not enough arguments")]
     NotEnoughArguments,
+
+    /// Invalid function argument.
     #[error("Bad argument")]
     BadArgument,
+
+    /// Unable to unsplice because provided destination doesn't route through given mid path.
     #[error("Can't unsplice")]
     CannotUnsplice,
+
+    /// Can't find proper encoding form in encoding scheme: label is not recognized as using the given scheme.
     #[error("Can't detect form")]
     CannotFindForm,
+
+    /// Label can't be re-encoded with the given form.
     #[error("Can't re-encode")]
     CannotReencode,
 }
