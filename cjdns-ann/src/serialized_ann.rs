@@ -1,10 +1,10 @@
 use std::convert::TryFrom;
 
 use sodiumoxide::crypto::hash::sha512;
-use sodiumoxide::crypto::sign::ed25519::{PublicKey, Signature, verify_detached};
+use sodiumoxide::crypto::sign::ed25519::{verify_detached, PublicKey, Signature};
 
 use cjdns_core::{deserialize_scheme, RoutingLabel};
-use cjdns_keys::{CJDNS_IP6, CJDNSPublicKey};
+use cjdns_keys::{CJDNSPublicKey, CJDNS_IP6};
 
 use super::errors::*;
 use super::models::{Announcement, AnnouncementEntities, AnnouncementHeader, Entity, LinkStateSlots};
@@ -206,11 +206,7 @@ pub mod serialized_data {
                         Entity::NodeProtocolVersion(18),
                         Entity::EncodingScheme {
                             hex: "6114458100".to_string(),
-                            scheme: encoding_scheme(&vec![
-                                encoding_form(3, 1, 1),
-                                encoding_form(5, 2, 2),
-                                encoding_form(8, 2, 0),
-                            ])
+                            scheme: encoding_scheme(&vec![encoding_form(3, 1, 1), encoding_form(5, 2, 2), encoding_form(8, 2, 0),])
                         },
                         Entity::Peer(PeerData {
                             ipv6: CJDNS_IP6::try_from("fc92:8136:dc1f:e6e0:4ef6:a6dd:7187:b85f").expect("failed ip6 creation"),
@@ -222,8 +218,7 @@ pub mod serialized_data {
                             flags: 0
                         })
                     ],
-                    node_pub_key: CJDNSPublicKey::try_from("z15pzyd9wgzs2g5np7d3swrqc1533yb7xx9dq0pvrqrqs42uwgq0.k")
-                        .expect("failed pub key creation"),
+                    node_pub_key: CJDNSPublicKey::try_from("z15pzyd9wgzs2g5np7d3swrqc1533yb7xx9dq0pvrqrqs42uwgq0.k").expect("failed pub key creation"),
                     node_ip: CJDNS_IP6::try_from("fc49:11cb:38c2:8d42:9865:7b8e:0d67:11b3").expect("failed ip6 creation"),
                     binary: test_data_bytes,
                     hash: test_bytes_hash
@@ -241,7 +236,7 @@ mod parser {
     use cjdns_bytes::{ExpectedSize, Reader};
     use serialized_data::AnnouncementPacket;
 
-    use crate::models::{AnnHash, LINK_STATE_SLOTS, LinkStateData, PeerData};
+    use crate::models::{AnnHash, LinkStateData, PeerData, LINK_STATE_SLOTS};
     use crate::var_int::read_var_int;
 
     use super::*;
@@ -543,8 +538,7 @@ mod parser {
                 // timestamp-version-is_reset
                 "0000157354c540c1";
             let header_bytes = decode_hex(valid_hexed_header);
-            let parsed_announcement =
-                parser::parse(AnnouncementPacket::try_new(header_bytes).expect("invalid bytes len")).expect("invalid ann data");
+            let parsed_announcement = parser::parse(AnnouncementPacket::try_new(header_bytes).expect("invalid bytes len")).expect("invalid ann data");
             assert_eq!(parsed_announcement.entities, vec![]);
         }
 
@@ -564,8 +558,8 @@ mod parser {
                 decode_hex("030201"),     // version entity len should be 4
                 decode_hex("0501000220"), // peer entity len should be 32
                 // mixing valid and invalid
-                decode_hex("030507006114458100"),                                                 // 0305 and valid encoding entity
-                decode_hex("0204020012"),                                                         // 02 and valid version entity
+                decode_hex("030507006114458100"), // 0305 and valid encoding entity
+                decode_hex("0204020012"),         // 02 and valid version entity
                 decode_hex("20200100000000fffffffffffffc928136dc1fe6e04ef6a6dd7187b85f00000015"), // 20 and valid peer entity
             ];
             for data in invalid_data.iter() {
@@ -674,9 +668,66 @@ mod parser {
                 vec![Entity::LinkState(LinkStateData {
                     node_id: 4,
                     starting_point: 16,
-                    lag_slots: [Some(19), Some(19), Some(20), Some(18), Some(19), None, None, None, None, None, None, None, None, None, None, None, Some(19), Some(18)],
-                    drop_slots: [Some(0), Some(0), Some(0), Some(0), Some(0), None, None, None, None, None, None, None, None, None, None, None, Some(0), Some(0)],
-                    kb_recv_slots: [Some(2), Some(0), Some(3), Some(1), Some(1), None, None, None, None, None, None, None, None, None, None, None, Some(1), Some(2)]
+                    lag_slots: [
+                        Some(19),
+                        Some(19),
+                        Some(20),
+                        Some(18),
+                        Some(19),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        Some(19),
+                        Some(18)
+                    ],
+                    drop_slots: [
+                        Some(0),
+                        Some(0),
+                        Some(0),
+                        Some(0),
+                        Some(0),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        Some(0),
+                        Some(0)
+                    ],
+                    kb_recv_slots: [
+                        Some(2),
+                        Some(0),
+                        Some(3),
+                        Some(1),
+                        Some(1),
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        Some(1),
+                        Some(2)
+                    ]
                 })]
             )
         }

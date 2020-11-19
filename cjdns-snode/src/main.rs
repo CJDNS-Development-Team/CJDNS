@@ -32,7 +32,7 @@ async fn main() {
 /// Main function.
 async fn run() -> Result<()> {
     // Initialize logger
-    env_logger::init();
+    logger::init();
 
     // Parse command line arguments
     let opts = args::parse();
@@ -44,6 +44,36 @@ async fn run() -> Result<()> {
 
     // Run the application
     server::main(config).await
+}
+
+/// Logger initialization
+mod logger {
+    use std::io::Write;
+    use std::time::SystemTime;
+
+    fn now_sec() -> u64 {
+        SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs()
+    }
+
+    fn short_file(file: &str) -> &str {
+        file.rsplit('/').next().unwrap_or(file)
+    }
+
+    pub fn init() {
+        env_logger::Builder::from_default_env()
+            .format(|buf, record| {
+                writeln!(
+                    buf,
+                    "{} {} {}:{} {}",
+                    now_sec(),
+                    record.level(),
+                    short_file(record.file().unwrap_or("?")),
+                    record.line().unwrap_or(0),
+                    record.args()
+                )
+            })
+            .init();
+    }
 }
 
 /// Command-line arguments parsing.
@@ -77,7 +107,9 @@ mod config {
 
     /// Load config file
     pub(super) async fn load(file_path: &Path) -> Result<Config, Error> {
-        let json = fs::read(file_path).await.map_err(|e| anyhow!("failed to load config file '{}': {}", file_path.display(), e))?;
+        let json = fs::read(file_path)
+            .await
+            .map_err(|e| anyhow!("failed to load config file '{}': {}", file_path.display(), e))?;
         let config = serde_json::from_slice(&json).map_err(|e| anyhow!("failed to parse config file '{}': {}", file_path.display(), e))?;
         Ok(config)
     }

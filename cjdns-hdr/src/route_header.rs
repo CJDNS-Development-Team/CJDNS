@@ -2,8 +2,8 @@
 
 use std::convert::TryFrom;
 
+use cjdns_bytes::{ExpectedSize, Reader, Writer};
 use cjdns_bytes::{ParseError, SerializeError};
-use cjdns_bytes::{Reader, Writer, ExpectedSize};
 use cjdns_keys::{CJDNSPublicKey, CJDNS_IP6};
 
 use crate::switch_header::SwitchHeader;

@@ -4,7 +4,7 @@
 
 use thiserror::Error;
 
-use crate::{EncodingScheme, EncodingSchemeForm, LabelBits, PathHop, RoutingLabel, schemes};
+use crate::{schemes, EncodingScheme, EncodingSchemeForm, LabelBits, PathHop, RoutingLabel};
 
 /// Result type alias.
 pub type Result<T> = std::result::Result<T, SpliceError>;
@@ -412,14 +412,16 @@ pub fn unsplice<L: LabelBits>(destination: RoutingLabel<L>, mid_path: RoutingLab
         return Err(SpliceError::CannotUnsplice);
     }
 
-    RoutingLabel::try_new(destination.bits() >> label_highest_set_bit(&mid_path)).ok_or(()).map_err(|_| unreachable!("highest_set_bit() is broken"))
+    RoutingLabel::try_new(destination.bits() >> label_highest_set_bit(&mid_path))
+        .ok_or(())
+        .map_err(|_| unreachable!("highest_set_bit() is broken"))
 }
 
 #[cfg(test)]
 mod tests {
     use std::convert::TryFrom;
 
-    use crate::{RoutingLabel, schemes};
+    use crate::{schemes, RoutingLabel};
 
     use super::*;
 
@@ -450,21 +452,12 @@ mod tests {
     #[test]
     fn test_splice() {
         assert_eq!(splice::<u64>(&[]), Err(SpliceError::NotEnoughArguments));
-        assert_eq!(
-            splice(&[l("0000.0000.0000.0015")]),
-            Err(SpliceError::NotEnoughArguments)
-        );
+        assert_eq!(splice(&[l("0000.0000.0000.0015")]), Err(SpliceError::NotEnoughArguments));
+
+        assert_eq!(splice(&[l("0000.0000.0000.0015"), l("0000.0000.0000.0013")]), Ok(l("0000.0000.0000.0153")));
 
         assert_eq!(
-            splice(&[l("0000.0000.0000.0015"), l("0000.0000.0000.0013")]),
-            Ok(l("0000.0000.0000.0153"))
-        );
-
-        assert_eq!(
-            splice(&[
-                l128("0000.0000.0000.0000.0000.0000.0000.0015"),
-                l128("0000.0000.0000.0000.0000.0000.0000.0013")
-            ]),
+            splice(&[l128("0000.0000.0000.0000.0000.0000.0000.0015"), l128("0000.0000.0000.0000.0000.0000.0000.0013")]),
             Ok(l128("0000.0000.0000.0000.0000.0000.0000.0153"))
         );
 
@@ -488,149 +481,67 @@ mod tests {
             l128("0000.0000.0000.0000.0000.0000.0000.001b"),
         ];
         labels128.reverse();
-        assert_eq!(
-            splice(&labels128),
-            Ok(l128("0000.0000.0000.0000.0000.001b.0535.10e5"))
-        );
+        assert_eq!(splice(&labels128), Ok(l128("0000.0000.0000.0000.0000.001b.0535.10e5")));
     }
 
     #[test]
     fn test_splice_long_label() {
+        assert_eq!(splice(&[l("0200.0000.0000.1111"), l("0000.0000.0000.0005")]), Ok(l("0800.0000.0000.4445")));
         assert_eq!(
-            splice(&[l("0200.0000.0000.1111"), l("0000.0000.0000.0005")]),
-            Ok(l("0800.0000.0000.4445"))
-        );
-        assert_eq!(
-            splice(&[
-                l128("0200.0000.0000.0000.0000.0000.0000.1111"),
-                l128("0000.0000.0000.0000.0000.0000.0000.0005")
-            ]),
+            splice(&[l128("0200.0000.0000.0000.0000.0000.0000.1111"), l128("0000.0000.0000.0000.0000.0000.0000.0005")]),
             Ok(l128("0800.0000.0000.0000.0000.0000.0000.4445"))
         );
 
+        assert_eq!(splice(&[l("0400.0000.0000.1111"), l("0000.0000.0000.0005")]), Err(SpliceError::LabelTooLong));
         assert_eq!(
-            splice(&[l("0400.0000.0000.1111"), l("0000.0000.0000.0005")]),
-            Err(SpliceError::LabelTooLong)
-        );
-        assert_eq!(
-            splice(&[
-                l128("0400.0000.0000.0000.0000.0000.0000.1111"),
-                l128("0000.0000.0000.0000.0000.0000.0000.0005")
-            ]),
+            splice(&[l128("0400.0000.0000.0000.0000.0000.0000.1111"), l128("0000.0000.0000.0000.0000.0000.0000.0005")]),
             Err(SpliceError::LabelTooLong)
         );
     }
 
     #[test]
     fn test_get_encoding_form() {
-        assert_eq!(
-            get_encoding_form(l("0000.0000.0000.1111"), &schemes::F8),
-            Ok((
-                encoding_form(8, 0, 0),
-                0
-            ))
-        );
+        assert_eq!(get_encoding_form(l("0000.0000.0000.1111"), &schemes::F8), Ok((encoding_form(8, 0, 0), 0)));
 
-        assert_eq!(
-            get_encoding_form(l("0000.0000.0000.1110"), &schemes::V358),
-            Ok((
-                encoding_form(8, 2, 0),
-                2
-            ))
-        );
-        assert_eq!(
-            get_encoding_form(l("0000.0000.0000.1111"), &schemes::V358),
-            Ok((
-                encoding_form(3, 1, 1),
-                0
-            ))
-        );
-        assert_eq!(
-            get_encoding_form(l("0000.0000.0000.1112"), &schemes::V358),
-            Ok((
-                encoding_form(5, 2, 2),
-                1
-            ))
-        );
+        assert_eq!(get_encoding_form(l("0000.0000.0000.1110"), &schemes::V358), Ok((encoding_form(8, 2, 0), 2)));
+        assert_eq!(get_encoding_form(l("0000.0000.0000.1111"), &schemes::V358), Ok((encoding_form(3, 1, 1), 0)));
+        assert_eq!(get_encoding_form(l("0000.0000.0000.1112"), &schemes::V358), Ok((encoding_form(5, 2, 2), 1)));
 
-        assert_eq!(
-            get_encoding_form(l("0000.0000.0000.0013"), &schemes::V358),
-            Ok((
-                encoding_form(3, 1, 1),
-                0
-            ))
-        );
+        assert_eq!(get_encoding_form(l("0000.0000.0000.0013"), &schemes::V358), Ok((encoding_form(3, 1, 1), 0)));
 
-        assert!(get_encoding_form(
-            l("0000.0000.0000.1113"),
-            &encoding_scheme(&[
-                encoding_form(5, 2, 2),
-                encoding_form(8, 2, 0),
-            ])
-        )
-        .is_err());
+        assert!(get_encoding_form(l("0000.0000.0000.1113"), &encoding_scheme(&[encoding_form(5, 2, 2), encoding_form(8, 2, 0),])).is_err());
     }
 
     #[test]
     fn test_find_shortest_form() {
-        assert_eq!(
-            find_shortest_form(l("0000.0000.0000.0002").bits(), &schemes::F4),
-            Ok(encoding_form(4, 0, 0))
-        );
+        assert_eq!(find_shortest_form(l("0000.0000.0000.0002").bits(), &schemes::F4), Ok(encoding_form(4, 0, 0)));
         assert!(find_shortest_form(l("0000.0000.0000.0010").bits(), &schemes::F4).is_err());
 
-        assert_eq!(
-            find_shortest_form(l("0000.0000.0000.0002").bits(), &schemes::V48),
-            Ok(encoding_form(4, 1, 1))
-        );
-        assert_eq!(
-            find_shortest_form(l("0000.0000.0000.0010").bits(), &schemes::V48),
-            Ok(encoding_form(8, 1, 0))
-        );
+        assert_eq!(find_shortest_form(l("0000.0000.0000.0002").bits(), &schemes::V48), Ok(encoding_form(4, 1, 1)));
+        assert_eq!(find_shortest_form(l("0000.0000.0000.0010").bits(), &schemes::V48), Ok(encoding_form(8, 1, 0)));
         assert!(find_shortest_form(l("0000.0000.0000.0100").bits(), &schemes::V48).is_err());
 
-        assert_eq!(
-            find_shortest_form(l("0000.0000.0000.0015").bits(), &schemes::V358),
-            Ok(encoding_form(5, 2, 2))
-        );
+        assert_eq!(find_shortest_form(l("0000.0000.0000.0015").bits(), &schemes::V358), Ok(encoding_form(5, 2, 2)));
     }
 
     #[test]
     fn test_reencode_basic() {
-        assert_eq!(
-            re_encode(l("0000.0000.0000.0015"), &schemes::V358, Some(2)),
-            Ok(l("0000.0000.0000.0404"))
-        );
-        assert_eq!(
-            re_encode(l("0000.0000.0000.0015"), &schemes::V358, Some(1)),
-            Ok(l("0000.0000.0000.0086"))
-        );
-        assert_eq!(
-            re_encode(l("0000.0000.0000.0015"), &schemes::V358, Some(0)),
-            Ok(l("0000.0000.0000.0015"))
-        );
-        assert_eq!(
-            re_encode(l("0000.0000.0000.0404"), &schemes::V358, None),
-            Ok(l("0000.0000.0000.0015"))
-        );
+        assert_eq!(re_encode(l("0000.0000.0000.0015"), &schemes::V358, Some(2)), Ok(l("0000.0000.0000.0404")));
+        assert_eq!(re_encode(l("0000.0000.0000.0015"), &schemes::V358, Some(1)), Ok(l("0000.0000.0000.0086")));
+        assert_eq!(re_encode(l("0000.0000.0000.0015"), &schemes::V358, Some(0)), Ok(l("0000.0000.0000.0015")));
+        assert_eq!(re_encode(l("0000.0000.0000.0404"), &schemes::V358, None), Ok(l("0000.0000.0000.0015")));
 
         assert!(re_encode(l("0000.0000.0000.0015"), &schemes::V358, Some(3)).is_err());
         assert!(re_encode(l("0000.0000.0000.0015"), &schemes::V358, Some(4)).is_err());
 
         assert!(re_encode(
             l("0000.0000.0000.1113"),
-            &encoding_scheme(&[
-                encoding_form(5, 2, 2),
-                encoding_form(8, 2, 0),
-            ]),
+            &encoding_scheme(&[encoding_form(5, 2, 2), encoding_form(8, 2, 0),]),
             None
         )
         .is_err());
 
-        assert_eq!(
-            re_encode(l("0040.0000.0000.0067"), &schemes::V48, Some(1)),
-            Ok(l("0400.0000.0000.0606"))
-        );
+        assert_eq!(re_encode(l("0040.0000.0000.0067"), &schemes::V48, Some(1)), Ok(l("0400.0000.0000.0606")));
         assert!(re_encode(l("0400.0000.0000.0067"), &schemes::V48, Some(1)).is_err());
     }
 
@@ -645,9 +556,7 @@ mod tests {
             let max = ((1u64 << (bit_count as u64)) - 1) as u32;
 
             for i in 0..max {
-                let full_label_bits = (1_u64 << (bit_count as u32 + prefix_len as u32))
-                    | ((i as u64) << (prefix_len as u32))
-                    | (prefix as u64);
+                let full_label_bits = (1_u64 << (bit_count as u32 + prefix_len as u32)) | ((i as u64) << (prefix_len as u32)) | (prefix as u64);
                 let full_label = RoutingLabel::try_new(full_label_bits).expect("bad test data");
 
                 let dir_bit_count = director_bit_length(i as u64);
@@ -658,10 +567,7 @@ mod tests {
                     }
 
                     let med = re_encode(full_label, scheme, Some(form_num)).expect("bad test");
-                    assert_eq!(
-                        re_encode(med, scheme, Some(biggest_form_num)),
-                        Ok(full_label)
-                    );
+                    assert_eq!(re_encode(med, scheme, Some(biggest_form_num)), Ok(full_label));
 
                     for (smaller_form_num, smaller_form) in scheme.into_iter().enumerate() {
                         let smaller_form_num = smaller_form_num as u8;
@@ -670,10 +576,7 @@ mod tests {
                         }
 
                         let sml = re_encode(full_label, scheme, Some(smaller_form_num)).expect("bad test");
-                        assert_eq!(
-                            re_encode(sml, scheme, Some(biggest_form_num)),
-                            Ok(full_label)
-                        );
+                        assert_eq!(re_encode(sml, scheme, Some(biggest_form_num)), Ok(full_label));
 
                         assert_eq!(re_encode(sml, scheme, Some(form_num)), Ok(med));
                         assert_eq!(re_encode(med, scheme, Some(smaller_form_num)), Ok(sml));
@@ -703,22 +606,13 @@ mod tests {
 
             if form_num < 2 {
                 let label2 = re_encode(label, &schemes::V358, Some(2)).expect("bad test");
-                assert_eq!(
-                    re_encode(label2, &schemes::V358, Some(form_num)),
-                    Ok(label)
-                );
+                assert_eq!(re_encode(label2, &schemes::V358, Some(form_num)), Ok(label));
                 assert_eq!(re_encode(label2, &schemes::V358, None), Ok(label));
 
                 if form_num < 1 {
                     let label1 = re_encode(label, &schemes::V358, Some(1)).expect("bad test");
-                    assert_eq!(
-                        re_encode(label2, &schemes::V358, Some(1)),
-                        Ok(label1)
-                    );
-                    assert_eq!(
-                        re_encode(label1, &schemes::V358, Some(2)),
-                        Ok(label2)
-                    );
+                    assert_eq!(re_encode(label2, &schemes::V358, Some(1)), Ok(label1));
+                    assert_eq!(re_encode(label1, &schemes::V358, Some(2)), Ok(label2));
                     assert_eq!(re_encode(label1, &schemes::V358, Some(0)), Ok(label));
                     assert_eq!(re_encode(label1, &schemes::V358, None), Ok(label));
                 }
@@ -729,176 +623,83 @@ mod tests {
 
     #[test]
     fn test_routes_through() {
+        assert_eq!(routes_through(l("0000.001b.0535.10e5"), l("0000.0000.0000.0015")), true);
         assert_eq!(
-            routes_through(l("0000.001b.0535.10e5"), l("0000.0000.0000.0015")),
+            routes_through(l128("0000.0000.0000.0000.0000.001b.0535.10e5"), l128("0000.0000.0000.0000.0000.0000.0000.0015")),
             true
         );
+        assert_eq!(routes_through(l("0000.001b.0535.10e5"), l("0000.0000.0000.0013")), false);
         assert_eq!(
-            routes_through(
-                l128("0000.0000.0000.0000.0000.001b.0535.10e5"),
-                l128("0000.0000.0000.0000.0000.0000.0000.0015")
-            ),
-            true
-        );
-        assert_eq!(
-            routes_through(l("0000.001b.0535.10e5"), l("0000.0000.0000.0013")),
-            false
-        );
-        assert_eq!(
-            routes_through(
-                l128("0000.0000.0000.0000.0000.001b.0535.10e5"),
-                l128("0000.0000.0000.0000.0000.0000.0000.0013")
-            ),
+            routes_through(l128("0000.0000.0000.0000.0000.001b.0535.10e5"), l128("0000.0000.0000.0000.0000.0000.0000.0013")),
             false
         );
         // lt 2 checks
-        assert_eq!(
-            routes_through(l("0000.001b.0535.10e5"), l("0000.0000.0000.0001")),
-            true
-        );
+        assert_eq!(routes_through(l("0000.001b.0535.10e5"), l("0000.0000.0000.0001")), true);
         // checking other edge cases
+        assert_eq!(routes_through(l("0000.001b.0535.10e5"), l("0000.001b.0535.10e5")), true);
         assert_eq!(
-            routes_through(l("0000.001b.0535.10e5"), l("0000.001b.0535.10e5")),
+            routes_through(l128("0000.0000.0000.0000.0000.001b.0535.10e5"), l128("0000.0000.0000.0000.0000.001b.0535.10e5")),
             true
         );
+        assert_eq!(routes_through(l("0000.0000.0000.0001"), l("0000.0000.0000.0001")), true);
         assert_eq!(
-            routes_through(
-                l128("0000.0000.0000.0000.0000.001b.0535.10e5"),
-                l128("0000.0000.0000.0000.0000.001b.0535.10e5")
-            ),
+            routes_through(l128("0000.0000.0000.0000.0000.0000.0000.0001"), l128("0000.0000.0000.0000.0000.0000.0000.0001")),
             true
         );
+        assert_eq!(routes_through(l("ffff.ffff.ffff.ffff"), l("ffff.ffff.ffff.fffe")), false);
+        assert_eq!(routes_through(l("ffff.ffff.ffff.ffff"), l("0000.0000.0000.0001")), true);
         assert_eq!(
-            routes_through(l("0000.0000.0000.0001"), l("0000.0000.0000.0001")),
+            routes_through(l128("ffff.ffff.ffff.ffff.ffff.ffff.ffff.ffff"), l128("0000.0000.0000.0000.0000.0000.0000.0001")),
             true
         );
+        assert_eq!(routes_through(l("ffff.ffff.ffff.ffff"), l("0000.0000.0000.0002")), false);
+        assert_eq!(routes_through(l("0000.0000.0035.0e00"), l("0000.001b.0535.10e5")), false);
+        assert_eq!(routes_through(l("0000.000b.0535.10e5"), l("0000.001b.0535.10e5")), false);
         assert_eq!(
-            routes_through(
-                l128("0000.0000.0000.0000.0000.0000.0000.0001"),
-                l128("0000.0000.0000.0000.0000.0000.0000.0001")
-            ),
-            true
-        );
-        assert_eq!(
-            routes_through(l("ffff.ffff.ffff.ffff"), l("ffff.ffff.ffff.fffe")),
-            false
-        );
-        assert_eq!(
-            routes_through(l("ffff.ffff.ffff.ffff"), l("0000.0000.0000.0001")),
-            true
-        );
-        assert_eq!(
-            routes_through(
-                l128("ffff.ffff.ffff.ffff.ffff.ffff.ffff.ffff"),
-                l128("0000.0000.0000.0000.0000.0000.0000.0001")
-            ),
-            true
-        );
-        assert_eq!(
-            routes_through(l("ffff.ffff.ffff.ffff"), l("0000.0000.0000.0002")),
-            false
-        );
-        assert_eq!(
-            routes_through(l("0000.0000.0035.0e00"), l("0000.001b.0535.10e5")),
-            false
-        );
-        assert_eq!(
-            routes_through(l("0000.000b.0535.10e5"), l("0000.001b.0535.10e5")),
-            false
-        );
-        assert_eq!(
-            routes_through(
-                l128("0000.0000.0000.0000.0000.000b.0535.10e5"),
-                l128("0000.0000.0000.0000.0000.001b.0535.10e5")
-            ),
+            routes_through(l128("0000.0000.0000.0000.0000.000b.0535.10e5"), l128("0000.0000.0000.0000.0000.001b.0535.10e5")),
             false
         );
     }
 
     #[test]
     fn test_unsplice() {
+        assert_eq!(unsplice(l("0000.0000.0000.0153"), l("0000.0000.0000.0013")), Ok(l("0000.0000.0000.0015")));
         assert_eq!(
-            unsplice(l("0000.0000.0000.0153"), l("0000.0000.0000.0013")),
-            Ok(l("0000.0000.0000.0015"))
-        );
-        assert_eq!(
-            unsplice(
-                l128("0000.0000.0000.0000.0000.0000.0000.0153"),
-                l128("0000.0000.0000.0000.0000.0000.0000.0013")
-            ),
+            unsplice(l128("0000.0000.0000.0000.0000.0000.0000.0153"), l128("0000.0000.0000.0000.0000.0000.0000.0013")),
             Ok(l128("0000.0000.0000.0000.0000.0000.0000.0015"))
         );
+        assert_eq!(unsplice(l("0000.0000.0000.0153"), l("0000.0000.0000.0001")), Ok(l("0000.0000.0000.0153")));
         assert_eq!(
-            unsplice(l("0000.0000.0000.0153"), l("0000.0000.0000.0001")),
-            Ok(l("0000.0000.0000.0153"))
-        );
-        assert_eq!(
-            unsplice(
-                l128("0000.0000.0000.0000.0000.0000.0000.0153"),
-                l128("0000.0000.0000.0000.0000.0000.0000.0001")
-            ),
+            unsplice(l128("0000.0000.0000.0000.0000.0000.0000.0153"), l128("0000.0000.0000.0000.0000.0000.0000.0001")),
             Ok(l128("0000.0000.0000.0000.0000.0000.0000.0153"))
         );
+        assert_eq!(unsplice(l("0000.0000.0000.0153"), l("0000.0000.0000.0153")), Ok(l("0000.0000.0000.0001")));
         assert_eq!(
-            unsplice(l("0000.0000.0000.0153"), l("0000.0000.0000.0153")),
-            Ok(l("0000.0000.0000.0001"))
-        );
-        assert_eq!(
-            unsplice(
-                l128("0000.0000.0000.0000.0000.0000.0000.0153"),
-                l128("0000.0000.0000.0000.0000.0000.0000.0153")
-            ),
+            unsplice(l128("0000.0000.0000.0000.0000.0000.0000.0153"), l128("0000.0000.0000.0000.0000.0000.0000.0153")),
             Ok(l128("0000.0000.0000.0000.0000.0000.0000.0001"))
         );
+        assert_eq!(unsplice(l("0000.0000.0000.0001"), l("0000.0000.0000.0001")), Ok(l("0000.0000.0000.0001")));
         assert_eq!(
-            unsplice(l("0000.0000.0000.0001"), l("0000.0000.0000.0001")),
-            Ok(l("0000.0000.0000.0001"))
-        );
-        assert_eq!(
-            unsplice(
-                l128("0000.0000.0000.0000.0000.0000.0000.0001"),
-                l128("0000.0000.0000.0000.0000.0000.0000.0001")
-            ),
+            unsplice(l128("0000.0000.0000.0000.0000.0000.0000.0001"), l128("0000.0000.0000.0000.0000.0000.0000.0001")),
             Ok(l128("0000.0000.0000.0000.0000.0000.0000.0001"))
         );
+        assert_eq!(unsplice(l("0000.000b.0535.10e5"), l("0000.001b.0535.10e5")), Err(SpliceError::CannotUnsplice));
         assert_eq!(
-            unsplice(l("0000.000b.0535.10e5"), l("0000.001b.0535.10e5")),
+            unsplice(l128("0000.0000.0000.0000.0000.000b.0535.10e5"), l128("0000.0000.0000.0000.0000.001b.0535.10e5")),
             Err(SpliceError::CannotUnsplice)
         );
         assert_eq!(
-            unsplice(
-                l128("0000.0000.0000.0000.0000.000b.0535.10e5"),
-                l128("0000.0000.0000.0000.0000.001b.0535.10e5")
-            ),
+            unsplice(l128("0000.0000.0000.0000.0000.0000.0000.0013"), l128("0000.0000.0000.0000.0000.0000.0000.0153")),
             Err(SpliceError::CannotUnsplice)
         );
+        assert_eq!(unsplice(l("ffff.ffff.ffff.ffff"), l("0000.0000.0000.0002")), Err(SpliceError::CannotUnsplice));
         assert_eq!(
-            unsplice(
-                l128("0000.0000.0000.0000.0000.0000.0000.0013"),
-                l128("0000.0000.0000.0000.0000.0000.0000.0153")
-            ),
+            unsplice(l128("ffff.ffff.ffff.ffff.ffff.ffff.ffff.ffff"), l128("0000.0000.0000.0000.0000.0000.0000.0002")),
             Err(SpliceError::CannotUnsplice)
         );
+        assert_eq!(unsplice(l("0000.0000.0000.0101"), l("0000.0000.0000.0110")), Err(SpliceError::CannotUnsplice));
         assert_eq!(
-            unsplice(l("ffff.ffff.ffff.ffff"), l("0000.0000.0000.0002")),
-            Err(SpliceError::CannotUnsplice)
-        );
-        assert_eq!(
-            unsplice(
-                l128("ffff.ffff.ffff.ffff.ffff.ffff.ffff.ffff"),
-                l128("0000.0000.0000.0000.0000.0000.0000.0002")
-            ),
-            Err(SpliceError::CannotUnsplice)
-        );
-        assert_eq!(
-            unsplice(l("0000.0000.0000.0101"), l("0000.0000.0000.0110")),
-            Err(SpliceError::CannotUnsplice)
-        );
-        assert_eq!(
-            unsplice(
-                l128("0000.0000.0000.0000.0000.0000.0000.0101"),
-                l128("0000.0000.0000.0000.0000.0000.0000.0110")
-            ),
+            unsplice(l128("0000.0000.0000.0000.0000.0000.0000.0101"), l128("0000.0000.0000.0000.0000.0000.0000.0110")),
             Err(SpliceError::CannotUnsplice)
         );
         let label64_array = vec![
@@ -934,41 +735,13 @@ mod tests {
     fn test_build_label() {
         assert_eq!(
             build_label(&[
-                PathHop::new(
-                    lopt("0000.0000.0000.0000"),
-                    lopt("0000.0000.0000.0015"),
-                    &schemes::V358,
-                ),
-                PathHop::new(
-                    lopt("0000.0000.0000.009e"),
-                    lopt("0000.0000.0000.008e"),
-                    &schemes::V358,
-                ),
-                PathHop::new(
-                    lopt("0000.0000.0000.0013"),
-                    lopt("0000.0000.0000.00a2"),
-                    &schemes::V358,
-                ),
-                PathHop::new(
-                    lopt("0000.0000.0000.001b"),
-                    lopt("0000.0000.0000.001d"),
-                    &schemes::V358,
-                ),
-                PathHop::new(
-                    lopt("0000.0000.0000.00ee"),
-                    lopt("0000.0000.0000.001b"),
-                    &schemes::V358,
-                ),
-                PathHop::new(
-                    lopt("0000.0000.0000.0019"),
-                    lopt("0000.0000.0000.001b"),
-                    &schemes::V358,
-                ),
-                PathHop::new(
-                    lopt("0000.0000.0000.0013"),
-                    lopt("0000.0000.0000.0000"),
-                    &schemes::V358,
-                ),
+                PathHop::new(lopt("0000.0000.0000.0000"), lopt("0000.0000.0000.0015"), &schemes::V358,),
+                PathHop::new(lopt("0000.0000.0000.009e"), lopt("0000.0000.0000.008e"), &schemes::V358,),
+                PathHop::new(lopt("0000.0000.0000.0013"), lopt("0000.0000.0000.00a2"), &schemes::V358,),
+                PathHop::new(lopt("0000.0000.0000.001b"), lopt("0000.0000.0000.001d"), &schemes::V358,),
+                PathHop::new(lopt("0000.0000.0000.00ee"), lopt("0000.0000.0000.001b"), &schemes::V358,),
+                PathHop::new(lopt("0000.0000.0000.0019"), lopt("0000.0000.0000.001b"), &schemes::V358,),
+                PathHop::new(lopt("0000.0000.0000.0013"), lopt("0000.0000.0000.0000"), &schemes::V358,),
             ]),
             Ok((
                 l("0000.0003.64b5.10e5"),
@@ -983,145 +756,65 @@ mod tests {
             ))
         );
         assert_eq!(
-            build_label(&[PathHop::new(
-                lopt("0000.0000.0000.0013"),
-                lopt("0000.0000.0000.0000"),
-                &schemes::V358,
-            )]),
+            build_label(&[PathHop::new(lopt("0000.0000.0000.0013"), lopt("0000.0000.0000.0000"), &schemes::V358,)]),
             Err(SpliceError::NotEnoughArguments)
         );
         assert_eq!(
             build_label(&[
-                PathHop::new(
-                    lopt("0000.0000.0000.0000"),
-                    lopt("0000.0000.0000.0015"),
-                    &schemes::V358,
-                ),
-                PathHop::new(
-                    lopt("0000.0000.0000.0013"),
-                    lopt("0000.0000.0000.0000"),
-                    &schemes::V358,
-                ),
+                PathHop::new(lopt("0000.0000.0000.0000"), lopt("0000.0000.0000.0015"), &schemes::V358,),
+                PathHop::new(lopt("0000.0000.0000.0013"), lopt("0000.0000.0000.0000"), &schemes::V358,),
             ]),
             Ok((l("0000.0000.0000.0015"), vec![l("0000.0000.0000.0015")]))
         );
         assert_eq!(
             build_label(&[
-                PathHop::new(
-                    lopt("0000.0000.0000.0000"),
-                    lopt("0000.0000.0000.0015"),
-                    &schemes::V358,
-                ),
-                PathHop::new(
-                    lopt("0000.0000.0000.0000"),
-                    lopt("0000.0000.0000.0000"),
-                    &schemes::V358,
-                ),
+                PathHop::new(lopt("0000.0000.0000.0000"), lopt("0000.0000.0000.0015"), &schemes::V358,),
+                PathHop::new(lopt("0000.0000.0000.0000"), lopt("0000.0000.0000.0000"), &schemes::V358,),
             ]),
             Err(SpliceError::BadArgument)
         );
         assert_eq!(
             build_label(&[
-                PathHop::new(
-                    lopt("0000.0000.0000.0000"),
-                    lopt("0000.0000.0000.0000"),
-                    &schemes::V358,
-                ),
-                PathHop::new(
-                    lopt("0000.0000.0000.0013"),
-                    lopt("0000.0000.0000.0000"),
-                    &schemes::V358,
-                ),
+                PathHop::new(lopt("0000.0000.0000.0000"), lopt("0000.0000.0000.0000"), &schemes::V358,),
+                PathHop::new(lopt("0000.0000.0000.0013"), lopt("0000.0000.0000.0000"), &schemes::V358,),
             ]),
             Err(SpliceError::BadArgument)
         );
         assert_eq!(
             build_label(&[
-                PathHop::new(
-                    lopt("0000.0000.0000.0001"),
-                    lopt("0000.0000.0000.0015"),
-                    &schemes::V358,
-                ),
-                PathHop::new(
-                    lopt("0000.0000.0000.0013"),
-                    lopt("0000.0000.0000.0000"),
-                    &schemes::V358,
-                ),
+                PathHop::new(lopt("0000.0000.0000.0001"), lopt("0000.0000.0000.0015"), &schemes::V358,),
+                PathHop::new(lopt("0000.0000.0000.0013"), lopt("0000.0000.0000.0000"), &schemes::V358,),
             ]),
             Err(SpliceError::BadArgument)
         );
         assert_eq!(
             build_label(&[
-                PathHop::new(
-                    lopt("0000.0000.0000.0000"),
-                    lopt("0000.0000.0000.0015"),
-                    &schemes::V358,
-                ),
-                PathHop::new(
-                    lopt("0000.0000.0000.0013"),
-                    lopt("0000.0000.0000.0001"),
-                    &schemes::V358,
-                ),
+                PathHop::new(lopt("0000.0000.0000.0000"), lopt("0000.0000.0000.0015"), &schemes::V358,),
+                PathHop::new(lopt("0000.0000.0000.0013"), lopt("0000.0000.0000.0001"), &schemes::V358,),
             ]),
             Err(SpliceError::BadArgument)
         );
         assert_eq!(
             build_label(&[
-                PathHop::new(
-                    lopt("0000.0000.0000.0000"),
-                    lopt("0000.0000.0000.0015"),
-                    &schemes::V358,
-                ),
-                PathHop::new(
-                    lopt("0000.0000.0000.0000"),
-                    lopt("0000.0000.0000.008e"),
-                    &schemes::V358,
-                ),
-                PathHop::new(
-                    lopt("0000.0000.0000.0013"),
-                    lopt("0000.0000.0000.0000"),
-                    &schemes::V358,
-                ),
+                PathHop::new(lopt("0000.0000.0000.0000"), lopt("0000.0000.0000.0015"), &schemes::V358,),
+                PathHop::new(lopt("0000.0000.0000.0000"), lopt("0000.0000.0000.008e"), &schemes::V358,),
+                PathHop::new(lopt("0000.0000.0000.0013"), lopt("0000.0000.0000.0000"), &schemes::V358,),
             ]),
             Err(SpliceError::BadArgument)
         );
         assert_eq!(
             build_label(&[
-                PathHop::new(
-                    lopt("0000.0000.0000.0000"),
-                    lopt("0000.0000.0000.0015"),
-                    &schemes::V358,
-                ),
-                PathHop::new(
-                    lopt("0000.0000.0000.009e"),
-                    lopt("0000.0000.0000.0000"),
-                    &schemes::V358,
-                ),
-                PathHop::new(
-                    lopt("0000.0000.0000.0013"),
-                    lopt("0000.0000.0000.0000"),
-                    &schemes::V358,
-                ),
+                PathHop::new(lopt("0000.0000.0000.0000"), lopt("0000.0000.0000.0015"), &schemes::V358,),
+                PathHop::new(lopt("0000.0000.0000.009e"), lopt("0000.0000.0000.0000"), &schemes::V358,),
+                PathHop::new(lopt("0000.0000.0000.0013"), lopt("0000.0000.0000.0000"), &schemes::V358,),
             ]),
             Err(SpliceError::BadArgument)
         );
         assert_eq!(
             build_label(&[
-                PathHop::new(
-                    lopt("0000.0000.0000.0000"),
-                    lopt("0000.0000.0000.0015"),
-                    &schemes::V358,
-                ),
-                PathHop::new(
-                    lopt("0000.0000.0000.009e"),
-                    lopt("0000.0000.0000.008e"),
-                    &schemes::V358,
-                ),
-                PathHop::new(
-                    lopt("0000.0000.0000.0013"),
-                    lopt("0000.0000.0000.0000"),
-                    &schemes::V358,
-                ),
+                PathHop::new(lopt("0000.0000.0000.0000"), lopt("0000.0000.0000.0015"), &schemes::V358,),
+                PathHop::new(lopt("0000.0000.0000.009e"), lopt("0000.0000.0000.008e"), &schemes::V358,),
+                PathHop::new(lopt("0000.0000.0000.0013"), lopt("0000.0000.0000.0000"), &schemes::V358,),
             ]),
             Ok((
                 splice(&[l("0000.0000.0000.008e"), l("0000.0000.0000.0015")]).expect("failed to splice"),
@@ -1182,82 +875,25 @@ mod tests {
 
     #[test]
     fn test_is_one_hop() {
+        assert_eq!(is_one_hop(l("0000.0000.0000.0013"), &schemes::V358), Ok(true));
+        assert_eq!(is_one_hop(l("0000.0000.0000.0015"), &schemes::V358), Ok(true));
+        assert_eq!(is_one_hop(l("0000.0000.0000.0153"), &schemes::V358), Ok(false));
+        assert_eq!(is_one_hop(l("0000.0000.0000.0001"), &schemes::V358), Ok(false));
+        assert_eq!(is_one_hop(l("0000.0000.0000.0002"), &schemes::V358), Ok(false));
+        assert_eq!(is_one_hop(l("0000.0000.0000.0096"), &schemes::V358), Ok(true));
+        assert_eq!(is_one_hop(l("0000.0000.0000.0400"), &schemes::V358), Ok(true));
+        assert_eq!(is_one_hop(l("0000.0000.0000.0115"), &schemes::V358), Ok(false));
+        assert_eq!(is_one_hop(l("0000.0000.0000.0166"), &schemes::V358), Ok(false));
+        assert_eq!(is_one_hop(l("0000.0000.0000.1400"), &schemes::V358), Ok(false));
+        assert_eq!(is_one_hop(l("0000.0000.0000.0001"), &schemes::V48), Ok(false));
+        assert_eq!(is_one_hop(l("0000.0000.0000.0021"), &schemes::V48), Ok(true));
+        assert_eq!(is_one_hop(l("0000.0000.0000.0023"), &schemes::V48), Ok(true));
+        assert_eq!(is_one_hop(l("0000.0000.0000.0012"), &schemes::V48), Ok(false));
+        assert_eq!(is_one_hop(l("0000.0000.0000.0220"), &schemes::V48), Ok(true));
+        assert_eq!(is_one_hop(l("0000.0000.0000.0210"), &schemes::V48), Ok(true));
+        assert_eq!(is_one_hop(l("0000.0000.0000.0110"), &schemes::V48), Ok(false));
         assert_eq!(
-            is_one_hop(l("0000.0000.0000.0013"), &schemes::V358),
-            Ok(true)
-        );
-        assert_eq!(
-            is_one_hop(l("0000.0000.0000.0015"), &schemes::V358),
-            Ok(true)
-        );
-        assert_eq!(
-            is_one_hop(l("0000.0000.0000.0153"), &schemes::V358),
-            Ok(false)
-        );
-        assert_eq!(
-            is_one_hop(l("0000.0000.0000.0001"), &schemes::V358),
-            Ok(false)
-        );
-        assert_eq!(
-            is_one_hop(l("0000.0000.0000.0002"), &schemes::V358),
-            Ok(false)
-        );
-        assert_eq!(
-            is_one_hop(l("0000.0000.0000.0096"), &schemes::V358),
-            Ok(true)
-        );
-        assert_eq!(
-            is_one_hop(l("0000.0000.0000.0400"), &schemes::V358),
-            Ok(true)
-        );
-        assert_eq!(
-            is_one_hop(l("0000.0000.0000.0115"), &schemes::V358),
-            Ok(false)
-        );
-        assert_eq!(
-            is_one_hop(l("0000.0000.0000.0166"), &schemes::V358),
-            Ok(false)
-        );
-        assert_eq!(
-            is_one_hop(l("0000.0000.0000.1400"), &schemes::V358),
-            Ok(false)
-        );
-        assert_eq!(
-            is_one_hop(l("0000.0000.0000.0001"), &schemes::V48),
-            Ok(false)
-        );
-        assert_eq!(
-            is_one_hop(l("0000.0000.0000.0021"), &schemes::V48),
-            Ok(true)
-        );
-        assert_eq!(
-            is_one_hop(l("0000.0000.0000.0023"), &schemes::V48),
-            Ok(true)
-        );
-        assert_eq!(
-            is_one_hop(l("0000.0000.0000.0012"), &schemes::V48),
-            Ok(false)
-        );
-        assert_eq!(
-            is_one_hop(l("0000.0000.0000.0220"), &schemes::V48),
-            Ok(true)
-        );
-        assert_eq!(
-            is_one_hop(l("0000.0000.0000.0210"), &schemes::V48),
-            Ok(true)
-        );
-        assert_eq!(
-            is_one_hop(l("0000.0000.0000.0110"), &schemes::V48),
-            Ok(false)
-        );
-        assert_eq!(
-            is_one_hop(
-                l("0000.0000.0000.1113"),
-                &encoding_scheme(&[
-                    encoding_form(5, 2, 2),
-                    encoding_form(8, 2, 0),
-                ])
-            ),
+            is_one_hop(l("0000.0000.0000.1113"), &encoding_scheme(&[encoding_form(5, 2, 2), encoding_form(8, 2, 0),])),
             Err(SpliceError::CannotFindForm)
         );
     }

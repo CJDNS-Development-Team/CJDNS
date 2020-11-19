@@ -5,7 +5,7 @@ use std::{env, path};
 use anyhow::Error;
 use regex::Regex;
 
-use cjdns_admin::{ArgValue, ArgValues, Func, msgs::GenericResponsePayload};
+use cjdns_admin::{msgs::GenericResponsePayload, ArgValue, ArgValues, Func};
 
 #[tokio::main]
 async fn main() {
@@ -104,8 +104,14 @@ fn test_parse_remote_fn_args() -> Result<(), ()> {
     assert_eq!(parse_remote_fn_args(r#" 42"#)?, vec![ArgValue::Int(42)]);
     assert_eq!(parse_remote_fn_args(r#"42 "#)?, vec![ArgValue::Int(42)]);
     assert_eq!(parse_remote_fn_args(r#""foo""#)?, vec![ArgValue::String("foo".to_string())]);
-    assert_eq!(parse_remote_fn_args(r#"42,"foo",-42"#)?, vec![ArgValue::Int(42), ArgValue::String("foo".to_string()), ArgValue::Int(-42)]);
-    assert_eq!(parse_remote_fn_args(r#"42, "foo", -42"#)?, vec![ArgValue::Int(42), ArgValue::String("foo".to_string()), ArgValue::Int(-42)]);
+    assert_eq!(
+        parse_remote_fn_args(r#"42,"foo",-42"#)?,
+        vec![ArgValue::Int(42), ArgValue::String("foo".to_string()), ArgValue::Int(-42)]
+    );
+    assert_eq!(
+        parse_remote_fn_args(r#"42, "foo", -42"#)?,
+        vec![ArgValue::Int(42), ArgValue::String("foo".to_string()), ArgValue::Int(-42)]
+    );
 
     Ok(())
 }

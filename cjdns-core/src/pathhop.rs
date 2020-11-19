@@ -36,7 +36,7 @@ impl<'a, L: LabelBits> PathHop<'a, L> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{EncodingScheme, LabelBits, PathHop, RoutingLabel, schemes};
+    use crate::{schemes, EncodingScheme, LabelBits, PathHop, RoutingLabel};
 
     fn hop<L: LabelBits>(label_p_bits: L, label_n_bits: L, encoding_scheme: &EncodingScheme) -> PathHop<L> {
         let label_p = RoutingLabel::try_new(label_p_bits);

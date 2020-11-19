@@ -3,10 +3,10 @@
 pub use self::dijkstra::Dijkstra;
 pub use self::graph::{GraphBuilder, GraphSolver};
 
-mod graph;
-mod numtraits;
 mod dijkstra;
 mod frontier;
+mod graph;
+mod numtraits;
 
 #[test]
 fn test_dijkstra_search() {
@@ -33,12 +33,6 @@ fn test_dijkstra_search_all() {
     assert_eq!(all.start_node, "1");
     assert_eq!(
         all.paths,
-        vec![
-            ("2", vec![]),
-            ("3", vec![]),
-            ("4", vec!["3"]),
-            ("5", vec!["3", "6"]),
-            ("6", vec!["3"]),
-        ],
+        vec![("2", vec![]), ("3", vec![]), ("4", vec!["3"]), ("5", vec!["3", "6"]), ("6", vec!["3"]),],
     );
 }

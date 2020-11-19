@@ -1,6 +1,6 @@
 //! Logic for cjdns switch header parsing and serialization
 
-use cjdns_bytes::{ParseError, SerializeError, ExpectedSize};
+use cjdns_bytes::{ExpectedSize, ParseError, SerializeError};
 use cjdns_bytes::{Reader, Writer};
 use cjdns_core::RoutingLabel;
 

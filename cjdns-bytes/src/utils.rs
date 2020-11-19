@@ -1,5 +1,5 @@
 //! Parsing and serialization helpers.
-pub use reader::{Reader, ExpectedSize};
+pub use reader::{ExpectedSize, Reader};
 pub use writer::Writer;
 
 mod reader {
@@ -47,7 +47,7 @@ mod reader {
                     let res = job(self).expect("reading data more than could be");
                     assert_eq!(self.len(), len_before_read - count, "reading data less than stated");
                     Ok(res)
-                },
+                }
                 ExpectedSize::NotLessThan(count) => {
                     if self.len() < count {
                         return Err(ReadError);
@@ -55,7 +55,7 @@ mod reader {
                     let res = job(self).expect("reading data more than could be");
                     assert!(len_before_read - count >= self.len(), "reading data less than stated");
                     Ok(res)
-                },
+                }
             }
         }
 

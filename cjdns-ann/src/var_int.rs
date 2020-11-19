@@ -33,20 +33,26 @@ pub(crate) fn read_var_int<T: VarInt>(reader: &mut Reader) -> Result<T, VarIntEr
     match byte {
         // Marker byte `0xFF` following 64-bit integer
         0xff => {
-            let value = reader.read(ExpectedSize::NotLessThan(8), |r| r.read_u64_be()).map_err(|_| VarIntError::MalformedEncoding(8, byte))?;
-            <T as TryFrom<u64>>::try_from(value).map_err(|_| VarIntError::ValueTooBig(value, mem::size_of::<T>()*8, 64))
+            let value = reader
+                .read(ExpectedSize::NotLessThan(8), |r| r.read_u64_be())
+                .map_err(|_| VarIntError::MalformedEncoding(8, byte))?;
+            <T as TryFrom<u64>>::try_from(value).map_err(|_| VarIntError::ValueTooBig(value, mem::size_of::<T>() * 8, 64))
         }
 
         // Marker byte `0xFE` following 32-bit integer
         0xfe => {
-            let value = reader.read(ExpectedSize::NotLessThan(4), |r| r.read_u32_be()).map_err(|_| VarIntError::MalformedEncoding(4, byte))?;
-            <T as TryFrom<u32>>::try_from(value).map_err(|_| VarIntError::ValueTooBig(value as u64, mem::size_of::<T>()*8, 32))
+            let value = reader
+                .read(ExpectedSize::NotLessThan(4), |r| r.read_u32_be())
+                .map_err(|_| VarIntError::MalformedEncoding(4, byte))?;
+            <T as TryFrom<u32>>::try_from(value).map_err(|_| VarIntError::ValueTooBig(value as u64, mem::size_of::<T>() * 8, 32))
         }
 
         // Marker byte `0xFD` following 16-bit integer
         0xfd => {
-            let value = reader.read(ExpectedSize::NotLessThan(2), |r| r.read_u16_be()).map_err(|_| VarIntError::MalformedEncoding(2, byte))?;
-            <T as TryFrom<u16>>::try_from(value).map_err(|_| VarIntError::ValueTooBig(value as u64, mem::size_of::<T>()*8, 16))
+            let value = reader
+                .read(ExpectedSize::NotLessThan(2), |r| r.read_u16_be())
+                .map_err(|_| VarIntError::MalformedEncoding(2, byte))?;
+            <T as TryFrom<u16>>::try_from(value).map_err(|_| VarIntError::ValueTooBig(value as u64, mem::size_of::<T>() * 8, 16))
         }
 
         // Otherwise this is a 8-bit integer in range `0x00..0xFC`

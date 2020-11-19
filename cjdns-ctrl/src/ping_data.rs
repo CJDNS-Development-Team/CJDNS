@@ -1,4 +1,4 @@
-use cjdns_bytes::{ParseError, Reader, SerializeError, ExpectedSize, Writer};
+use cjdns_bytes::{ExpectedSize, ParseError, Reader, SerializeError, Writer};
 use cjdns_keys::CJDNSPublicKey;
 
 use crate::CtrlMessageType;

@@ -37,13 +37,13 @@ use std::io;
 use thiserror::Error;
 use tokio::net::UdpSocket;
 
-use cjdns_admin::{cjdns_invoke, ReturnValue};
 pub use cjdns_admin::Connection;
-use cjdns_bencode::{BencodeError, BValue};
+use cjdns_admin::{cjdns_invoke, ReturnValue};
+use cjdns_bencode::{BValue, BencodeError};
 use cjdns_bytes::{ParseError, SerializeError};
 pub use cjdns_ctrl::CtrlMessage;
-use cjdns_hdr::{DataHeader, RouteHeader};
 pub use cjdns_hdr::ContentType;
+use cjdns_hdr::{DataHeader, RouteHeader};
 
 /// Wraps connection to cjdns admin interface and allows to send and receive messages of a certain type.
 pub struct Sniffer {
@@ -100,14 +100,18 @@ impl Sniffer {
     async fn connect_with_existing_port(conn: &mut Connection, content_type_code: u32) -> Result<Option<UdpSocket>, ConnectError> {
         // Request list of handlers
         for page in 0.. {
-            let res = cjdns_invoke!(conn, "UpperDistributor_listHandlers", "page" = page).await.map_err(|e| ConnectError::RpcError(e))?;
+            let res = cjdns_invoke!(conn, "UpperDistributor_listHandlers", "page" = page)
+                .await
+                .map_err(|e| ConnectError::RpcError(e))?;
             // Expected response is of form `{ "handlers" : [ { "type" : 0xFFF1, "udpPort" : 1234 }, { "type" : 0xFFF2, "udpPort" : 1235 }, ... ] }`
             let handlers = res
-                .get("handlers").ok_or(ConnectError::BadResponse)?
-                .as_list(ReturnValue::as_int_map).map_err(|_| ConnectError::BadResponse)?
-            ;
+                .get("handlers")
+                .ok_or(ConnectError::BadResponse)?
+                .as_list(ReturnValue::as_int_map)
+                .map_err(|_| ConnectError::BadResponse)?;
 
-            if handlers.is_empty() { // Last page has empty handlers list
+            if handlers.is_empty() {
+                // Last page has empty handlers list
                 break;
             }
 
@@ -124,7 +128,7 @@ impl Sniffer {
                     let addr = format!(":::{}", handler_udp_port);
                     match UdpSocket::bind(addr).await {
                         Ok(socket) => return Ok(Some(socket)),
-                        Err(err) if err.kind() == io::ErrorKind::AddrInUse => { /* Ignore this error, just use another port later */ },
+                        Err(err) if err.kind() == io::ErrorKind::AddrInUse => { /* Ignore this error, just use another port later */ }
                         Err(err) => return Err(ConnectError::SocketError(err)),
                     }
                 } else {
@@ -142,7 +146,14 @@ impl Sniffer {
         let port = socket.local_addr().map_err(|e| ConnectError::SocketError(e))?.port();
 
         // Register this port within CJDNS router
-        cjdns_invoke!(conn, "UpperDistributor_registerHandler", "contentType" = content_type_code as i64, "udpPort" = port as i64).await.map_err(|e| ConnectError::RpcError(e))?;
+        cjdns_invoke!(
+            conn,
+            "UpperDistributor_registerHandler",
+            "contentType" = content_type_code as i64,
+            "udpPort" = port as i64
+        )
+        .await
+        .map_err(|e| ConnectError::RpcError(e))?;
 
         Ok(socket)
     }
@@ -159,23 +170,35 @@ impl Sniffer {
         buf.extend_from_slice(&route_header_bytes);
 
         // Data header
-        let data_header = DataHeader { content_type: msg.content_type, .. DataHeader::default() };
+        let data_header = DataHeader {
+            content_type: msg.content_type,
+            ..DataHeader::default()
+        };
         let data_header_bytes = data_header.serialize().map_err(|e| SendError::SerializeError(e))?;
         buf.extend_from_slice(&data_header_bytes);
 
         // Content
         let content_bytes = match &msg {
-            Message { content_type, content: Content::Benc(content_benc), .. } if *content_type == ContentType::Cjdht => {
+            Message {
+                content_type,
+                content: Content::Benc(content_benc),
+                ..
+            } if *content_type == ContentType::Cjdht => {
                 let bytes = content_benc.encode().map_err(|e| SendError::BencodeError(e))?;
                 Some(bytes)
             }
-            Message { route_header, content: Content::Ctrl(content), .. } if route_header.is_ctrl => {
+            Message {
+                route_header,
+                content: Content::Ctrl(content),
+                ..
+            } if route_header.is_ctrl => {
                 let content_bytes = content.serialize().map_err(|e| SendError::SerializeError(e))?;
                 Some(content_bytes)
             }
-            Message { content: Content::Bytes(content_bytes), .. } => {
-                Some(content_bytes.clone())
-            }
+            Message {
+                content: Content::Bytes(content_bytes),
+                ..
+            } => Some(content_bytes.clone()),
             _ => None,
         };
 
@@ -211,7 +234,9 @@ impl Sniffer {
 
         // Unregister this handler from CJDNS router
         let conn = &mut self.cjdns;
-        cjdns_invoke!(conn, "UpperDistributor_unregisterHandler", "udpPort" = port as i64).await.map_err(|e| ConnectError::RpcError(e))?;
+        cjdns_invoke!(conn, "UpperDistributor_unregisterHandler", "udpPort" = port as i64)
+            .await
+            .map_err(|e| ConnectError::RpcError(e))?;
 
         // UDP socket will be disconnected automatically when dropped
         Ok(())
@@ -273,7 +298,7 @@ impl Sniffer {
             }
 
             // Empty content
-            _ => Content::Empty
+            _ => Content::Empty,
         };
 
         // Resulting message

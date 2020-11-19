@@ -2,7 +2,7 @@ use std::mem::size_of_val;
 
 use num_enum::{FromPrimitive, IntoPrimitive};
 
-use cjdns_bytes::{ParseError, Reader, SerializeError, ExpectedSize, Writer};
+use cjdns_bytes::{ExpectedSize, ParseError, Reader, SerializeError, Writer};
 use cjdns_hdr::SwitchHeader;
 
 /// Body data for error type messages

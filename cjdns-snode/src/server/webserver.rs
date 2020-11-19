@@ -13,7 +13,7 @@ pub(super) async fn test_srv_task(server: Arc<Server>) {
     warp::serve(routes).run(([127, 0, 0, 1], 3333)).await;
 }
 
-fn api(server: Arc<Server>) -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
+fn api(server: Arc<Server>) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     // endpoint '/'
     let info = info_route(server.clone());
     let debug_node = debug_node_route(server.clone());
@@ -27,20 +27,18 @@ fn api(server: Arc<Server>) -> impl Filter<Extract=impl Reply, Error=Rejection> 
     info.or(debug_node).or(dump).or(path).or(ni).or(walk).or(ws)
 }
 
-fn info_route(server: Arc<Server>) -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
-    warp::path::end()
-        .and(with_server(server))
-        .and_then(handlers::handle_info)
+fn info_route(server: Arc<Server>) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
+    warp::path::end().and(with_server(server)).and_then(handlers::handle_info)
 }
 
-fn debug_node_route(server: Arc<Server>) -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
+fn debug_node_route(server: Arc<Server>) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     warp::path::path("debugnode")
         .and(warp::path::param())
         .and(with_server(server))
         .and_then(handlers::handle_debug_node)
 }
 
-fn dump_route(server: Arc<Server>) -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
+fn dump_route(server: Arc<Server>) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     let dump_header = warp::reply::with::header("content-type", "application/octet-stream");
     warp::path::path("dump")
         .and(with_server(server))
@@ -48,7 +46,7 @@ fn dump_route(server: Arc<Server>) -> impl Filter<Extract=impl Reply, Error=Reje
         .with(dump_header)
 }
 
-fn path_route(server: Arc<Server>) -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
+fn path_route(server: Arc<Server>) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     warp::path::path("path")
         .and(warp::path::param())
         .and(warp::path::param())
@@ -56,27 +54,25 @@ fn path_route(server: Arc<Server>) -> impl Filter<Extract=impl Reply, Error=Reje
         .and_then(handlers::handle_path)
 }
 
-fn ni_with_ip_route(server: Arc<Server>) -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
+fn ni_with_ip_route(server: Arc<Server>) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     warp::path::path("ni")
         .and(warp::path::param())
         .and(with_server(server))
         .and_then(handlers::handle_ni_with_ip)
 }
 
-fn ni_empty(server: Arc<Server>) -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
+fn ni_empty(server: Arc<Server>) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     warp::path::path("ni")
         .and(warp::path::end())
         .and(with_server(server))
         .and_then(handlers::handle_ni_empty)
 }
 
-fn walk_route(server: Arc<Server>) -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
-    warp::path::path("walk")
-        .and(with_server(server))
-        .and_then(handlers::handle_walk)
+fn walk_route(server: Arc<Server>) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
+    warp::path::path("walk").and(with_server(server)).and_then(handlers::handle_walk)
 }
 
-fn ws_route(server: Arc<Server>) -> impl Filter<Extract=impl Reply, Error=Rejection> + Clone {
+fn ws_route(server: Arc<Server>) -> impl Filter<Extract = impl Reply, Error = Rejection> + Clone {
     warp::path::path("cjdnsnode_websocket")
         .and(warp::addr::remote())
         .and(with_server(server))
@@ -93,7 +89,7 @@ fn ws_route(server: Arc<Server>) -> impl Filter<Extract=impl Reply, Error=Reject
         })
 }
 
-fn with_server(server: Arc<Server>) -> impl Filter<Extract=(Arc<Server>,), Error=Infallible> + Clone {
+fn with_server(server: Arc<Server>) -> impl Filter<Extract = (Arc<Server>,), Error = Infallible> + Clone {
     warp::any().map(move || server.clone())
 }
 
@@ -105,8 +101,8 @@ mod handlers {
     use serde_json::json;
     use serde_json::Value as JsonValue;
     use thiserror::Error;
-    use warp::{http::StatusCode, Rejection, Reply};
     use warp::reject::Reject;
+    use warp::{http::StatusCode, Rejection, Reply};
 
     use cjdns_ann::{Announcement, Entity};
     use cjdns_core::{EncodingScheme, RoutingLabel};
@@ -131,7 +127,7 @@ mod handlers {
         let peers_info = server.peers.get_info();
         let nodes_count = server.nodes.count();
 
-        let reply = json!{{
+        let reply = json! {{
             "peer": json!{{
                 "peers": peers_info.peers.into_iter().map(|pi| {
                     json!{{
@@ -166,12 +162,16 @@ mod handlers {
         let src = server.nodes.by_ip(&src_ip);
         let tar = server.nodes.by_ip(&tar_ip);
         warn!("http getRoute req {} {}", src_ip, tar_ip);
-        if src.is_none() { return Ok("src not found".to_string()); }
-        if tar.is_none() { return Ok("tar not found".to_string()); }
+        if src.is_none() {
+            return Ok("src not found".to_string());
+        }
+        if tar.is_none() {
+            return Ok("tar not found".to_string());
+        }
         match get_route(server.clone(), src, tar) {
             Ok(r) => Ok(r.label.to_string()),
-            Err(e) => Ok(format!("{:?}", e))
-        } 
+            Err(e) => Ok(format!("{:?}", e)),
+        }
     }
 
     pub(super) async fn handle_ni_with_ip(ip6: String, server: Arc<Server>) -> Result<impl Reply, Infallible> {
@@ -179,7 +179,7 @@ mod handlers {
             if let Some(node) = server.nodes.by_ip(&ip6) {
                 let node_state = node.mut_state.read();
 
-                let reply = json!{{
+                let reply = json! {{
                     "node": json!{{
                         "type": format!("{:?}", node.node_type),
                         "version": node.version,
@@ -222,15 +222,15 @@ mod handlers {
                 return Ok(reply_json(&reply));
             }
         }
-        let reply = json!{{}};
-        return Ok(reply_json(&reply))
+        let reply = json! {{}};
+        return Ok(reply_json(&reply));
     }
 
     pub(super) async fn handle_ni_empty(server: Arc<Server>) -> Result<impl Reply, Infallible> {
         let nodes_info = nodes_info(&server.nodes);
         let peers_info = server.peers.get_info();
 
-        let reply = json!{{
+        let reply = json! {{
             "totalNodes": nodes_info.nodes.len(),
             "nodes": nodes_info.nodes.into_iter().map(|ni| {
                 json!{{
@@ -255,7 +255,7 @@ mod handlers {
             }},
         }};
 
-        return Ok(reply_json(&reply))
+        return Ok(reply_json(&reply));
     }
 
     pub(super) async fn handle_walk(server: Arc<Server>) -> Result<impl Reply, Infallible> {
@@ -301,19 +301,17 @@ mod handlers {
     }
 
     fn json_encoding_scheme(encoding_scheme: &EncodingScheme) -> JsonValue {
-        json!(
-            encoding_scheme
-                .iter()
-                .map(|form| {
-                    let (bit_count, prefix_len, prefix) = form.params();
-                    json!{{
-                        "bitCount": bit_count,
-                        "prefix": format!("{:x}", prefix),
-                        "prefixLen": prefix_len,
-                    }}
-                })
-                .collect::<Vec<_>>()
-        )
+        json!(encoding_scheme
+            .iter()
+            .map(|form| {
+                let (bit_count, prefix_len, prefix) = form.params();
+                json! {{
+                    "bitCount": bit_count,
+                    "prefix": format!("{:x}", prefix),
+                    "prefixLen": prefix_len,
+                }}
+            })
+            .collect::<Vec<_>>())
     }
 
     fn json_label(label: Option<RoutingLabel<u32>>) -> JsonValue {
@@ -328,7 +326,7 @@ mod handlers {
     }
 
     fn json_announcement(ann: &Announcement) -> JsonValue {
-        json!{{
+        json! {{
             "signature": ann.header.signature,
             "pubSigningKey": ann.header.pub_signing_key,
             "snodeIp": ann.header.snode_ip.to_string(),
@@ -346,20 +344,20 @@ mod handlers {
     fn json_ann_entity(entity: &Entity) -> JsonValue {
         match *entity {
             Entity::NodeProtocolVersion(v) => {
-                json!{{
+                json! {{
                     "type": "Version",
                     "version": v,
                 }}
-            },
-            Entity::EncodingScheme {ref hex, ref scheme} => {
-                json!{{
+            }
+            Entity::EncodingScheme { ref hex, ref scheme } => {
+                json! {{
                     "type": "EncodingScheme",
                     "hex": hex.clone(),
                     "scheme": json_encoding_scheme(scheme),
                 }}
-            },
+            }
             Entity::Peer(ref peer_data) => {
-                json!{{
+                json! {{
                     "type": "Peer",
                     "ipv6": peer_data.ipv6.to_string(),
                     "label": json_label(peer_data.label),
@@ -369,9 +367,9 @@ mod handlers {
                     "encodingFormNum": peer_data.encoding_form_number,
                     "flags": peer_data.flags,
                 }}
-            },
+            }
             Entity::LinkState(ref ls_data) => {
-                json!{{
+                json! {{
                     "type": "LinkState",
                     "nodeId": ls_data.node_id,
                     "startingPoint": ls_data.starting_point,
@@ -384,7 +382,7 @@ mod handlers {
     }
 
     fn json_binary_buffer(buf: &[u8]) -> JsonValue {
-        json!{{
+        json! {{
             "type": "Buffer",
             "data": buf.to_vec(),
         }}
@@ -399,7 +397,7 @@ mod handlers {
         /// Copy of warp::reply::json, but with pretty json formatter
         pub(super) fn reply_json<S: Serialize>(val: &S) -> Json {
             Json {
-                inner: serde_json::to_vec_pretty(val).map_err(|e| error!("json error {}", e))
+                inner: serde_json::to_vec_pretty(val).map_err(|e| error!("json error {}", e)),
             }
         }
 
@@ -435,7 +433,7 @@ mod node_info {
     pub(super) struct NodeShortInfo {
         pub(super) ip6: String,
         pub(super) announcements: u64,
-        pub(super) rst: bool
+        pub(super) rst: bool,
     }
 
     pub(super) fn nodes_info(nodes: &Nodes) -> NodesInfo {
@@ -444,7 +442,8 @@ mod node_info {
         let nodes = nodes
             .all_ips()
             .iter()
-            .filter_map(|ip6| { // Skip nodes that just disappeared
+            .filter_map(|ip6| {
+                // Skip nodes that just disappeared
                 nodes.by_ip(ip6).map(|node| (ip6, node))
             })
             .map(|(ip6, node)| {
@@ -452,19 +451,17 @@ mod node_info {
                 let announcements = node_state.announcements.len() as u64;
                 total_ann += announcements;
                 let rst = node_state.reset_msg.is_some() && node_state.announcements.iter().all(|ann| Some(ann) != node_state.reset_msg.as_ref());
-                if rst { resets += 1; }
+                if rst {
+                    resets += 1;
+                }
                 NodeShortInfo {
                     ip6: ip6.to_string(),
                     announcements,
-                    rst
+                    rst,
                 }
             })
             .collect::<Vec<_>>();
 
-        NodesInfo {
-            nodes,
-            total_ann,
-            resets,
-        }
+        NodesInfo { nodes, total_ann, resets }
     }
 }

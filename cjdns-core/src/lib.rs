@@ -3,8 +3,8 @@
 #[macro_use]
 extern crate lazy_static;
 
-pub use self::encoding::*;
 pub use self::encoding::schemes;
+pub use self::encoding::*;
 pub use self::pathhop::*;
 pub use self::routinglabel::*;
 pub use self::strconv::*;

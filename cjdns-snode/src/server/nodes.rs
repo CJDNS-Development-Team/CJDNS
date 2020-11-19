@@ -10,7 +10,7 @@ use parking_lot::{Mutex, RwLock};
 use cjdns_ann::{AnnHash, Announcement};
 use cjdns_bytes::Writer;
 use cjdns_core::EncodingScheme;
-use cjdns_keys::{CJDNS_IP6, CJDNSPublicKey};
+use cjdns_keys::{CJDNSPublicKey, CJDNS_IP6};
 
 use crate::peer::Peers;
 use crate::server::link::Link;
@@ -18,7 +18,7 @@ use crate::server::link::Link;
 pub(super) struct Nodes {
     peers: Arc<Peers>,
     /// Shared state guarded by a regular sync mutex (since we don't need to keep the lock between `.await` points)
-    nodes_by_ip: RwLock<HashMap<CJDNS_IP6, Arc<Node>>>
+    nodes_by_ip: RwLock<HashMap<CJDNS_IP6, Arc<Node>>>,
 }
 
 pub(super) struct Node {
@@ -45,7 +45,9 @@ pub(super) struct NodeMut {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub(super) enum NodeType { Node }
+pub(super) enum NodeType {
+    Node,
+}
 
 // No async methods allowed here since we use sync mutex
 impl Nodes {
@@ -109,7 +111,7 @@ impl Nodes {
         encoding_scheme: Option<Arc<EncodingScheme>>,
         timestamp: SystemTime,
         ipv6: CJDNS_IP6,
-        announcement: Option<Announcement>
+        announcement: Option<Announcement>,
     ) -> Result<Node, Error> {
         let encoding_scheme = {
             if let Some(encoding_scheme) = encoding_scheme {
@@ -127,7 +129,7 @@ impl Nodes {
             timestamp,
             announcements: Vec::new(),
             state_hash: None,
-            reset_msg: None
+            reset_msg: None,
         };
 
         if let Some(ann) = announcement {
@@ -184,10 +186,10 @@ impl Nodes {
 impl PartialEq for Node {
     fn eq(&self, other: &Self) -> bool {
         self.node_type == other.node_type
-        && self.version == other.version
-        && self.key == other.key
-        && self.ipv6 == other.ipv6
-        && *self.encoding_scheme == *other.encoding_scheme
+            && self.version == other.version
+            && self.key == other.key
+            && self.ipv6 == other.ipv6
+            && *self.encoding_scheme == *other.encoding_scheme
     }
 }
 

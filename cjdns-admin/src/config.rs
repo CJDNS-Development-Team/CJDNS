@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use serde::Deserialize;
 use tokio::{fs, io};
 
-use crate::ConnectionOptions;
 use crate::errors::Error;
+use crate::ConnectionOptions;
 
 const DEFAULT_ADDR: &'static str = "127.0.0.1";
 const DEFAULT_PORT: u16 = 11234;
@@ -64,7 +64,11 @@ impl Opts {
         ConnectionOptions {
             addr: self.addr.as_ref().map_or(DEFAULT_ADDR, |s| &s).to_string(),
             port: self.port.unwrap_or(DEFAULT_PORT),
-            password: self.password.as_ref().map_or_else(|| if self.anon { "" } else { DEFAULT_PASSWORD }, |s| &s).to_string(),
+            password: self
+                .password
+                .as_ref()
+                .map_or_else(|| if self.anon { "" } else { DEFAULT_PASSWORD }, |s| &s)
+                .to_string(),
             used_config_file: conf_file.map(|path| path.to_string_lossy().into_owned()),
         }
     }
@@ -126,7 +130,11 @@ fn test_build_connection_options() {
     );
 
     assert_eq!(
-        Opts { addr: ss("192.168.1.1"), ..Opts::default() }.build_connection_options(None),
+        Opts {
+            addr: ss("192.168.1.1"),
+            ..Opts::default()
+        }
+        .build_connection_options(None),
         ConnectionOptions {
             addr: s("192.168.1.1"),
             port: 11234,
@@ -136,7 +144,11 @@ fn test_build_connection_options() {
     );
 
     assert_eq!(
-        Opts { port: Some(1234), ..Opts::default() }.build_connection_options(None),
+        Opts {
+            port: Some(1234),
+            ..Opts::default()
+        }
+        .build_connection_options(None),
         ConnectionOptions {
             addr: s("127.0.0.1"),
             port: 1234,
@@ -146,7 +158,11 @@ fn test_build_connection_options() {
     );
 
     assert_eq!(
-        Opts { password: ss("secret"), ..Opts::default() }.build_connection_options(None),
+        Opts {
+            password: ss("secret"),
+            ..Opts::default()
+        }
+        .build_connection_options(None),
         ConnectionOptions {
             addr: s("127.0.0.1"),
             port: 11234,
@@ -165,12 +181,35 @@ fn test_parse_config() {
 
     assert_eq!(c(r#"{ "unknown": "foo" }"#), Opts::default());
 
-    assert_eq!(c(r#"{ "addr": "192.168.1.1" }"#), Opts { addr: s("192.168.1.1"), ..Opts::default() });
-    assert_eq!(c(r#"{ "port": 1234 }"#), Opts { port: Some(1234), ..Opts::default() });
-    assert_eq!(c(r#"{ "password": "secret" }"#), Opts { password: s("secret"), ..Opts::default() });
+    assert_eq!(
+        c(r#"{ "addr": "192.168.1.1" }"#),
+        Opts {
+            addr: s("192.168.1.1"),
+            ..Opts::default()
+        }
+    );
+    assert_eq!(
+        c(r#"{ "port": 1234 }"#),
+        Opts {
+            port: Some(1234),
+            ..Opts::default()
+        }
+    );
+    assert_eq!(
+        c(r#"{ "password": "secret" }"#),
+        Opts {
+            password: s("secret"),
+            ..Opts::default()
+        }
+    );
 
     assert_eq!(
         c(r#"{ "addr": "192.168.1.1", "port": 1234, "password": "secret" }"#),
-        Opts { addr: s("192.168.1.1"), port: Some(1234), password: s("secret"), ..Opts::default() }
+        Opts {
+            addr: s("192.168.1.1"),
+            port: Some(1234),
+            password: s("secret"),
+            ..Opts::default()
+        }
     );
 }

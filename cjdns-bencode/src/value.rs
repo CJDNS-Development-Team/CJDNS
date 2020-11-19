@@ -3,10 +3,10 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 
-use bendy::{decoding::FromBencode, encoding::ToBencode};
 pub use bendy::decoding::Error as BdecodeError;
 pub use bendy::encoding::Error as BencodeError;
 use bendy::value::Value as BendyValue;
+use bendy::{decoding::FromBencode, encoding::ToBencode};
 
 /// Generic Bencode value.
 #[derive(PartialEq, Eq, Clone)]
@@ -165,7 +165,8 @@ impl BValueBuilder {
 
     /// Add list item (panics if current value is not a list)
     pub fn add_list_item<F>(self, init: F) -> Self
-        where F: FnOnce(BValueBuilder) -> BValueBuilder
+    where
+        F: FnOnce(BValueBuilder) -> BValueBuilder,
     {
         let BValueBuilder(try_value) = self;
         let value = if let Some(BendyValue::List(mut list)) = try_value {
@@ -180,8 +181,9 @@ impl BValueBuilder {
 
     /// Add dict entry (panics if current value is not a dict)
     pub fn add_dict_entry<K, F>(self, key: K, init: F) -> Self
-        where F: FnOnce(BValueBuilder) -> BValueBuilder,
-              K: Into<String>
+    where
+        F: FnOnce(BValueBuilder) -> BValueBuilder,
+        K: Into<String>,
     {
         let BValueBuilder(try_value) = self;
         let value = if let Some(BendyValue::Dict(mut dict)) = try_value {
@@ -237,12 +239,12 @@ mod debug {
                 f.write_str("{")?;
                 dump_dict(f, v)?;
                 f.write_str("}")?;
-            },
+            }
             BendyValue::List(v) => {
                 f.write_str("[")?;
                 dump_list(f, v)?;
                 f.write_str("]")?;
-            },
+            }
         }
         Ok(())
     }

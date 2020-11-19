@@ -3,7 +3,7 @@ use std::mem::size_of_val;
 
 use num_enum::{IntoPrimitive, TryFromPrimitive};
 
-use cjdns_bytes::{ParseError, Reader, SerializeError, ExpectedSize, Writer};
+use cjdns_bytes::{ExpectedSize, ParseError, Reader, SerializeError, Writer};
 use netchecksum;
 
 use crate::{ErrorData, PingData};
@@ -70,10 +70,8 @@ impl CtrlMessage {
         }
         let msg_type = CtrlMessageType::from_u16(type_code).map_err(|_| ParseError::InvalidData("unknown ctrl packet"))?;
         let msg_data = match msg_type {
-            CtrlMessageType::Error =>
-                CtrlMessageData::ErrorData(ErrorData::parse(raw_data)?),
-            CtrlMessageType::GetSuperNodeQuery | CtrlMessageType::GetSuperNodeResponse =>
-                CtrlMessageData::SuperNodeQueryData(),
+            CtrlMessageType::Error => CtrlMessageData::ErrorData(ErrorData::parse(raw_data)?),
+            CtrlMessageType::GetSuperNodeQuery | CtrlMessageType::GetSuperNodeResponse => CtrlMessageData::SuperNodeQueryData(),
             CtrlMessageType::Ping | CtrlMessageType::Pong | CtrlMessageType::KeyPing | CtrlMessageType::KeyPong => {
                 CtrlMessageData::PingData(PingData::parse(raw_data, msg_type)?)
             }
@@ -95,7 +93,9 @@ impl CtrlMessage {
                     .ok_or(SerializeError::InvalidInvariant("message with error header, but ping data body"))?;
                 error_data.serialize()?
             }
-            CtrlMessageType::GetSuperNodeQuery | CtrlMessageType::GetSuperNodeResponse => return Err(SerializeError::InvalidData("can't serialize GetsNode messages")),
+            CtrlMessageType::GetSuperNodeQuery | CtrlMessageType::GetSuperNodeResponse => {
+                return Err(SerializeError::InvalidData("can't serialize GetsNode messages"))
+            }
             // Ping | Pong | KeyPing | KeyPong
             ping_type => {
                 let ping_data = self
@@ -158,9 +158,9 @@ impl CtrlMessageData {
 
 #[cfg(test)]
 mod tests {
-    use cjdns_keys::CJDNSPublicKey;
     use cjdns_core::RoutingLabel;
     use cjdns_hdr::SwitchHeader;
+    use cjdns_keys::CJDNSPublicKey;
 
     use crate::ErrorMessageType;
 

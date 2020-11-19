@@ -11,27 +11,33 @@ use super::numtraits::{IntoOrd, Zero};
 /// Dijkstra path search.
 pub struct Dijkstra<T, W> {
     /// Links node with tag `<T>` to the list of ajacent nodest with corresponding weights `<W>`.
-    nodes: HashMap<T, Vec<(T, W)>>
+    nodes: HashMap<T, Vec<(T, W)>>,
 }
 
 impl<T, W> Dijkstra<T, W> {
     /// Create new instance with empty graph.
     pub fn new() -> Self {
-        Dijkstra {
-            nodes: HashMap::new()
-        }
+        Dijkstra { nodes: HashMap::new() }
     }
 }
 
-impl<T, W> GraphBuilder<T, W> for Dijkstra<T, W> where T: Eq + Hash, W: PartialEq + PartialOrd + Zero {
-    fn add_node<I: IntoIterator<Item=(T, W)>>(&mut self, node_tag: T, links: I) {
+impl<T, W> GraphBuilder<T, W> for Dijkstra<T, W>
+where
+    T: Eq + Hash,
+    W: PartialEq + PartialOrd + Zero,
+{
+    fn add_node<I: IntoIterator<Item = (T, W)>>(&mut self, node_tag: T, links: I) {
         let links = links.into_iter().collect::<Vec<(T, W)>>();
         debug_assert!(links.iter().all(|(_, w)| *w >= W::ZERO), "Negative weight detected");
         self.nodes.insert(node_tag, links);
     }
 }
 
-impl<T, W> GraphSolver<T, W> for Dijkstra<T, W> where T: Clone + Eq + Ord + Hash, W: Clone + PartialEq + PartialOrd + IntoOrd + Add<Output=W> + Zero {
+impl<T, W> GraphSolver<T, W> for Dijkstra<T, W>
+where
+    T: Clone + Eq + Ord + Hash,
+    W: Clone + PartialEq + PartialOrd + IntoOrd + Add<Output = W> + Zero,
+{
     fn path(&self, from: &T, to: &T) -> Vec<T> {
         let mut path = self.reverse_path(from, to);
 

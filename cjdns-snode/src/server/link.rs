@@ -15,7 +15,7 @@ pub(super) struct Link {
     pub(super) peer_num: u16,
     pub(super) link_state: Arc<Mutex<HashMap<u64, LinkStateEntry>>>,
     pub(super) create_time: u64,
-    pub(super) mut_state: Arc<Mutex<LinkStateMut>>
+    pub(super) mut_state: Arc<Mutex<LinkStateMut>>,
 }
 
 #[derive(Clone, Debug)]
@@ -42,15 +42,13 @@ pub(super) fn mk_link(ann_peer: &PeerData, ann: &Announcement) -> Link {
         peer_num: ann_peer.peer_num,
         link_state: Arc::new(Mutex::new(HashMap::new())),
         create_time: ann_time,
-        mut_state: Arc::new(Mutex::new(
-            LinkStateMut {
-                most_recent_ls_slot: ann_time / 1000 / 10,
-                mtu: ann_peer.mtu,
-                flags: ann_peer.flags,
-                time: ann_time,
-                value: 0.0,
-            }
-        ))
+        mut_state: Arc::new(Mutex::new(LinkStateMut {
+            most_recent_ls_slot: ann_time / 1000 / 10,
+            mtu: ann_peer.mtu,
+            flags: ann_peer.flags,
+            time: ann_time,
+            value: 0.0,
+        })),
     }
 }
 
@@ -74,6 +72,6 @@ impl LinkStateEntry {
         // it will be the data which finally pushes the link over the edge.
         // But rising latency is bad news.
         // By far the worst news is drops.
-        kb_recv / ( lag * f64::powi(2.0, drops) )
+        kb_recv / (lag * f64::powi(2.0, drops))
     }
 }

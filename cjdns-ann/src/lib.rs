@@ -156,7 +156,7 @@
 //! # );
 //!
 //! ```
-pub use models::{AnnHash, Announcement, AnnouncementEntities, AnnouncementHeader, Entity, LINK_STATE_SLOTS, LinkStateData, LinkStateSlots, PeerData};
+pub use models::{AnnHash, Announcement, AnnouncementEntities, AnnouncementHeader, Entity, LinkStateData, LinkStateSlots, PeerData, LINK_STATE_SLOTS};
 pub use serialized_ann::serialized_data::AnnouncementPacket;
 
 mod errors;
