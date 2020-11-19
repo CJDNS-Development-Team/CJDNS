@@ -15,9 +15,20 @@ async fn main() {
 }
 
 async fn run() -> Result<(), Error> {
-    let mut cjdns = cjdns_admin::connect(None).await?;
+    env_logger::init();
+    let mut args = env::args().skip(1).collect::<Vec<_>>();
+    let opts = {
+        let mut opts = cjdns_admin::Opts::default();
+        if let Some(z) = args.get(0) {
+            if z == "-u" {
+                args.remove(0);
+                opts.use_udp = Some(true);
+            }
+        }
+        opts
+    };
 
-    let args = env::args().skip(1).collect::<Vec<_>>();
+    let mut cjdns = cjdns_admin::connect(Some(opts)).await?;
 
     if args.is_empty() {
         let bin_path: path::PathBuf = env::args_os().next().expect("missing binary name (bad OS?)").into();
