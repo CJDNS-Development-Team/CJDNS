@@ -21,11 +21,17 @@ pub mod msgs;
 mod txid;
 
 #[derive(Clone, Default, PartialEq, Eq, Debug)]
-struct ConnectionOptions {
+struct UdpConnectionOptions {
     addr: String,
     port: u16,
     password: String,
     used_config_file: Option<String>,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+enum ConnectionOptions {
+    Socket(String),
+    Udp(UdpConnectionOptions),
 }
 
 /// Connect to the running cjdns router instance.

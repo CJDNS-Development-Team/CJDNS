@@ -4,8 +4,12 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
+use log::{debug, info};
 use sodiumoxide::crypto::hash::sha256::hash;
+use tokio::io::AsyncReadExt;
+use tokio::io::AsyncWriteExt;
 use tokio::net::UdpSocket;
+use tokio::net::UnixStream;
 use tokio::sync::Mutex;
 use tokio::time;
 
@@ -18,12 +22,17 @@ use crate::ConnectionOptions;
 const PING_TIMEOUT: Duration = Duration::from_millis(1_000);
 const DEFAULT_TIMEOUT: Duration = Duration::from_millis(10_000);
 
+enum CjdnsSocket {
+    Udp(UdpSocket),
+    Unix(UnixStream),
+}
+
 /// Admin connection to the CJDNS node.
 ///
 /// Cloneable: cloned connection uses same underlying UDP socket and is thread-safe.
 #[derive(Clone)]
 pub struct Connection {
-    socket: Arc<Mutex<UdpSocket>>,
+    socket: Arc<Mutex<CjdnsSocket>>,
     password: String,
     counter: Arc<Counter>,
 
@@ -33,9 +42,19 @@ pub struct Connection {
 
 impl Connection {
     pub(super) async fn new(opts: ConnectionOptions) -> Result<Self, Error> {
+        let (passwd, socket) = match &opts {
+            ConnectionOptions::Udp(uco) => {
+                info!("Using UDP connection [{}:{}]", uco.addr, uco.port);
+                (uco.password.clone(), CjdnsSocket::Udp(create_udp_socket_sender(&uco.addr, uco.port).await?))
+            }
+            ConnectionOptions::Socket(path) => {
+                info!("Using UNIX Socket connection [{}]", path);
+                ("".to_owned(), CjdnsSocket::Unix(create_unix_socket_sender(&path).await?))
+            }
+        };
         let mut conn = Connection {
-            socket: Arc::new(Mutex::new(create_udp_socket_sender(&opts.addr, opts.port).await?)),
-            password: opts.password.clone(),
+            socket: Arc::new(Mutex::new(socket)),
+            password: passwd,
             counter: Arc::new(Counter::new_random()),
             functions: Funcs::default(),
         };
@@ -177,19 +196,36 @@ impl Connection {
         let msg = req.to_bencode()?;
         //dbg!(String::from_utf8_lossy(&msg));
         let mut socket = self.socket.lock().await;
-        socket.send(&msg).await.map_err(|e| Error::NetworkOperation(e))?;
+        debug!("< [{}] {}", msg.len(), String::from_utf8_lossy(&msg));
+        match &mut *socket {
+            CjdnsSocket::Udp(u) => {
+                u.send(&msg).await.map_err(|e| Error::NetworkOperation(e))?;
+            }
+            CjdnsSocket::Unix(s) => {
+                s.write_all(&msg).await.map_err(|e| Error::NetworkOperation(e))?;
+            }
+        }
 
-        // Limit receive packet lenght to typical Ethernet MTU for now; need to check actual max packet length on CJDNS Node side though.
-        let mut buf = [0; 1500];
+        // Use 2**14 (16384) which is the mtu of loopback
+        let mut buf = [0; 1 << 14];
 
-        // Reseive encoded response synchronously
-        let received = socket.recv(&mut buf).await.map_err(|e| Error::NetworkOperation(e))?;
+        // Receive encoded response synchronously
+        // NOTE: reading the unix socket here will fail if we only get a partial read
+        let received = match &mut *socket {
+            CjdnsSocket::Udp(u) => u.recv(&mut buf).await.map_err(|e| Error::NetworkOperation(e))?,
+            CjdnsSocket::Unix(s) => s.read(&mut buf).await.map_err(|e| Error::NetworkOperation(e))?,
+        };
         let response = &buf[..received];
+        debug!("> [{}] {}", response.len(), String::from_utf8_lossy(&response));
         //dbg!(String::from_utf8_lossy(&response));
 
         // Decode response
         RS::from_bencode(response)
     }
+}
+
+async fn create_unix_socket_sender(path: &str) -> Result<UnixStream, Error> {
+    Ok(UnixStream::connect(path).await.map_err(|e| Error::NetworkOperation(e))?)
 }
 
 async fn create_udp_socket_sender(addr: &str, port: u16) -> Result<UdpSocket, Error> {

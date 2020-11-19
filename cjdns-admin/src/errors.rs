@@ -9,7 +9,7 @@ use crate::ConnectionOptions;
 
 // This wrapper is needed because underlying `ConnectionOptions` is not intended to be made public type.
 // It is only useful to be printed on the screen.
-#[derive(Clone, Default, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct ConnOptions(ConnectionOptions);
 
 impl ConnOptions {
@@ -20,13 +20,18 @@ impl ConnOptions {
     fn descr(&self) -> String {
         let ConnOptions(opts) = self;
 
-        let mut msg = format!("({}:{})", opts.addr, opts.port);
+        match opts {
+            ConnectionOptions::Socket(s) => s.clone(),
+            ConnectionOptions::Udp(opts) => {
+                let mut msg = format!("({}:{})", opts.addr, opts.port);
 
-        if let Some(ref config_file) = opts.used_config_file {
-            msg += &format!(" using cjdnsadmin file at [{}]", config_file);
+                if let Some(ref config_file) = opts.used_config_file {
+                    msg += &format!(" using cjdnsadmin file at [{}]", config_file);
+                }
+
+                msg
+            }
         }
-
-        msg
     }
 }
 
