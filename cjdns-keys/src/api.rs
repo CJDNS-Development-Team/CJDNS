@@ -6,9 +6,9 @@ use std::sync::{
     Once,
 };
 
-use sodiumoxide::init;
+use cjdns_crypto::init;
 
-use crate::{CJDNSPrivateKey, CJDNSPublicKey, CJDNS_IP6};
+use crate::{CJDNS_IP6, CJDNSPrivateKey, CJDNSPublicKey};
 
 /// Type that encapsulates some crate functions making it safer for its users to work with randomly created keys.
 ///

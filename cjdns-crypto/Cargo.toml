@@ -1,0 +1,13 @@
+[package]
+name = "cjdns-crypto"
+version = "0.1.0"
+authors = [
+    "Alex Kordys <a.kordys@mixbytes.io>"
+]
+edition = "2018"
+license = "GPL-3.0-or-later"
+description = "cjdns crypto library"
+
+[dependencies]
+sodiumoxide = "0.2"
+libsodium-sys = "0.2"

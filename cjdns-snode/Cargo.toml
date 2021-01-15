@@ -26,7 +26,6 @@ thiserror = "1.0"
 tokio = { version = "0.2", features = ["fs", "net", "macros", "time", "sync"] }
 tokio-tungstenite = "0.11"
 warp = "0.2"
-sodiumoxide = "0.2"
 
 cjdns-core = { path = "../cjdns-core" }
 cjdns-keys = { path = "../cjdns-keys" }
@@ -36,6 +35,7 @@ cjdns-admin = { path = "../cjdns-admin" }
 cjdns-sniff = { path = "../cjdns-sniff" }
 cjdns-bytes = { path = "../cjdns-bytes" }
 cjdns-bencode = { path = "../cjdns-bencode" }
+cjdns-crypto = { path = "../cjdns-crypto" }
 
 [dev-dependencies]
 chrono = "0.4"

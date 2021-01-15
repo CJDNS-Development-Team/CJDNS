@@ -4,8 +4,9 @@ use std::convert::TryFrom;
 use std::ops::Deref;
 
 use regex::Regex;
-use sodiumoxide::crypto::scalarmult;
-use sodiumoxide::randombytes::randombytes;
+
+use cjdns_crypto::randombytes::randombytes;
+use cjdns_crypto::scalarmult;
 
 use crate::{
     errors::{KeyCreationError, Result},

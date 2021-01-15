@@ -2,9 +2,8 @@
 
 use std::sync::Arc;
 
-use sodiumoxide::crypto::hash::sha512;
-
 use cjdns_ann::AnnHash;
+use cjdns_crypto::hash::sha512;
 
 use crate::server::nodes::Node;
 

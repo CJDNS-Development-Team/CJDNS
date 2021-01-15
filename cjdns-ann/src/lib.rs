@@ -91,7 +91,7 @@
 //! # Example
 //! ```rust
 //! # use std::convert::TryFrom;
-//! # use sodiumoxide::crypto::hash::sha512;
+//! # use cjdns_crypto::hash::sha512;
 //! # use cjdns_core::{RoutingLabel, EncodingScheme, EncodingSchemeForm};
 //! # use cjdns_keys::{CJDNS_IP6, CJDNSPublicKey};
 //! # use cjdns_ann::{AnnHash, Announcement, AnnouncementHeader, AnnouncementEntities, Entity, PeerData};

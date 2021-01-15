@@ -10,10 +10,9 @@ description = "Library for parsing cjdns announcement messages"
 
 [dependencies]
 hex = "0.4"
-sodiumoxide = "0.2"
-libsodium-sys = "0.2"
 thiserror = "1.0"
 
 cjdns-core = { path = "../cjdns-core" }
 cjdns-keys = { path = "../cjdns-keys" }
 cjdns-bytes = { path = "../cjdns-bytes" }
+cjdns-crypto = { path = "../cjdns-crypto" }

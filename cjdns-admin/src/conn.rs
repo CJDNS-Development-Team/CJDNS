@@ -4,16 +4,17 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::time::Duration;
 
-use sodiumoxide::crypto::hash::sha256::hash;
 use tokio::net::UdpSocket;
 use tokio::sync::Mutex;
 use tokio::time;
 
+use cjdns_crypto::hash::sha256;
+
+use crate::ConnectionOptions;
 use crate::errors::{ConnOptions, Error};
 use crate::func_list::Funcs;
 use crate::msgs::{self, Empty, Request};
 use crate::txid::Counter;
-use crate::ConnectionOptions;
 
 const PING_TIMEOUT: Duration = Duration::from_millis(1_000);
 const DEFAULT_TIMEOUT: Duration = Duration::from_millis(10_000);
@@ -138,7 +139,7 @@ impl Connection {
         // Hash password with salt
         let passwd_hash = {
             let cookie_passwd = self.password.clone() + &new_cookie;
-            let digest = hash(cookie_passwd.as_bytes());
+            let digest = sha256::hash(cookie_passwd.as_bytes());
             hex::encode(digest)
         };
 
@@ -155,7 +156,7 @@ impl Connection {
         // Update message's hash
         let msg_hash = {
             let msg_bytes = msg.to_bencode()?;
-            let digest = hash(&msg_bytes);
+            let digest = sha256::hash(&msg_bytes);
             hex::encode(digest)
         };
         msg.hash = msg_hash;

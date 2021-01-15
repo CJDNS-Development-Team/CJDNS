@@ -1,10 +1,9 @@
 use std::convert::TryFrom;
 
-use sodiumoxide::crypto::hash::sha512;
-use sodiumoxide::crypto::sign::ed25519::{verify_detached, PublicKey, Signature};
-
 use cjdns_core::{deserialize_scheme, RoutingLabel};
-use cjdns_keys::{CJDNSPublicKey, CJDNS_IP6};
+use cjdns_crypto::hash::sha512;
+use cjdns_crypto::sign::ed25519;
+use cjdns_keys::{CJDNS_IP6, CJDNSPublicKey};
 
 use super::errors::*;
 use super::models::{Announcement, AnnouncementEntities, AnnouncementHeader, Entity, LinkStateSlots};
@@ -45,10 +44,10 @@ pub mod serialized_data {
         /// Gets signature, public signing key and signed data bytes from announcement packet and performs signature check using
         /// [crypto_sign_verify_detached](https://libsodium.gitbook.io/doc/public-key_cryptography/public-key_signatures).
         pub fn check(&self) -> Result<()> {
-            let signature = Signature::from_slice(self.get_signature_bytes()).expect("internal error: signature size != 64");
-            let public_sign_key = PublicKey::from_slice(self.get_pub_key_bytes()).expect("internal error: public key size != 32");
+            let signature = ed25519::Signature::from_slice(self.get_signature_bytes()).expect("internal error: signature size != 64");
+            let public_sign_key = ed25519::PublicKey::from_slice(self.get_pub_key_bytes()).expect("internal error: public key size != 32");
             let signed_data = self.get_signed_data();
-            if verify_detached(&signature, signed_data, &public_sign_key) {
+            if ed25519::verify_detached(&signature, signed_data, &public_sign_key) {
                 return Ok(());
             }
             Err(PacketError::InvalidPacketSignature)
@@ -90,9 +89,8 @@ pub mod serialized_data {
 
     #[cfg(test)]
     mod tests {
-        use sodiumoxide::*;
-
         use cjdns_core::{EncodingScheme, EncodingSchemeForm};
+        use cjdns_crypto::sign;
 
         use crate::models::{AnnHash, PeerData};
 
@@ -148,12 +146,12 @@ pub mod serialized_data {
         #[test]
         fn test_sign_check() {
             fn create_signed_header() -> Vec<u8> {
-                let (sodium_pk, sodium_sk) = crypto::sign::gen_keypair(); // random numbers generated here - test might be unstable
+                let (sodium_pk, sodium_sk) = sign::gen_keypair(); // random numbers generated here - test might be unstable
                 let header_data_to_sign = {
                     let rest_header_data = vec![0; HEADER_SIZE - SIGN_SIZE - SIGN_KEY_SIZE];
                     join(sodium_pk.as_ref(), &rest_header_data)
                 };
-                let sign = crypto::sign::sign_detached(&header_data_to_sign, &sodium_sk);
+                let sign = sign::sign_detached(&header_data_to_sign, &sodium_sk);
                 join(sign.as_ref(), &header_data_to_sign)
             };
 
@@ -231,12 +229,11 @@ pub mod serialized_data {
 mod parser {
     //! Parser module encapsulating logic for announcement data parsing
 
-    use libsodium_sys::crypto_sign_ed25519_pk_to_curve25519;
-
     use cjdns_bytes::{ExpectedSize, Reader};
+    use cjdns_crypto::sign_ext::sign_ed25519_pk_to_curve25519;
     use serialized_data::AnnouncementPacket;
 
-    use crate::models::{AnnHash, LinkStateData, PeerData, LINK_STATE_SLOTS};
+    use crate::models::{AnnHash, LINK_STATE_SLOTS, LinkStateData, PeerData};
     use crate::var_int::read_var_int;
 
     use super::*;
@@ -314,18 +311,14 @@ mod parser {
     ///
     /// Currently, the argument is provided by `AnnouncementPacket::get_pub_key_bytes` method, which returns a slice of the expected len.
     fn parse_sender_auth_data(pub_key_bytes: &[u8]) -> Result<(CJDNSPublicKey, CJDNS_IP6), ParserError> {
-        // auth encryption key
-        let mut curve25519_key_bytes = [0u8; SIGN_KEY_SIZE];
-        // ed25519 key
-        let public_sign_key = PublicKey::from_slice(pub_key_bytes).expect("internal error: public key size != 32");
-        let ok = unsafe {
-            // call to an extern function which uses raw pointers
-            // considered safe, because data under these pointers is consistent during function call
-            crypto_sign_ed25519_pk_to_curve25519(curve25519_key_bytes.as_mut_ptr(), public_sign_key.0.as_ptr()) == 0
+        let public_sign_key = ed25519::PublicKey::from_slice(pub_key_bytes).expect("internal error: public key size != 32");
+        let res = sign_ed25519_pk_to_curve25519(public_sign_key);
+        let curve25519_key_bytes = match res {
+            Ok(res) => res,
+            Err(_) => {
+                return Err(ParserError::CannotParseAuthData("conversion from x25519 to curve25519 failed"));
+            }
         };
-        if !ok {
-            return Err(ParserError::CannotParseAuthData("conversion from x25519 to curve25519 failed"));
-        }
         let node_encryption_key = CJDNSPublicKey::from(curve25519_key_bytes);
         let node_ip6 = CJDNS_IP6::try_from(&node_encryption_key).map_err(|_| ParserError::CannotParseAuthData("failed ip6 creation from received data"))?;
         Ok((node_encryption_key, node_ip6))

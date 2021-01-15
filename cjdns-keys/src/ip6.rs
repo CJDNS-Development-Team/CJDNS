@@ -4,7 +4,8 @@ use std::convert::TryFrom;
 use std::ops::Deref;
 
 use regex::Regex;
-use sodiumoxide::crypto::hash::sha512;
+
+use cjdns_crypto::hash::sha512;
 
 use crate::{
     CJDNSPublicKey,
@@ -36,8 +37,7 @@ impl TryFrom<&CJDNSPublicKey> for CJDNS_IP6 {
 
     fn try_from(value: &CJDNSPublicKey) -> Result<Self> {
         let pub_key_double_hash = sha512::hash(&sha512::hash(&value).0);
-        let ip6_res = Self::try_from(&pub_key_double_hash[..Self::SIZE]);
-        ip6_res
+        Self::try_from(&pub_key_double_hash[..Self::SIZE])
     }
 }
 

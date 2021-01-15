@@ -5,7 +5,8 @@ use std::ops::Deref;
 
 use data_encoding::BASE32_DNSCURVE;
 use regex::Regex;
-use sodiumoxide::crypto::scalarmult;
+
+use cjdns_crypto::scalarmult;
 
 use crate::{
     CJDNSPrivateKey,

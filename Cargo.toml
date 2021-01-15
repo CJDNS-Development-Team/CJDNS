@@ -3,6 +3,7 @@
 members = [
     "cjdns-core",
     "cjdns-keys",
+    "cjdns-crypto",
     "cjdns-bencode",
     "cjdns-bytes",
     "cjdns-ann",
