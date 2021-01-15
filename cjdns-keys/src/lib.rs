@@ -14,3 +14,12 @@ mod ip6;
 mod priv_key;
 mod pub_key;
 mod utils;
+
+/// CJDNS private key type
+pub type PrivateKey = CJDNSPrivateKey;
+
+/// CJDNS public key type
+pub type PublicKey = CJDNSPublicKey;
+
+/// CJDNS IPv6 type
+pub type IpV6 = CJDNS_IP6;

@@ -86,7 +86,7 @@ impl CJDNSKeysApi {
     ///
     /// Considered safe, because the method takes immutable reference of the successfully initialized api type instance.
     pub fn gen_private_key(&self) -> CJDNSPrivateKey {
-        CJDNSPrivateKey::new()
+        CJDNSPrivateKey::new_random()
     }
 }
 

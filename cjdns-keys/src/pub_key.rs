@@ -8,9 +8,9 @@ use regex::Regex;
 use sodiumoxide::crypto::scalarmult;
 
 use crate::{
+    CJDNSPrivateKey,
     errors::{KeyCreationError, Result},
     utils::vec_to_array32,
-    CJDNSPrivateKey,
 };
 
 lazy_static! {
@@ -72,6 +72,12 @@ impl std::fmt::Display for CJDNSPublicKey {
     }
 }
 
+impl CJDNSPublicKey {
+    pub fn is_zero(&self) -> bool {
+        self.k == [0; 32]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -114,5 +120,13 @@ mod tests {
         assert_eq!(&*pub_key, &pub_key_bytes);
         assert_eq!(CJDNSPublicKey::from(pub_key_bytes), pub_key);
         assert_eq!(pub_key.to_string(), "xpr2z2s3hnr0qzpk2u121uqjv15dc335v54pccqlqj6c5p840yy0.k".to_string());
+    }
+
+    #[test]
+    fn test_zero_pub_key() {
+        let zeroes = [0_u8; 32];
+        let zero = CJDNSPublicKey::from(zeroes);
+        assert!(zero.is_zero());
+        assert!(!pub_key("xpr2z2s3hnr0qzpk2u121uqjv15dc335v54pccqlqj6c5p840yy0.k").is_zero());
     }
 }

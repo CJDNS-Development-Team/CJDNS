@@ -4,21 +4,17 @@ use std::convert::TryFrom;
 use std::ops::Deref;
 
 use regex::Regex;
-use sodiumoxide::crypto::hash::sha512::hash;
+use sodiumoxide::crypto::hash::sha512;
 
 use crate::{
+    CJDNSPublicKey,
     errors::{KeyCreationError, Result},
     utils::{slice_to_array16, vec_to_array16},
-    CJDNSPublicKey,
 };
 
 lazy_static! {
     static ref IP6_RE: Regex = Regex::new("^fc[0-9a-f]{2}:(?:[0-9a-f]{4}:){6}[0-9a-f]{4}$").expect("bad regexp");
 }
-
-const IP6_BYTES_SIZE: usize = 16;
-// Valid Ip6 is in range of "fc.." values. So the first byte must 252u8, which in hex format is "fc". For more info look at ip6 regexp.
-const IP6_FIRST_BYTE: u8 = 252;
 
 /// CJDNS IP6 type
 #[allow(non_camel_case_types)]
@@ -30,14 +26,17 @@ pub struct CJDNS_IP6 {
 impl CJDNS_IP6 {
     /// Size in bytes of the IPv6 address
     pub const SIZE: usize = 16;
+
+    /// Valid CJDNS IPv6 must start with `0xFC` byte.
+    const FIRST_BYTE: u8 = 0xFC;
 }
 
 impl TryFrom<&CJDNSPublicKey> for CJDNS_IP6 {
     type Error = KeyCreationError;
 
     fn try_from(value: &CJDNSPublicKey) -> Result<Self> {
-        let pub_key_double_hash = hash(&hash(&value).0);
-        let ip6_res = Self::try_from(&pub_key_double_hash[..IP6_BYTES_SIZE]);
+        let pub_key_double_hash = sha512::hash(&sha512::hash(&value).0);
+        let ip6_res = Self::try_from(&pub_key_double_hash[..Self::SIZE]);
         ip6_res
     }
 }
@@ -46,10 +45,10 @@ impl TryFrom<&[u8]> for CJDNS_IP6 {
     type Error = KeyCreationError;
 
     fn try_from(bytes: &[u8]) -> Result<Self> {
-        if bytes.len() != IP6_BYTES_SIZE {
+        if bytes.len() != Self::SIZE {
             return Err(KeyCreationError::InvalidLength);
         }
-        if bytes[0] == IP6_FIRST_BYTE {
+        if bytes[0] == Self::FIRST_BYTE || bytes == [0; Self::SIZE] {
             return Ok(CJDNS_IP6 { k: slice_to_array16(bytes) });
         }
         Err(KeyCreationError::ResultingIp6OutOfValidRange)
@@ -86,6 +85,12 @@ impl std::fmt::Display for CJDNS_IP6 {
             ip6_string.insert(pos, ':');
         }
         f.write_str(&ip6_string)
+    }
+}
+
+impl CJDNS_IP6 {
+    pub fn is_zero(&self) -> bool {
+        self.k == [0; 16]
     }
 }
 
@@ -139,5 +144,13 @@ mod tests {
         for i in invalid_ip6_bytes {
             assert!(CJDNS_IP6::try_from(i.as_slice()).is_err())
         }
+    }
+
+    #[test]
+    fn test_zero_ip6() {
+        let zeroes = [0_u8; 16];
+        let zero = CJDNS_IP6::try_from(&zeroes[..]).expect("failed to construct zero IPv6");
+        assert!(zero.is_zero());
+        assert!(!ipv6("fc32:6a5d:e235:7057:e990:6398:5d7a:aa58").is_zero());
     }
 }
