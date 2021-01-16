@@ -44,7 +44,7 @@ pub mod serialized_data {
         /// Gets signature, public signing key and signed data bytes from announcement packet and performs signature check using
         /// [crypto_sign_verify_detached](https://libsodium.gitbook.io/doc/public-key_cryptography/public-key_signatures).
         pub fn check(&self) -> Result<()> {
-            let signature = ed25519::Signature::from_slice(self.get_signature_bytes()).expect("internal error: signature size != 64");
+            let signature = ed25519::Signature::try_from(self.get_signature_bytes()).expect("internal error: signature size != 64");
             let public_sign_key = ed25519::PublicKey::from_slice(self.get_pub_key_bytes()).expect("internal error: public key size != 32");
             let signed_data = self.get_signed_data();
             if ed25519::verify_detached(&signature, signed_data, &public_sign_key) {

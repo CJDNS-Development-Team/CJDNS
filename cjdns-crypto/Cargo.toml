@@ -15,5 +15,5 @@ description = "cjdns crypto library"
 # libsodium-sys = "0.2"
 
 # Use customized sodiumoxide which fixes Windows build bugs
-sodiumoxide = { git = "https://github.com/cjdelisle/sodiumoxide", rev = "3aa7e8e21b9cd61ad64f4a0ed125d5b1af2cf38d", version = "0.2" }
-libsodium-sys = { git = "https://github.com/cjdelisle/sodiumoxide", rev = "3aa7e8e21b9cd61ad64f4a0ed125d5b1af2cf38d", version = "0.2" }
+sodiumoxide = { git = "https://github.com/cjdelisle/sodiumoxide", rev = "9f6a18d40a4db253edfebac9f2ce5c22d09b1f47", version = "0.2" }
+libsodium-sys = { git = "https://github.com/cjdelisle/sodiumoxide", rev = "9f6a18d40a4db253edfebac9f2ce5c22d09b1f47", version = "0.2" }

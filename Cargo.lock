@@ -473,6 +473,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "88d7ed2934d741c6b37e33e3832298e8850b53fd2d2bea03873375596c7cea4e"
 
 [[package]]
+name = "ed25519"
+version = "1.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37c66a534cbb46ab4ea03477eae19d5c22c01da8258030280b7bd9d8433fb6ef"
+dependencies = [
+ "signature",
+]
+
+[[package]]
 name = "env_logger"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -907,7 +916,7 @@ checksum = "89203f3fba0a3795506acaad8ebce3c80c0af93f994d5a1d7a0b1eeb23271929"
 [[package]]
 name = "libsodium-sys"
 version = "0.2.6"
-source = "git+https://github.com/cjdelisle/sodiumoxide?rev=3aa7e8e21b9cd61ad64f4a0ed125d5b1af2cf38d#3aa7e8e21b9cd61ad64f4a0ed125d5b1af2cf38d"
+source = "git+https://github.com/cjdelisle/sodiumoxide?rev=9f6a18d40a4db253edfebac9f2ce5c22d09b1f47#9f6a18d40a4db253edfebac9f2ce5c22d09b1f47"
 dependencies = [
  "cc",
  "libc",
@@ -1592,6 +1601,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "signature"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0f0242b8e50dd9accdd56170e94ca1ebd223b098eb9c83539a6e367d0f36ae68"
+
+[[package]]
 name = "slab"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1617,8 +1632,9 @@ dependencies = [
 [[package]]
 name = "sodiumoxide"
 version = "0.2.6"
-source = "git+https://github.com/cjdelisle/sodiumoxide?rev=3aa7e8e21b9cd61ad64f4a0ed125d5b1af2cf38d#3aa7e8e21b9cd61ad64f4a0ed125d5b1af2cf38d"
+source = "git+https://github.com/cjdelisle/sodiumoxide?rev=9f6a18d40a4db253edfebac9f2ce5c22d09b1f47#9f6a18d40a4db253edfebac9f2ce5c22d09b1f47"
 dependencies = [
+ "ed25519",
  "libc",
  "libsodium-sys",
  "serde",
