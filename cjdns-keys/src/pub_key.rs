@@ -11,7 +11,7 @@ use cjdns_crypto::scalarmult;
 use crate::{
     CJDNSPrivateKey,
     errors::{KeyCreationError, Result},
-    utils::vec_to_array32,
+    utils::{debug_fmt, vec_to_array32},
 };
 
 lazy_static! {
@@ -22,7 +22,7 @@ lazy_static! {
 const BASE32_ENCODED_STRING_LEN: usize = 52;
 
 /// CJDNS public key type
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct CJDNSPublicKey {
     k: [u8; 32],
 }
@@ -68,14 +68,24 @@ impl Deref for CJDNSPublicKey {
 }
 
 impl std::fmt::Display for CJDNSPublicKey {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{}", BASE32_DNSCURVE.encode(&self.k) + ".k")
+    }
+}
+
+impl std::fmt::Debug for CJDNSPublicKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        debug_fmt(self.k, f)
     }
 }
 
 impl CJDNSPublicKey {
     pub fn is_zero(&self) -> bool {
         self.k == [0; 32]
+    }
+
+    pub fn raw(&self) -> &[u8; Self::SIZE] {
+        &self.k
     }
 }
 

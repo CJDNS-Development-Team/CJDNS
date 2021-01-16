@@ -10,7 +10,7 @@ use cjdns_crypto::hash::sha512;
 use crate::{
     CJDNSPublicKey,
     errors::{KeyCreationError, Result},
-    utils::{slice_to_array16, vec_to_array16},
+    utils::{debug_fmt, slice_to_array16, vec_to_array16},
 };
 
 lazy_static! {
@@ -19,7 +19,7 @@ lazy_static! {
 
 /// CJDNS IP6 type
 #[allow(non_camel_case_types)]
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CJDNS_IP6 {
     k: [u8; 16],
 }
@@ -77,7 +77,7 @@ impl Deref for CJDNS_IP6 {
 }
 
 impl std::fmt::Display for CJDNS_IP6 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let mut ip6_string = hex::encode(self.k);
         // putting : after every 4th symbol
         for i in 1usize..8 {
@@ -88,9 +88,19 @@ impl std::fmt::Display for CJDNS_IP6 {
     }
 }
 
+impl std::fmt::Debug for CJDNS_IP6 {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        debug_fmt(self.k, f)
+    }
+}
+
 impl CJDNS_IP6 {
     pub fn is_zero(&self) -> bool {
         self.k == [0; 16]
+    }
+
+    pub fn raw(&self) -> &[u8; Self::SIZE] {
+        &self.k
     }
 }
 
