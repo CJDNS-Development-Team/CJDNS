@@ -22,7 +22,7 @@ lazy_static! {
 const BASE32_ENCODED_STRING_LEN: usize = 52;
 
 /// CJDNS public key type
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CJDNSPublicKey {
     k: [u8; 32],
 }
