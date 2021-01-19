@@ -9,6 +9,7 @@ license = "GPL-3.0-or-later"
 description = "cjdns crypto library"
 
 [dependencies]
+parking_lot = "0.11"
 
 # Don't use original sodiumoxide due to bugs in Windows build
 # sodiumoxide = "0.2"

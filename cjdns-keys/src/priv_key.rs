@@ -5,7 +5,7 @@ use std::ops::Deref;
 
 use regex::Regex;
 
-use cjdns_crypto::randombytes::randombytes;
+use cjdns_crypto::random::Random;
 use cjdns_crypto::scalarmult;
 
 use crate::{
@@ -61,9 +61,10 @@ impl std::fmt::Debug for CJDNSPrivateKey {
 }
 
 impl CJDNSPrivateKey {
-    pub fn new_random() -> Self {
-        let bytes = randombytes(32);
-        CJDNSPrivateKey { k: vec_to_array32(bytes) }
+    pub fn new_random<R: Random>(rand: &R) -> Self {
+        let mut random_bytes = [0_u8; Self::SIZE];
+        rand.random_bytes(&mut random_bytes);
+        CJDNSPrivateKey { k: random_bytes }
     }
 
     pub fn to_scalar(&self) -> scalarmult::Scalar {
