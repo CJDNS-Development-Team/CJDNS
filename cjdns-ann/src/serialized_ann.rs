@@ -3,7 +3,7 @@ use std::convert::TryFrom;
 use cjdns_core::{deserialize_scheme, RoutingLabel};
 use cjdns_crypto::hash::sha512;
 use cjdns_crypto::sign::ed25519;
-use cjdns_keys::{CJDNS_IP6, CJDNSPublicKey};
+use cjdns_keys::{CJDNSPublicKey, CJDNS_IP6};
 
 use super::errors::*;
 use super::models::{Announcement, AnnouncementEntities, AnnouncementHeader, Entity, LinkStateSlots};
@@ -153,7 +153,7 @@ pub mod serialized_data {
                 };
                 let sign = sign::sign_detached(&header_data_to_sign, &sodium_sk);
                 join(sign.as_ref(), &header_data_to_sign)
-            };
+            }
 
             let packet = AnnouncementPacket::try_new(create_signed_header()).expect("invalid packet data len");
             assert!(packet.check().is_ok());
@@ -233,7 +233,7 @@ mod parser {
     use cjdns_crypto::sign_ext::sign_ed25519_pk_to_curve25519;
     use serialized_data::AnnouncementPacket;
 
-    use crate::models::{AnnHash, LINK_STATE_SLOTS, LinkStateData, PeerData};
+    use crate::models::{AnnHash, LinkStateData, PeerData, LINK_STATE_SLOTS};
     use crate::var_int::read_var_int;
 
     use super::*;

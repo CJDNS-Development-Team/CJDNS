@@ -34,7 +34,7 @@ struct ConnectionOptions {
 /// the corresponding config file is read.
 pub async fn connect(opts: Option<Opts>) -> Result<Connection, Error> {
     let opts = opts.unwrap_or_default().into_connection_options().await?;
-    conn::Connection::new(opts).await
+    Connection::new(opts).await
 }
 
 /// Helper macro to easily invoke remote function with arguments.

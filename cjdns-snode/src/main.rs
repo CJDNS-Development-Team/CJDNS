@@ -80,7 +80,7 @@ mod logger {
 mod args {
     use std::path::PathBuf;
 
-    use clap::Clap;
+    use clap::Parser;
 
     /// Parse command line.
     pub(super) fn parse() -> Opts {
@@ -88,7 +88,7 @@ mod args {
     }
 
     /// CJDNS supernode.
-    #[derive(Clap)]
+    #[derive(Debug, Parser)]
     #[clap(version = "0.1.0", author = "The CJDNS development team")]
     pub struct Opts {
         /// Config file path
