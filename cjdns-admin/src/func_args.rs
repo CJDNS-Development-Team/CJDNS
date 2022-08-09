@@ -1,6 +1,7 @@
 //! Remote function argument list.
 
 use std::collections::BTreeMap;
+use std::fmt::{Debug, Display, Formatter};
 
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
@@ -9,7 +10,7 @@ use serde::{Serialize, Serializer};
 pub type ArgName = String;
 
 /// Argument value (either integer or string).
-#[derive(Clone, PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum ArgValue {
     /// Integer argument value.
     Int(i64),
@@ -48,6 +49,15 @@ impl Serialize for ArgValues {
             }
         }
         encoder.end()
+    }
+}
+
+impl Debug for ArgValue {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ArgValue::Int(i) => Display::fmt(i, f),
+            ArgValue::String(s) => Display::fmt(s, f),
+        }
     }
 }
 
