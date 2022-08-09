@@ -1,5 +1,6 @@
 //! Remote function argument list.
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Display, Formatter};
 
@@ -91,6 +92,12 @@ impl From<String> for ArgValue {
 impl From<&str> for ArgValue {
     #[inline]
     fn from(value: &str) -> Self {
+        ArgValue::String(value.to_string())
+    }
+}
+
+impl From<Cow<'_, str>> for ArgValue {
+    fn from(value: Cow<'_, str>) -> Self {
         ArgValue::String(value.to_string())
     }
 }
