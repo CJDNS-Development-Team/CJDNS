@@ -22,7 +22,7 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_millis(10_000);
 /// Admin connection to the CJDNS node.
 ///
 /// Cloneable: cloned connection uses same underlying UDP socket and is thread-safe.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Connection {
     socket: Arc<Mutex<UdpSocket>>,
     password: String,
