@@ -10,11 +10,11 @@ use tokio::time;
 
 use cjdns_crypto::hash::sha256;
 
-use crate::ConnectionOptions;
 use crate::errors::{ConnOptions, Error};
 use crate::func_list::Funcs;
 use crate::msgs::{self, Empty, Request};
 use crate::txid::Counter;
+use crate::ConnectionOptions;
 
 const PING_TIMEOUT: Duration = Duration::from_millis(1_000);
 const DEFAULT_TIMEOUT: Duration = Duration::from_millis(10_000);
@@ -25,25 +25,25 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_millis(10_000);
 #[derive(Debug, Clone)]
 pub struct Connection {
     socket: Arc<Mutex<UdpSocket>>,
-    password: String,
+    password: Arc<String>,
     counter: Arc<Counter>,
 
     /// List of available remote functions.
-    pub functions: Funcs,
+    pub functions: Arc<Funcs>,
 }
 
 impl Connection {
     pub(super) async fn new(opts: ConnectionOptions) -> Result<Self, Error> {
         let mut conn = Connection {
-            socket: Arc::new(Mutex::new(create_udp_socket_sender(&opts.addr, opts.port).await?)),
-            password: opts.password.clone(),
-            counter: Arc::new(Counter::new_random()),
-            functions: Funcs::default(),
+            socket: Mutex::new(create_udp_socket_sender(&opts.addr, opts.port).await?).into(),
+            password: Arc::clone(&opts.password),
+            counter: Counter::new_random().into(),
+            functions: Funcs::default().into(),
         };
 
         conn.probe_connection(opts).await?;
         let fns = conn.load_available_functions().await?;
-        conn.functions = fns;
+        conn.functions = fns.into();
 
         Ok(conn)
     }
@@ -138,7 +138,7 @@ impl Connection {
 
         // Hash password with salt
         let passwd_hash = {
-            let cookie_passwd = self.password.clone() + &new_cookie;
+            let cookie_passwd = (&*self.password).clone() + &new_cookie;
             let digest = sha256::hash(cookie_passwd.as_bytes());
             hex::encode(digest)
         };

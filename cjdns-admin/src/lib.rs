@@ -10,6 +10,7 @@ pub use crate::errors::Error;
 pub use crate::func_args::{ArgName, ArgValue, ArgValues};
 pub use crate::func_list::{Arg, ArgType, Args, Func, Funcs};
 pub use crate::func_ret::ReturnValue;
+use std::sync::Arc;
 
 mod config;
 mod conn;
@@ -22,9 +23,9 @@ mod txid;
 
 #[derive(Clone, Default, PartialEq, Eq, Debug)]
 struct ConnectionOptions {
-    addr: String,
+    addr: Arc<String>,
     port: u16,
-    password: String,
+    password: Arc<String>,
     used_config_file: Option<String>,
 }
 
