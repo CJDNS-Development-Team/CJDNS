@@ -15,7 +15,7 @@ async fn main() {
 }
 
 async fn run() -> Result<(), Error> {
-    let mut cjdns = cjdns_admin::connect(None).await?;
+    let cjdns = cjdns_admin::connect(None).await?;
 
     let args = env::args().skip(1).collect::<Vec<_>>();
 

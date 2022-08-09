@@ -48,7 +48,7 @@ impl Connection {
         Ok(conn)
     }
 
-    async fn probe_connection(&mut self, opts: ConnectionOptions) -> Result<(), Error> {
+    async fn probe_connection(&self, opts: ConnectionOptions) -> Result<(), Error> {
         self.call_func::<(), Empty>("ping", (), true, PING_TIMEOUT)
             .await
             .map_err(|_| Error::ConnectError(ConnOptions::wrap(&opts)))?;
@@ -62,7 +62,7 @@ impl Connection {
         Ok(())
     }
 
-    async fn load_available_functions(&mut self) -> Result<Funcs, Error> {
+    async fn load_available_functions(&self) -> Result<Funcs, Error> {
         let mut res = Funcs::new();
 
         for i in 0.. {
@@ -100,11 +100,11 @@ impl Connection {
     /// let res = cjdns_invoke!(conn, "FuncName", "arg1" = 42, "arg2" = "foobar").await?;
     /// # Ok(())}
     /// ```
-    pub async fn invoke<A: msgs::Args, P: msgs::Payload>(&mut self, remote_fn_name: &str, args: A) -> Result<P, Error> {
+    pub async fn invoke<A: msgs::Args, P: msgs::Payload>(&self, remote_fn_name: &str, args: A) -> Result<P, Error> {
         self.call_func(remote_fn_name, args, false, DEFAULT_TIMEOUT).await
     }
 
-    async fn call_func<A: msgs::Args, P: msgs::Payload>(&mut self, remote_fn_name: &str, args: A, disable_auth: bool, timeout: Duration) -> Result<P, Error> {
+    async fn call_func<A: msgs::Args, P: msgs::Payload>(&self, remote_fn_name: &str, args: A, disable_auth: bool, timeout: Duration) -> Result<P, Error> {
         let call = async {
             if disable_auth || self.password.is_empty() {
                 self.call_func_no_auth(remote_fn_name, args).await
@@ -115,7 +115,7 @@ impl Connection {
         time::timeout(timeout, call).await.map_err(|_| Error::TimeOut(timeout))?
     }
 
-    async fn call_func_no_auth<A: msgs::Args, P: msgs::Payload>(&mut self, remote_fn_name: &str, args: A) -> Result<P, Error> {
+    async fn call_func_no_auth<A: msgs::Args, P: msgs::Payload>(&self, remote_fn_name: &str, args: A) -> Result<P, Error> {
         let msg = msgs::Query {
             txid: self.counter.next().to_string(),
             q: remote_fn_name.to_string(),
@@ -129,7 +129,7 @@ impl Connection {
         Ok(resp.payload)
     }
 
-    async fn call_func_auth<A: msgs::Args, P: msgs::Payload>(&mut self, remote_fn_name: &str, args: A) -> Result<P, Error> {
+    async fn call_func_auth<A: msgs::Args, P: msgs::Payload>(&self, remote_fn_name: &str, args: A) -> Result<P, Error> {
         // Ask cjdns for a cookie first
         let new_cookie = {
             let resp: msgs::CookieResponsePayload = self.call_func_no_auth("cookie", ()).await?;
@@ -169,7 +169,7 @@ impl Connection {
         Ok(resp.payload)
     }
 
-    async fn send_msg<RQ, RS>(&mut self, req: &RQ) -> Result<RS, Error>
+    async fn send_msg<RQ, RS>(&self, req: &RQ) -> Result<RS, Error>
     where
         RQ: msgs::Request,
         RS: msgs::Response,
@@ -177,7 +177,7 @@ impl Connection {
         // Send encoded request
         let msg = req.to_bencode()?;
         //dbg!(String::from_utf8_lossy(&msg));
-        let mut socket = self.socket.lock().await;
+        let socket = self.socket.lock().await;
         socket.send(&msg).await.map_err(|e| Error::NetworkOperation(e))?;
 
         // Limit receive packet lenght to typical Ethernet MTU for now; need to check actual max packet length on CJDNS Node side though.
