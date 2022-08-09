@@ -69,25 +69,26 @@ fn test_split_fn_invocation_str() -> Result<(), ()> {
     Ok(())
 }
 
-fn parse_remote_fn_args(s: &str) -> Result<Vec<ArgValue>, ()> {
+fn parse_remote_fn_args(s: &str) -> Result<Vec<Option<ArgValue>>, ()> {
     if s.trim().is_empty() {
         return Ok(Vec::new());
     }
 
     let mut fn_args = Vec::new();
     for arg in s.split(",").map(str::trim) {
-        let arg = match arg.chars().next().ok_or(())? {
-            '-' | '0'..='9' => {
+        let arg = match arg.chars().next() {
+            Some('-' | '0'..='9') => {
                 let value = arg.parse().map_err(|_| ())?;
-                ArgValue::Int(value)
+                ArgValue::Int(value).into()
             }
-            '"' => {
+            Some('"') => {
                 let n = arg.len();
                 if n < 2 || arg.chars().last().ok_or(())? != '"' {
                     return Err(()); // Bad string argument - unpaired quotes
                 }
-                ArgValue::String(arg[1..n - 1].to_string())
+                ArgValue::String(arg[1..n - 1].to_string()).into()
             }
+            None => None,
             _ => return Err(()), // Bad argument - unknown type
         };
         fn_args.push(arg);
@@ -99,29 +100,32 @@ fn parse_remote_fn_args(s: &str) -> Result<Vec<ArgValue>, ()> {
 fn test_parse_remote_fn_args() -> Result<(), ()> {
     assert_eq!(parse_remote_fn_args(r#""#)?, Vec::new());
     assert_eq!(parse_remote_fn_args(r#" "#)?, Vec::new());
-    assert_eq!(parse_remote_fn_args(r#"42"#)?, vec![ArgValue::Int(42)]);
-    assert_eq!(parse_remote_fn_args(r#" 42 "#)?, vec![ArgValue::Int(42)]);
-    assert_eq!(parse_remote_fn_args(r#" 42"#)?, vec![ArgValue::Int(42)]);
-    assert_eq!(parse_remote_fn_args(r#"42 "#)?, vec![ArgValue::Int(42)]);
-    assert_eq!(parse_remote_fn_args(r#""foo""#)?, vec![ArgValue::String("foo".to_string())]);
+    assert_eq!(parse_remote_fn_args(r#"42"#)?, vec![Some(ArgValue::Int(42))]);
+    assert_eq!(parse_remote_fn_args(r#" 42 "#)?, vec![Some(ArgValue::Int(42))]);
+    assert_eq!(parse_remote_fn_args(r#" 42"#)?, vec![Some(ArgValue::Int(42))]);
+    assert_eq!(parse_remote_fn_args(r#"42 "#)?, vec![Some(ArgValue::Int(42))]);
+    assert_eq!(parse_remote_fn_args(r#""foo""#)?, vec![Some(ArgValue::String("foo".to_string()))]);
     assert_eq!(
         parse_remote_fn_args(r#"42,"foo",-42"#)?,
-        vec![ArgValue::Int(42), ArgValue::String("foo".to_string()), ArgValue::Int(-42)]
+        vec![Some(ArgValue::Int(42)), Some(ArgValue::String("foo".to_string())), Some(ArgValue::Int(-42))]
     );
     assert_eq!(
         parse_remote_fn_args(r#"42, "foo", -42"#)?,
-        vec![ArgValue::Int(42), ArgValue::String("foo".to_string()), ArgValue::Int(-42)]
+        vec![Some(ArgValue::Int(42)), Some(ArgValue::String("foo".to_string())), Some(ArgValue::Int(-42))]
     );
 
     Ok(())
 }
 
-fn make_args(func: &Func, arg_values: Vec<ArgValue>) -> ArgValues {
+fn make_args(func: &Func, arg_values: Vec<Option<ArgValue>>) -> ArgValues {
     let mut args = ArgValues::new();
     for (arg, arg_value) in func.args.iter().zip(arg_values) {
         // Here we won't check argument types, required or not etc.
         // Let the remote side do all necessry checks and return error if needed.
-        args.add(arg.name.clone(), arg_value);
+        eprintln!("{}={:?}", arg.name, arg_value);
+        if let Some(value) = arg_value {
+            args.add(arg.name.clone(), value);
+        }
     }
     args
 }
