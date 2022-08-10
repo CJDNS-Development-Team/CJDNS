@@ -2,7 +2,7 @@
 
 use std::borrow::Cow;
 use std::collections::BTreeMap;
-use std::fmt::{Debug, Display, Formatter};
+use std::fmt::{Debug, Formatter};
 
 use serde::ser::SerializeMap;
 use serde::{Serialize, Serializer};
@@ -56,8 +56,8 @@ impl Serialize for ArgValues {
 impl Debug for ArgValue {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ArgValue::Int(i) => Display::fmt(i, f),
-            ArgValue::String(s) => Display::fmt(s, f),
+            ArgValue::Int(i) => Debug::fmt(i, f),
+            ArgValue::String(s) => Debug::fmt(s, f),
         }
     }
 }
