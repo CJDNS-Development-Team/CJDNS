@@ -13,6 +13,8 @@ pub type ArgName = String;
 /// Argument value (either integer or string).
 #[derive(Clone, PartialEq, Eq)]
 pub enum ArgValue {
+    /// Do not use this value..
+    Ignore,
     /// Integer argument value.
     Int(i64),
     /// String argument value.
@@ -34,7 +36,12 @@ impl ArgValues {
     #[inline]
     pub fn add<N: Into<ArgName>, V: Into<ArgValue>>(&mut self, name: N, value: V) -> &mut Self {
         let ArgValues(map) = self;
-        map.insert(name.into(), value.into());
+        match value.into() {
+            ArgValue::Ignore => {}
+            value => {
+                map.insert(name.into(), value);
+            }
+        }
         self
     }
 }
@@ -45,6 +52,7 @@ impl Serialize for ArgValues {
         let mut encoder = serializer.serialize_map(Some(map.len()))?;
         for (k, v) in map {
             match v {
+                ArgValue::Ignore => unreachable!(),
                 ArgValue::Int(int_val) => encoder.serialize_entry(k, int_val)?,
                 ArgValue::String(str_val) => encoder.serialize_entry(k, str_val)?,
             }
@@ -58,6 +66,7 @@ impl Debug for ArgValue {
         match self {
             ArgValue::Int(i) => Debug::fmt(i, f),
             ArgValue::String(s) => Debug::fmt(s, f),
+            ArgValue::Ignore => Debug::fmt("<ignored>", f),
         }
     }
 }
@@ -65,9 +74,12 @@ impl Debug for ArgValue {
 #[test]
 fn test_args_ser() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = ArgValues::new();
+    args.add("abc".to_string(), ArgValue::Ignore);
     args.add("foo".to_string(), ArgValue::String("bar".to_string()));
     args.add("boo".to_string(), ArgValue::Int(42));
+    args.add("abc".to_string(), ArgValue::Ignore);
     args.add("zoo".to_string(), ArgValue::Int(-42));
+    args.add("abc".to_string(), ArgValue::Ignore);
 
     let benc = String::from_utf8(bencode::to_bytes(&args)?)?;
     assert_eq!(benc, "d3:booi42e3:foo3:bar3:zooi-42ee");
@@ -102,6 +114,15 @@ impl From<Cow<'_, str>> for ArgValue {
     }
 }
 
+impl<T: Into<ArgValue>> From<Option<T>> for ArgValue {
+    fn from(value: Option<T>) -> Self {
+        match value {
+            None => ArgValue::Ignore,
+            Some(x) => x.into(),
+        }
+    }
+}
+
 #[test]
 fn test_arg_value_conversion() {
     fn arg<T: Into<ArgValue>>(v: T) -> ArgValue {
@@ -113,4 +134,12 @@ fn test_arg_value_conversion() {
 
     assert_eq!(arg("foo"), ArgValue::String("foo".to_string()));
     assert_eq!(arg("bar".to_string()), ArgValue::String("bar".to_string()));
+
+    assert_eq!(arg(None::<i64>), ArgValue::Ignore);
+    assert_eq!(arg(None::<&str>), ArgValue::Ignore);
+    assert_eq!(arg(None::<String>), ArgValue::Ignore);
+    assert_eq!(arg(Some(42)), ArgValue::Int(42));
+    assert_eq!(arg(Some(-42)), ArgValue::Int(-42));
+    assert_eq!(arg(Some("foo")), ArgValue::String("foo".to_string()));
+    assert_eq!(arg(Some("bar".to_string())), ArgValue::String("bar".to_string()));
 }
