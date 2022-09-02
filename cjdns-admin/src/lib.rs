@@ -10,6 +10,7 @@ pub use crate::errors::Error;
 pub use crate::func_args::{ArgName, ArgValue, ArgValues};
 pub use crate::func_list::{Arg, ArgType, Args, Func, Funcs};
 pub use crate::func_ret::ReturnValue;
+use std::sync::Arc;
 
 mod config;
 mod conn;
@@ -22,9 +23,9 @@ mod txid;
 
 #[derive(Clone, Default, PartialEq, Eq, Debug)]
 struct ConnectionOptions {
-    addr: String,
+    addr: Arc<String>,
     port: u16,
-    password: String,
+    password: Arc<String>,
     used_config_file: Option<String>,
 }
 
@@ -34,7 +35,7 @@ struct ConnectionOptions {
 /// the corresponding config file is read.
 pub async fn connect(opts: Option<Opts>) -> Result<Connection, Error> {
     let opts = opts.unwrap_or_default().into_connection_options().await?;
-    conn::Connection::new(opts).await
+    Connection::new(opts).await
 }
 
 /// Helper macro to easily invoke remote function with arguments.

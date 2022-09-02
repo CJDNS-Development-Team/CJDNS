@@ -9,6 +9,7 @@ use cjdns_ann::{Announcement, PeerData};
 use cjdns_core::RoutingLabel;
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub(super) struct Link {
     pub(super) label: RoutingLabel<u32>,
     pub(super) encoding_form_number: u8,

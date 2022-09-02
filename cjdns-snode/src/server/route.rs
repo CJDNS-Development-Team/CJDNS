@@ -32,6 +32,7 @@ struct RoutingState {
 struct CacheKey(CJDNS_IP6, CJDNS_IP6);
 
 #[derive(Clone)]
+#[allow(dead_code)]
 pub struct Route {
     pub label: RoutingLabel<u64>,
     hops: Vec<Hop>,
@@ -39,6 +40,7 @@ pub struct Route {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)]
 struct Hop {
     label: RoutingLabel<u64>,
     orig_label: RoutingLabel<u32>,

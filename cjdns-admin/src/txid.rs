@@ -5,6 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use rand::Rng;
 
 /// Transaction counter.
+#[derive(Debug)]
 pub(super) struct Counter(AtomicU64);
 
 impl Counter {

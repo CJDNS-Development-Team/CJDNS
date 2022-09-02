@@ -32,7 +32,7 @@ pub(super) async fn service_task(server: Arc<Server>) {
 }
 
 async fn do_service(server: Arc<Server>) -> Result<(), Error> {
-    let mut cjdns = cjdns_admin::connect(None).await?;
+    let cjdns = cjdns_admin::connect(None).await?;
 
     // Querying local node info
     let node_info = cjdns.invoke::<_, CoreNodeInfoPayload>("Core_nodeInfo", Empty {}).await?;
