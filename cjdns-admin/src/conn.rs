@@ -176,20 +176,15 @@ impl Connection {
     {
         // Send encoded request
         let msg = req.to_bencode()?;
-        //dbg!(String::from_utf8_lossy(&msg));
         let socket = self.socket.lock().await;
         socket.send(&msg).await.map_err(|e| Error::NetworkOperation(e))?;
 
-        // Limit receive packet lenght to typical Ethernet MTU for now; need to check actual max packet length on CJDNS Node side though.
-        let mut buf = [0; 1500];
-
-        // Reseive encoded response synchronously
+        // Receive encoded response synchronously
+        let mut buf = [0; 64 * 1024];
         let received = socket.recv(&mut buf).await.map_err(|e| Error::NetworkOperation(e))?;
-        let response = &buf[..received];
-        //dbg!(String::from_utf8_lossy(&response));
 
         // Decode response
-        RS::from_bencode(response)
+        RS::from_bencode(&buf[..received])
     }
 }
 
