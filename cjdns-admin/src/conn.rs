@@ -180,7 +180,7 @@ impl Connection {
         socket.send(&msg).await.map_err(|e| Error::NetworkOperation(e))?;
 
         // Receive encoded response synchronously
-        let mut buf = [0; 64 * 1024];
+        let mut buf = vec![0; 64 * 1024];
         let received = socket.recv(&mut buf).await.map_err(|e| Error::NetworkOperation(e))?;
 
         // Decode response
