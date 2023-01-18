@@ -10,8 +10,8 @@ description = "Library for parsing cjdns announcement messages"
 
 [dependencies]
 hex = "0.4"
-sodiumoxide = "0.2"
-libsodium-sys = "0.2"
+sodiumoxide = { git = "https://github.com/cjdelisle/sodiumoxide", rev = "9f6a18d40a4db253edfebac9f2ce5c22d09b1f47", version = "0.2", default-features = false, features = ["std"] }
+libsodium-sys = { git = "https://github.com/cjdelisle/sodiumoxide", rev = "9f6a18d40a4db253edfebac9f2ce5c22d09b1f47", version = "0.2" }
 thiserror = "1.0"
 
 cjdns-core = { path = "../cjdns-core" }
