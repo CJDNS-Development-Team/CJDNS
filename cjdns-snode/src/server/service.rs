@@ -10,6 +10,7 @@ use tokio::{select, time};
 use cjdns_admin::msgs::{Empty, GenericResponsePayload};
 use cjdns_admin::{ArgValues, Connection, ReturnValue};
 use cjdns_bencode::BValue;
+use cjdns_core::RoutingLabel;
 use cjdns_hdr::RouteHeader;
 use cjdns_keys::{CJDNSPublicKey, CJDNS_IP6};
 use cjdns_sniff::{Content, ContentType, Message, ReceiveError, Sniffer};
@@ -206,12 +207,41 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
 
             let route = get_route(server.clone(), src.clone(), tar.clone());
 
+            // BUG: Sometimes the RS is dumb enough to try to propose a non-working route to a PEER.
+            // If the RS is proposing a route OTHER than direct along the peering link, we should just
+            // send the peering path instead.
+            let mut route_label = None;
+            let mut num_routes = 0;
+            if let Some(node) = &tar {
+                let ilbi = node.inward_links_by_ip.lock();
+                if let Some(links) = ilbi.get(&src_ip) {
+                    if let Some(newest) = links.iter().reduce(|rl, nl|{
+                        if rl.create_time > nl.create_time {
+                            rl
+                        } else {
+                            nl
+                        }
+                    }) {
+                        route_label = RoutingLabel::try_new(newest.label.bits() as u64);
+                        num_routes = links.len();
+                    }
+                }
+            }
+
             let res = if let (Ok(route), Some(tar)) = (route, tar) {
                 res
                     // List of nodes (one entry - the destination).
                     // Each node represented as its public key + routing label.
                     .add_dict_entry("n", |b| {
-                        let label_bits = route.label.bits().to_be_bytes();
+                        let label_bits = if let Some(route_label) = route_label {
+                            if route_label.bits() != route.label.bits() {
+                                warn!("GR {}=>{}, Using a peering link {} rather than computed {} ({} choices)",
+                                    src_ip, tar_ip, route_label.to_string(), route.label.to_string(), num_routes);
+                            }
+                            route_label
+                        } else {
+                            route.label
+                        }.bits().to_be_bytes();
                         let mut buf = Vec::with_capacity(CJDNSPublicKey::SIZE + route.label.size());
                         buf.extend_from_slice(&tar.key);
                         buf.extend_from_slice(&label_bits);
