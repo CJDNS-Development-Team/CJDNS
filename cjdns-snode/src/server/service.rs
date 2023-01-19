@@ -247,26 +247,25 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
                         let label_bits = if let Some(route_label) = route_label {
                             let addr = route_header.ip6.map(|x|x.to_string()).unwrap_or_default();
                             let src_ip_s = src_ip.to_string();
-                            let msg = format!("{} REQ GR {}=>{}, peering link {} {}{} {}",
-                                addr,
-                                if src_ip_s == addr { "self".to_owned() } else { src_ip_s },
-                                tar_ip,
-                                route_label.to_string(),
-                                if route_label == route.label { "matches computed".to_string() } else {
-                                        format!("differs from computed {}", route.label.to_string())
-                                },
-                                if num_routes > 1 { format!(" ({} choices)", num_routes) } else { "".to_owned() },
-                                if confirmed { "CONFIRMED" } else { "UNCONFIRMED" },
-                            );
+                            if debug_noisy {
+                                debug!("{} REQ GR {}=>{}, peering link {} {}{} {}",
+                                    addr,
+                                    if src_ip_s == addr { "self".to_owned() } else { src_ip_s },
+                                    tar_ip,
+                                    route_label.to_string(),
+                                    if route_label == route.label { "matches computed".to_string() } else {
+                                            format!("differs from computed {}", route.label.to_string())
+                                    },
+                                    if num_routes > 1 { format!(" ({} choices)", num_routes) } else { "".to_owned() },
+                                    if confirmed { "CONFIRMED" } else { "UNCONFIRMED" },
+                                );
+                            }
                             if route_label == route.label && confirmed {
-                                // Don't say anything, all is fine
                                 route.label
                             } else if confirmed {
                                 // differing link, use the peering
-                                warn!("{} using peer link", msg);
                                 route_label
                             } else {
-                                warn!("{} using computed", msg);
                                 route.label
                             }
                         } else {
