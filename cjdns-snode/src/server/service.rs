@@ -246,16 +246,19 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
                     .add_dict_entry("n", |b| {
                         let label_bits = if let Some(route_label) = route_label {
                             let addr = route_header.ip6.map(|x|x.to_string()).unwrap_or_default();
-                            //let flink_num = 
-                            if addr.contains("fc50:6116:c9eb:8023:e096:f39d:b477:9669") {
-                                warn!("REQ GR {}=>{}, peering link {} differs from computed {}{} {}",
-                                    src_ip, tar_ip, route_label.to_string(), route.label.to_string(),
-                                    if num_routes > 1 { format!(" ({} choices)", num_routes) } else { "".to_owned() },
-                                    if confirmed { "CONFIRMED" } else { "UNCONFIRMED" });
-                                route_label
-                            } else {
-                                route.label
-                            }
+                            let src_ip_s = src_ip.to_string();
+                            warn!("{} REQ GR {}=>{}, peering link {} {}{} {}",
+                                addr,
+                                if src_ip_s == addr { "self".to_owned() } else { src_ip_s },
+                                tar_ip,
+                                route_label.to_string(),
+                                if route_label == route.label { "matches computed".to_string() } else {
+                                        format!("differs from computed {}", route.label.to_string())
+                                },
+                                if num_routes > 1 { format!(" ({} choices)", num_routes) } else { "".to_owned() },
+                                if confirmed { "CONFIRMED" } else { "UNCONFIRMED" },
+                            );
+                            route.label
                         } else {
                             route.label
                         }.bits().to_be_bytes();
