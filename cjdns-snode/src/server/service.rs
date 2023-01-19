@@ -212,6 +212,7 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
             // send the peering path instead.
             let mut route_label = None;
             let mut num_routes = 0;
+            let mut confirmed = false;
             if let Some(node) = &tar {
                 let ilbi = node.inward_links_by_ip.lock();
                 if let Some(links) = ilbi.get(&src_ip) {
@@ -227,6 +228,16 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
                     }
                 }
             }
+            if let (Some(node), Some(route_label)) = (&src, route_label) {
+                let ilbi = node.inward_links_by_ip.lock();
+                if let Some(links) = ilbi.get(&tar_ip) {
+                    for l in links {
+                        if l.peer_num as u64 == route_label.bits() {
+                            confirmed = true;
+                        }
+                    }
+                }
+            }
 
             let res = if let (Ok(route), Some(tar)) = (route, tar) {
                 res
@@ -235,10 +246,12 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
                     .add_dict_entry("n", |b| {
                         let label_bits = if let Some(route_label) = route_label {
                             let addr = route_header.ip6.map(|x|x.to_string()).unwrap_or_default();
-                            if route_label.bits() != route.label.bits() && addr.contains("fc50:6116:c9eb:8023:e096:f39d:b477:9669") {
-                                warn!("{} REQ GR {}=>{}, peering link {} differs from computed {} ({} choices)",
-                                    addr, src_ip, tar_ip,
-                                    route_label.to_string(), route.label.to_string(), num_routes);
+                            //let flink_num = 
+                            if addr.contains("fc50:6116:c9eb:8023:e096:f39d:b477:9669") {
+                                warn!("REQ GR {}=>{}, peering link {} differs from computed {}{} {}",
+                                    src_ip, tar_ip, route_label.to_string(), route.label.to_string(),
+                                    if num_routes > 1 { format!(" ({} choices)", num_routes) } else { "".to_owned() },
+                                    if confirmed { "CONFIRMED" } else { "UNCONFIRMED" });
                                 route_label
                             } else {
                                 route.label
