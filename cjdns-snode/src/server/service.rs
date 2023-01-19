@@ -234,12 +234,17 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
                     // Each node represented as its public key + routing label.
                     .add_dict_entry("n", |b| {
                         let label_bits = if let Some(route_label) = route_label {
+                            let addr = route_header.ip6.map(|x|x.to_string()).unwrap_or_default();
                             if route_label.bits() != route.label.bits() {
-                                warn!("{:?} REQ GR {}=>{}, peering link {} differs from computed {} ({} choices)",
-                                    route_header.ip6, src_ip, tar_ip,
+                                warn!("{} REQ GR {}=>{}, peering link {} differs from computed {} ({} choices)",
+                                    addr, src_ip, tar_ip,
                                     route_label.to_string(), route.label.to_string(), num_routes);
                             }
-                            route.label
+                            if addr == "fc51:98e0:9a6d:b218:256f:3837:5c9f:712c" {
+                                route_label
+                            } else {
+                                route.label
+                            }
                         } else {
                             route.label
                         }.bits().to_be_bytes();
