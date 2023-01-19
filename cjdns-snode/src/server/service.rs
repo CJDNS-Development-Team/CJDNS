@@ -235,8 +235,9 @@ async fn on_subnode_message_impl(server: Arc<Server>, route_header: RouteHeader,
                     .add_dict_entry("n", |b| {
                         let label_bits = if let Some(route_label) = route_label {
                             if route_label.bits() != route.label.bits() {
-                                warn!("GR {}=>{}, peering link {} differs from computed {} ({} choices)",
-                                    src_ip, tar_ip, route_label.to_string(), route.label.to_string(), num_routes);
+                                warn!("{:?} REQ GR {}=>{}, peering link {} differs from computed {} ({} choices)",
+                                    route_header.ip6, src_ip, tar_ip,
+                                    route_label.to_string(), route.label.to_string(), num_routes);
                             }
                             route.label
                         } else {
