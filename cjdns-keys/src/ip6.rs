@@ -5,6 +5,7 @@ use std::ops::Deref;
 
 use regex::Regex;
 use sodiumoxide::crypto::hash::sha512::hash;
+use serde::{Serialize, Serializer};
 
 use crate::{
     errors::{KeyCreationError, Result},
@@ -74,6 +75,15 @@ impl Deref for CJDNS_IP6 {
 
     fn deref(&self) -> &Self::Target {
         &self.k
+    }
+}
+
+impl Serialize for CJDNS_IP6 {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(&self.to_string())
     }
 }
 

@@ -8,6 +8,7 @@ use std::fmt;
 
 use regex::Regex;
 use thiserror::Error;
+use serde::{Serialize, Serializer};
 
 use super::RoutingLabel;
 
@@ -19,23 +20,26 @@ pub enum LabelError {
     ZeroRoutingLabel,
 }
 
-impl fmt::Display for RoutingLabel<u32> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        <RoutingLabel<u32> as fmt::LowerHex>::fmt(self, f)
+macro_rules! mk_display_serialize {
+    ($t:ident) => {
+        impl fmt::Display for RoutingLabel<$t> {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                <RoutingLabel<$t> as fmt::LowerHex>::fmt(self, f)
+            }
+        }
+        impl Serialize for RoutingLabel<$t> {
+            fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+            where
+                S: Serializer
+            {
+                serializer.serialize_str(&self.to_string()[..])
+            }
+        }
     }
 }
-
-impl fmt::Display for RoutingLabel<u64> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        <RoutingLabel<u64> as fmt::LowerHex>::fmt(self, f)
-    }
-}
-
-impl fmt::Display for RoutingLabel<u128> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        <RoutingLabel<u128> as fmt::LowerHex>::fmt(self, f)
-    }
-}
+mk_display_serialize!(u32);
+mk_display_serialize!(u64);
+mk_display_serialize!(u128);
 
 impl fmt::LowerHex for RoutingLabel<u32> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

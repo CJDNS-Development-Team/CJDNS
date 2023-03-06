@@ -275,6 +275,7 @@ dependencies = [
  "lazy_static",
  "rand 0.7.3",
  "regex",
+ "serde",
  "thiserror",
 ]
 
@@ -310,6 +311,7 @@ dependencies = [
  "hex",
  "lazy_static",
  "regex",
+ "serde",
  "sodiumoxide",
  "thiserror",
 ]

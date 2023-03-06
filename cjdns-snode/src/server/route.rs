@@ -14,8 +14,7 @@ use crate::pathsearch::{Dijkstra, GraphBuilder, GraphSolver};
 use crate::server::nodes::{Node, Nodes};
 use crate::server::Server;
 
-use serde::ser::SerializeStruct;
-use serde::{Serialize, Serializer};
+use serde::Serialize;
 
 pub struct Routing {
     last_rebuild: Instant,
@@ -26,29 +25,14 @@ pub struct Routing {
 #[derive(Clone, PartialEq, Eq, Hash, Debug)]
 struct CacheKey(CJDNS_IP6, CJDNS_IP6);
 
-#[derive(Clone)]
+#[derive(Clone, Serialize)]
 pub struct Route {
     pub label: RoutingLabel<u64>,
     hops: Vec<Hop>,
     path: Vec<CJDNS_IP6>,
 }
 
-//Serializer for Route that returns only the label and path (for use in API responses for returning path between two nodes)
-impl Serialize for Route {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut route_map = serializer.serialize_struct("Route", 2)?;
-        route_map.serialize_field("label", &self.label.to_string())?;
-
-        let path_strings: Vec<String> = self.path.iter().map(|p| p.to_string()).collect();
-        route_map.serialize_field("hops", &path_strings)?;
-        route_map.end()
-    }
-}
-
-#[derive(Clone)]
+#[derive(Clone, Serialize)]
 struct Hop {
     label: RoutingLabel<u64>,
     orig_label: RoutingLabel<u32>,

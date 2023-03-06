@@ -309,6 +309,7 @@ mod encoding_scheme {
 
     use std::collections::HashSet;
     use std::ops::Deref;
+    use serde::Serialize;
 
     use crate::encoding::errors::{FormValidationError, SchemeValidationError};
 
@@ -321,7 +322,7 @@ mod encoding_scheme {
     /// Encoding scheme - an iterable list of scheme forms.
     ///
     /// Schemes are comparable for equality, immutable, opaque and iterable.
-    #[derive(Debug, Clone, PartialEq, Eq)]
+    #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
     pub struct EncodingScheme(Vec<EncodingSchemeForm>);
 
     /// A form of an encoding scheme. Form is used as follows to encode a director:
@@ -331,7 +332,7 @@ mod encoding_scheme {
     /// ^^^^^^^^^^^^^^^^^^^^ ^^^^^^^^^^^^^^^^^^^^^^^
     /// form.bit_count bits   form.prefix_len bits
     /// ```
-    #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize)]
     pub struct EncodingSchemeForm {
         bit_count: u8, // bit_count going first is important for EncodingScheme ordering
         prefix_len: u8,
