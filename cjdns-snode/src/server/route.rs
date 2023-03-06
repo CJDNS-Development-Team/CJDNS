@@ -6,6 +6,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use parking_lot::{Mutex, RwLock, RwLockWriteGuard};
+use serde::ser::SerializeStruct;
+use serde::{Serialize, Serializer};
 use thiserror::Error;
 use tokio::task;
 
@@ -44,6 +46,21 @@ struct Hop {
     orig_label: RoutingLabel<u32>,
     scheme: Arc<EncodingScheme>,
     inverse_form_num: u8,
+}
+
+//Serializer for Route that returns only the label and path (for use in API responses for returning path between two nodes)
+impl Serialize for Route {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut route_map = serializer.serialize_struct("Route", 2)?;
+        route_map.serialize_field("label", &self.label.to_string())?;
+
+        let path_strings: Vec<String> = self.path.iter().map(|p| p.to_string()).collect();
+        route_map.serialize_field("path", &path_strings)?;
+        route_map.end()
+    }
 }
 
 #[derive(PartialEq, Eq, Clone, Debug, Error)]

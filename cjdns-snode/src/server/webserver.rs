@@ -169,7 +169,7 @@ mod handlers {
             return Ok("tar not found".to_string());
         }
         match get_route(server.clone(), src, tar) {
-            Ok(r) => Ok(r.label.to_string()),
+            Ok(r) => Ok(serde_json::to_string_pretty(&r).unwrap()),
             Err(e) => Ok(format!("{:?}", e)),
         }
     }
