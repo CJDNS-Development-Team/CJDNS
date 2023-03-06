@@ -58,7 +58,7 @@ impl Serialize for Route {
         route_map.serialize_field("label", &self.label.to_string())?;
 
         let path_strings: Vec<String> = self.path.iter().map(|p| p.to_string()).collect();
-        route_map.serialize_field("path", &path_strings)?;
+        route_map.serialize_field("hops", &path_strings)?;
         route_map.end()
     }
 }
